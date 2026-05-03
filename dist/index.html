@@ -7,63 +7,78 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="container">
-        <h1>Refrigerator Net Storage Volume Calculator</h1>
-        <p>ES 3794 / IEC 62552 compliant</p>
+    <div class="page">
+        <!-- ========== LEFT PANEL: Calculator ========== -->
+        <div class="left-panel">
+            <h1>Refrigerator Net Storage Volume Calculator</h1>
+            <p>ES 3794 / IEC 62552 compliant</p>
 
-        <!-- External Dimensions -->
-        <fieldset>
-            <legend>External Cabinet Dimensions</legend>
-            <label>Height (mm): <input type="number" id="extHeight" min="1" step="any" required></label>
-            <label>Width (mm): <input type="number" id="extWidth" min="1" step="any" required></label>
-            <label>Depth (mm): <input type="number" id="extDepth" min="1" step="any" required></label>
-        </fieldset>
+            <!-- External Dimensions -->
+            <fieldset>
+                <legend>External Cabinet Dimensions</legend>
+                <label>Height (mm): <input type="number" id="extHeight" min="1" step="any" required></label>
+                <label>Width (mm): <input type="number" id="extWidth" min="1" step="any" required></label>
+                <label>Depth (mm): <input type="number" id="extDepth" min="1" step="any" required></label>
+            </fieldset>
 
-        <!-- Wall/Insulation Thickness -->
-        <fieldset>
-            <legend>Wall/Insulation Thickness (mm)</legend>
-            <label>Top: <input type="number" id="wallTop" value="50" step="any" required></label>
-            <label>Bottom: <input type="number" id="wallBottom" value="50" step="any" required></label>
-            <label>Left: <input type="number" id="wallLeft" value="50" step="any" required></label>
-            <label>Right: <input type="number" id="wallRight" value="50" step="any" required></label>
-            <label>Rear: <input type="number" id="wallRear" value="50" step="any" required></label>
-            <label>Door: <input type="number" id="wallDoor" value="70" step="any" required></label>
-        </fieldset>
+            <!-- Wall/Insulation Thickness -->
+            <fieldset>
+                <legend>Wall/Insulation Thickness (mm)</legend>
+                <label>Top: <input type="number" id="wallTop" value="50" step="any" required></label>
+                <label>Bottom: <input type="number" id="wallBottom" value="50" step="any" required></label>
+                <label>Left: <input type="number" id="wallLeft" value="50" step="any" required></label>
+                <label>Right: <input type="number" id="wallRight" value="50" step="any" required></label>
+                <label>Rear: <input type="number" id="wallRear" value="50" step="any" required></label>
+                <label>Door: <input type="number" id="wallDoor" value="70" step="any" required></label>
+            </fieldset>
 
-        <!-- Partition Divider Thickness -->
-        <fieldset>
-            <legend>Partition Divider Thickness (mm)</legend>
-            <label>Horizontal: <input type="number" id="divHoriz" value="20" step="any" required></label>
-            <label>Vertical: <input type="number" id="divVert" value="20" step="any" required></label>
-        </fieldset>
+            <!-- Partition Divider Thickness -->
+            <fieldset>
+                <legend>Partition Divider Thickness (mm)</legend>
+                <label>Horizontal: <input type="number" id="divHoriz" value="20" step="any" required></label>
+                <label>Vertical: <input type="number" id="divVert" value="20" step="any" required></label>
+            </fieldset>
 
-        <!-- Air Gap / Door Seal Offset -->
-        <fieldset>
-            <legend>Air Gap / Door Seal Offset (mm)</legend>
-            <label>Clearance: <input type="number" id="sealOffset" value="5" step="any" required></label>
-        </fieldset>
+            <!-- Air Gap / Door Seal Offset -->
+            <fieldset>
+                <legend>Air Gap / Door Seal Offset (mm)</legend>
+                <label>Clearance: <input type="number" id="sealOffset" value="5" step="any" required></label>
+            </fieldset>
 
-        <!-- Compartments -->
-        <fieldset>
-            <legend>Compartments (max 8)</legend>
-            <label>Number of compartments: <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
-            <div id="compartmentList"></div>
-        </fieldset>
+            <!-- Compartments -->
+            <fieldset>
+                <legend>Compartments (max 8)</legend>
+                <label>Number of compartments: <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
+                <div id="compartmentBuilder"></div>   <!-- Dynamic JS fills this -->
+            </fieldset>
 
-        <!-- Results -->
-        <fieldset>
-            <legend>Calculated Volumes</legend>
-            <div id="results">
-                <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
-                <p>Egyptian Net (ES 3794): <span id="egNetVol">--</span> L (<span id="egNetVolCuft">--</span> cu. ft.)</p>
-                <p>IEC Net (IEC 62552): <span id="iecNetVol">--</span> L (<span id="iecNetVolCuft">--</span> cu. ft.)</p>
-            </div>
-        </fieldset>
+            <!-- Results -->
+            <fieldset>
+                <legend>Calculated Volumes</legend>
+                <div id="results">
+                    <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
+                    <p>Egyptian Net (ES 3794): <span id="egNetVol">--</span> L (<span id="egNetVolCuft">--</span> cu. ft.)</p>
+                    <p>IEC Net (IEC 62552): <span id="iecNetVol">--</span> L (<span id="iecNetVolCuft">--</span> cu. ft.)</p>
+                </div>
+            </fieldset>
 
-        <button id="calculateBtn">Calculate</button>
-        <button id="saveBtn">Save Configuration (JSON)</button>
-        <button id="loadBtn">Load Configuration (JSON)</button>
-        <button id="exportBtn">Export Results (CSV)</button>
+            <fieldset id="messagesFieldset" style="display:none;">
+                <legend>Messages</legend>
+                <div id="messages"></div>
+            </fieldset>
+
+            <button id="calculateBtn">Calculate</button>
+            <button id="saveBtn">Save Configuration (JSON)</button>
+            <button id="loadBtn">Load Configuration (JSON)</button>
+            <button id="exportBtn">Export Results (CSV)</button>
+        </div>
+
+        <!-- ========== RIGHT PANEL: Schematic ========== -->
+        <div class="right-panel">
+            <canvas id="schematicCanvas" width="500" height="700"></canvas>
+        </div>
     </div>
-        <script src="bundle.js"></script>
+
+    <script src="bundle.js"></script>
+</body>
 </html>

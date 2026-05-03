@@ -165,7 +165,7 @@
  * Top-level result returned by runCalculation().
  * errors[] is always present; non-empty means output should be flagged.
  * @typedef {Object} CalcResult
- * @property {LeafResult[]|null}    leaves
+ * * @property {FittingConfig} fittings    
  * @property {Totals|null}          totals
  * @property {ValidationError[]}    validationErrors
  * @property {CalcError[]}          calcErrors

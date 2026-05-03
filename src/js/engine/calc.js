@@ -145,6 +145,7 @@ export function calcLeaf(leaf, space, excludedFittingIds = new Set()) {
     egNet,
     iecNet,
     fittingErrors:  [...excludedFittingIds],
+    fittings: leaf.fittings,
   };
 }
 

@@ -1,5 +1,6 @@
 import { runCalculation } from './engine/index.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
+import { drawSchematic } from './ui/schematic.js';
 
 // ---- DOM references ---------------------------------------------------
 const extHeightInput      = document.getElementById('extHeight');
@@ -27,7 +28,7 @@ let currentConfig = null;
 
 // ---- Dynamic compartment builder -------------------------------------
 numCompartmentsInput.addEventListener('input', buildCompartmentUI);
-buildCompartmentUI(); // initial draw
+buildCompartmentUI();
 
 function buildCompartmentUI() {
   const count = Math.max(1, Math.min(8, parseInt(numCompartmentsInput.value) || 1));
@@ -47,40 +48,93 @@ function buildCompartmentUI() {
       <label>Height Ratio (0-1):
         <input type="number" data-comp="${i}" data-field="heightRatio" step="0.01" min="0.01" max="1" value="0.5">
       </label>
-      <fieldset>
-        <legend>Shelves</legend>
-        <div class="shelfContainer" data-comp="${i}"></div>
-        <button type="button" data-action="addShelf" data-comp="${i}">Add Shelf</button>
-      </fieldset>
-      <fieldset>
-        <legend>Drawers / Crispers</legend>
-        <div class="drawerContainer" data-comp="${i}"></div>
-        <button type="button" data-action="addDrawer" data-comp="${i}">Add Drawer</button>
-      </fieldset>
-      <fieldset>
-        <legend>Door Bins</legend>
-        <div class="binContainer" data-comp="${i}"></div>
-        <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
-      </fieldset>
+
+      <label>
+        <input type="checkbox" data-comp="${i}" data-action="toggleVertical"> Split vertically
+      </label>
+      <label class="vert-ratio-label" data-comp="${i}" style="display:none;">
+        Left width ratio (0-1):
+        <input type="number" data-comp="${i}" data-field="leftWidthRatio" step="0.01" min="0.1" max="0.9" value="0.5">
+      </label>
+
+      <div class="verticalSubContainer" data-comp="${i}" style="display:none;">
+        <fieldset>
+          <legend>Left sub-compartment</legend>
+          <div class="shelfContainer" data-comp="${i}" data-sub="left"></div>
+          <button type="button" data-action="addShelf" data-comp="${i}" data-sub="left">Add Shelf</button>
+          <div class="drawerContainer" data-comp="${i}" data-sub="left"></div>
+          <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="left">Add Drawer</button>
+          <div class="binContainer" data-comp="${i}" data-sub="left"></div>
+          <button type="button" data-action="addBin" data-comp="${i}" data-sub="left">Add Door Bin</button>
+        </fieldset>
+        <fieldset>
+          <legend>Right sub-compartment</legend>
+          <div class="shelfContainer" data-comp="${i}" data-sub="right"></div>
+          <button type="button" data-action="addShelf" data-comp="${i}" data-sub="right">Add Shelf</button>
+          <div class="drawerContainer" data-comp="${i}" data-sub="right"></div>
+          <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="right">Add Drawer</button>
+          <div class="binContainer" data-comp="${i}" data-sub="right"></div>
+          <button type="button" data-action="addBin" data-comp="${i}" data-sub="right">Add Door Bin</button>
+        </fieldset>
+      </div>
+
+      <div class="singleSubContainer" data-comp="${i}">
+        <fieldset>
+          <legend>Shelves</legend>
+          <div class="shelfContainer" data-comp="${i}"></div>
+          <button type="button" data-action="addShelf" data-comp="${i}">Add Shelf</button>
+        </fieldset>
+        <fieldset>
+          <legend>Drawers / Crispers</legend>
+          <div class="drawerContainer" data-comp="${i}"></div>
+          <button type="button" data-action="addDrawer" data-comp="${i}">Add Drawer</button>
+        </fieldset>
+        <fieldset>
+          <legend>Door Bins</legend>
+          <div class="binContainer" data-comp="${i}"></div>
+          <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
+        </fieldset>
+      </div>
     `;
     compartmentBuilder.appendChild(fieldset);
   }
 
-  // Attach button handlers
+  // Vertical split toggle listeners
+  compartmentBuilder.querySelectorAll('input[data-action="toggleVertical"]').forEach(cb => {
+    cb.addEventListener('change', function() {
+      const compIdx = this.dataset.comp;
+      const vertContainer = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
+      const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
+      const ratioLabel = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
+      if (this.checked) {
+        vertContainer.style.display = 'block';
+        singleContainer.style.display = 'none';
+        if (ratioLabel) ratioLabel.style.display = 'inline';
+      } else {
+        vertContainer.style.display = 'none';
+        singleContainer.style.display = 'block';
+        if (ratioLabel) ratioLabel.style.display = 'none';
+      }
+    });
+  });
+
+  // Attach button handlers with sub support
   compartmentBuilder.querySelectorAll('button[data-action="addShelf"]').forEach(btn => {
-    btn.addEventListener('click', () => addShelf(btn.dataset.comp));
+    btn.addEventListener('click', () => addShelf(btn.dataset.comp, btn.dataset.sub || ''));
   });
   compartmentBuilder.querySelectorAll('button[data-action="addDrawer"]').forEach(btn => {
-    btn.addEventListener('click', () => addDrawer(btn.dataset.comp));
+    btn.addEventListener('click', () => addDrawer(btn.dataset.comp, btn.dataset.sub || ''));
   });
   compartmentBuilder.querySelectorAll('button[data-action="addBin"]').forEach(btn => {
-    btn.addEventListener('click', () => addBin(btn.dataset.comp));
+    btn.addEventListener('click', () => addBin(btn.dataset.comp, btn.dataset.sub || ''));
   });
 }
 
-// ---- Add fitting helpers (called via "Add Shelf/..." buttons) --------
-function addShelf(compIndex) {
-  const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]`);
+// ---- Add fitting helpers (updated with sub support) ------------------
+function addShelf(compIndex, sub = '') {
+  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
+  const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]${subAttr}`);
+  if (!container) return;
   const div = document.createElement('div');
   div.innerHTML = `
     <label>Pos from floor (mm): <input type="number" step="any" value="100" class="shelf-pos"></label>
@@ -91,8 +145,10 @@ function addShelf(compIndex) {
   container.appendChild(div);
 }
 
-function addDrawer(compIndex) {
-  const container = document.querySelector(`.drawerContainer[data-comp="${compIndex}"]`);
+function addDrawer(compIndex, sub = '') {
+  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
+  const container = document.querySelector(`.drawerContainer[data-comp="${compIndex}"]${subAttr}`);
+  if (!container) return;
   const div = document.createElement('div');
   div.innerHTML = `
     <label>Outer W (mm): <input type="number" step="any" value="300" class="drawer-w"></label>
@@ -103,8 +159,10 @@ function addDrawer(compIndex) {
   container.appendChild(div);
 }
 
-function addBin(compIndex) {
-  const container = document.querySelector(`.binContainer[data-comp="${compIndex}"]`);
+function addBin(compIndex, sub = '') {
+  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
+  const container = document.querySelector(`.binContainer[data-comp="${compIndex}"]${subAttr}`);
+  if (!container) return;
   const div = document.createElement('div');
   div.innerHTML = `
     <label>Outer W (mm): <input type="number" step="any" value="200" class="bin-w"></label>
@@ -115,9 +173,64 @@ function addBin(compIndex) {
   container.appendChild(div);
 }
 
+// ---- Helper to collect fittings for a given compartment and sub ------
+function collectFittings(compIndex, sub, type) {
+  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
+  const containerClass = type === 'shelf' ? 'shelfContainer' :
+                         type === 'drawer' ? 'drawerContainer' : 'binContainer';
+  const rows = compartmentBuilder.querySelectorAll(`.${containerClass}[data-comp="${compIndex}"]${subAttr} > div`);
+  const items = [];
+  rows.forEach(row => {
+    if (type === 'shelf') {
+      const pos = parseFloat(row.querySelector('.shelf-pos').value);
+      const thick = parseFloat(row.querySelector('.shelf-thick').value);
+      const depth = parseFloat(row.querySelector('.shelf-depth').value);
+      const widthInput = row.querySelector('.shelf-width');
+      const widthVal = widthInput.value ? parseFloat(widthInput.value) : null;
+      if (!isNaN(pos) && !isNaN(thick) && !isNaN(depth)) {
+        items.push({
+          id: `${compIndex}-${sub}-shelf-${items.length}`,
+          positionFromFloor: pos,
+          thickness: thick,
+          depth: depth,
+          width: widthVal,
+        });
+      }
+    } else if (type === 'drawer') {
+      const w = parseFloat(row.querySelector('.drawer-w').value);
+      const d = parseFloat(row.querySelector('.drawer-d').value);
+      const h = parseFloat(row.querySelector('.drawer-h').value);
+      const t = parseFloat(row.querySelector('.drawer-t').value);
+      if (!isNaN(w) && !isNaN(d) && !isNaN(h) && !isNaN(t)) {
+        items.push({
+          id: `${compIndex}-${sub}-drawer-${items.length}`,
+          outerWidth: w,
+          outerDepth: d,
+          outerHeight: h,
+          wallThickness: t,
+        });
+      }
+    } else if (type === 'bin') {
+      const w = parseFloat(row.querySelector('.bin-w').value);
+      const h = parseFloat(row.querySelector('.bin-h').value);
+      const d = parseFloat(row.querySelector('.bin-d').value);
+      const t = parseFloat(row.querySelector('.bin-t').value);
+      if (!isNaN(w) && !isNaN(h) && !isNaN(d) && !isNaN(t)) {
+        items.push({
+          id: `${compIndex}-${sub}-bin-${items.length}`,
+          outerWidth: w,
+          outerHeight: h,
+          outerDepth: d,
+          wallThickness: t,
+        });
+      }
+    }
+  });
+  return items;
+}
+
 // ---- Build CabinetConfig from DOM ------------------------------------
 function buildConfigFromForm() {
-  // External / wall / air gap
   const external = {
     height: parseFloat(extHeightInput.value),
     width:  parseFloat(extWidthInput.value),
@@ -133,92 +246,88 @@ function buildConfigFromForm() {
   };
   const airGap = parseFloat(sealOffsetInput.value);
 
-  // Compartments (leaves)
   const count = parseInt(numCompartmentsInput.value) || 1;
-  const leaves = [];
+  const leaves = [];   // children for the horizontal root
+
   for (let i = 0; i < count; i++) {
     const typeSelect = compartmentBuilder.querySelector(`select[data-comp="${i}"][data-field="type"]`);
     const heightRatioInput = compartmentBuilder.querySelector(`input[data-comp="${i}"][data-field="heightRatio"]`);
     const compType = typeSelect.value;
     const heightRatio = parseFloat(heightRatioInput.value) || 0.5;
 
-    // Collect shelves
-    const shelfRows = compartmentBuilder.querySelectorAll(`.shelfContainer[data-comp="${i}"] > div`);
-    const shelves = [];
-    shelfRows.forEach(row => {
-      const pos   = parseFloat(row.querySelector('.shelf-pos').value);
-      const thick = parseFloat(row.querySelector('.shelf-thick').value);
-      const depth = parseFloat(row.querySelector('.shelf-depth').value);
-      const widthInput = row.querySelector('.shelf-width');
-      const widthVal = widthInput.value ? parseFloat(widthInput.value) : null;
-      if (!isNaN(pos) && !isNaN(thick) && !isNaN(depth)) {
-        shelves.push({
-          id: `${i}-shelf-${shelves.length}`,
-          positionFromFloor: pos,
-          thickness: thick,
-          depth: depth,
-          width: widthVal,
-        });
-      }
-    });
+    const vertCheckbox = compartmentBuilder.querySelector(`input[data-action="toggleVertical"][data-comp="${i}"]`);
+    const isVertical = vertCheckbox && vertCheckbox.checked;
+    const leftWidthRatioInput = compartmentBuilder.querySelector(`input[data-comp="${i}"][data-field="leftWidthRatio"]`);
+    const leftRatio = parseFloat(leftWidthRatioInput?.value) || 0.5;
 
-    // Collect drawers
-    const drawerRows = compartmentBuilder.querySelectorAll(`.drawerContainer[data-comp="${i}"] > div`);
-    const drawers = [];
-    drawerRows.forEach(row => {
-      const w = parseFloat(row.querySelector('.drawer-w').value);
-      const d = parseFloat(row.querySelector('.drawer-d').value);
-      const h = parseFloat(row.querySelector('.drawer-h').value);
-      const t = parseFloat(row.querySelector('.drawer-t').value);
-      if (!isNaN(w) && !isNaN(d) && !isNaN(h) && !isNaN(t)) {
-        drawers.push({
-          id: `${i}-drawer-${drawers.length}`,
-          outerWidth: w,
-          outerDepth: d,
-          outerHeight: h,
-          wallThickness: t,
-        });
-      }
-    });
+    if (isVertical) {
+      const leftShelves = collectFittings(i, 'left', 'shelf');
+      const leftDrawers = collectFittings(i, 'left', 'drawer');
+      const leftBins    = collectFittings(i, 'left', 'bin');
+      const rightShelves = collectFittings(i, 'right', 'shelf');
+      const rightDrawers = collectFittings(i, 'right', 'drawer');
+      const rightBins    = collectFittings(i, 'right', 'bin');
 
-    // Collect door bins
-    const binRows = compartmentBuilder.querySelectorAll(`.binContainer[data-comp="${i}"] > div`);
-    const doorBins = [];
-    binRows.forEach(row => {
-      const w = parseFloat(row.querySelector('.bin-w').value);
-      const h = parseFloat(row.querySelector('.bin-h').value);
-      const d = parseFloat(row.querySelector('.bin-d').value);
-      const t = parseFloat(row.querySelector('.bin-t').value);
-      if (!isNaN(w) && !isNaN(h) && !isNaN(d) && !isNaN(t)) {
-        doorBins.push({
-          id: `${i}-bin-${doorBins.length}`,
-          outerWidth: w,
-          outerHeight: h,
-          outerDepth: d,
-          wallThickness: t,
-        });
-      }
-    });
-
-    leaves.push({
-      id: `comp${i}`,
-      nodeType: 'leaf',
-      type: compType,
-      fittings: {
-        shelves,
-        drawers,
-        doorBins,
-        iceMakerHousing: { volume: null },
-        lightHousing: { volume: null },
-      },
-      heightMode: 'ratio',
-      heightValue: heightRatio,
-    });
+      const divThickness = parseFloat(divVertInput.value) || 20;
+      const vertNode = {
+        nodeType: 'vertical',
+        id: `vert-${i}`,
+        dividerThickness: divThickness,
+        leftWidthRatio: leftRatio,
+        left: {
+          nodeType: 'leaf',
+          id: `comp${i}-L`,
+          type: compType,
+          fittings: {
+            shelves: leftShelves,
+            drawers: leftDrawers,
+            doorBins: leftBins,
+            iceMakerHousing: { volume: null },
+            lightHousing: { volume: null },
+          },
+        },
+        right: {
+          nodeType: 'leaf',
+          id: `comp${i}-R`,
+          type: compType,
+          fittings: {
+            shelves: rightShelves,
+            drawers: rightDrawers,
+            doorBins: rightBins,
+            iceMakerHousing: { volume: null },
+            lightHousing: { volume: null },
+          },
+        },
+      };
+      leaves.push({
+        heightMode: 'ratio',
+        heightValue: heightRatio,
+        node: vertNode,
+      });
+    } else {
+      const shelves = collectFittings(i, '', 'shelf');
+      const drawers = collectFittings(i, '', 'drawer');
+      const bins    = collectFittings(i, '', 'bin');
+      leaves.push({
+        heightMode: 'ratio',
+        heightValue: heightRatio,
+        node: {
+          nodeType: 'leaf',
+          id: `comp${i}`,
+          type: compType,
+          fittings: {
+            shelves,
+            drawers,
+            doorBins: bins,
+            iceMakerHousing: { volume: null },
+            lightHousing: { volume: null },
+          },
+        },
+      });
+    }
   }
 
-  // Build a simple horizontal (stacked) layout from the leaves
-  // Use ratio mode and evenly distribute height (summing to 1)
-  // But since we collected explicit heightRatios, we need to normalise them.
+  // Normalise height ratios
   const totalRatio = leaves.reduce((s, l) => s + l.heightValue, 0);
   if (totalRatio > 0) {
     leaves.forEach(l => l.heightValue /= totalRatio);
@@ -227,15 +336,10 @@ function buildConfigFromForm() {
   const rootNode = {
     nodeType: 'horizontal',
     id: 'root',
-    children: leaves.map((leaf, idx) => ({
-      heightMode: 'ratio',
-      heightValue: leaf.heightValue,
-      node: {
-        nodeType: 'leaf',
-        id: leaf.id,
-        type: leaf.type,
-        fittings: leaf.fittings,
-      },
+    children: leaves.map(l => ({
+      heightMode: l.heightMode,
+      heightValue: l.heightValue,
+      node: l.node,
     })),
     dividers: Array.from({ length: leaves.length - 1 }, (_, i) => ({
       afterChildIndex: i,
@@ -281,8 +385,6 @@ calculateBtn.addEventListener('click', () => {
   currentConfig = config;
   const result = runCalculation(config);
 
-  showMessages(result.validationErrors, result.warnings, result.calcErrors);
-
   if (result.leaves && result.totals) {
     document.getElementById('grossVol').textContent      = result.totals.gross.toFixed(2);
     document.getElementById('egNetVol').textContent      = result.totals.egNet.toFixed(2);
@@ -290,6 +392,16 @@ calculateBtn.addEventListener('click', () => {
     document.getElementById('grossVolCuft').textContent  = (result.totals.gross * 0.0353147).toFixed(3);
     document.getElementById('egNetVolCuft').textContent  = (result.totals.egNet * 0.0353147).toFixed(3);
     document.getElementById('iecNetVolCuft').textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+  }
+
+  showMessages(result.validationErrors, result.warnings, result.calcErrors);
+
+  const canvas = document.getElementById('schematicCanvas');
+  if (canvas && result.leaves && result.leaves.length > 0) {
+    drawSchematic(result.leaves, currentConfig, canvas);
+  } else if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 });
 
@@ -309,7 +421,7 @@ loadBtn.addEventListener('click', () => {
     try {
       const config = await loadConfigFromFile(file);
       currentConfig = config;
-      // Populate form from loaded config (simplified: just set external dims)
+
       extHeightInput.value = config.cabinet.external.height;
       extWidthInput.value  = config.cabinet.external.width;
       extDepthInput.value  = config.cabinet.external.depth;
@@ -320,7 +432,27 @@ loadBtn.addEventListener('click', () => {
       wallRearInput.value  = config.cabinet.wallThicknesses.rear;
       wallDoorInput.value  = config.cabinet.wallThicknesses.door;
       sealOffsetInput.value= config.cabinet.airGap;
-      alert('Configuration loaded (only external fields restored).');
+
+      const result = runCalculation(config);
+      if (result.leaves && result.totals) {
+        document.getElementById('grossVol').textContent      = result.totals.gross.toFixed(2);
+        document.getElementById('egNetVol').textContent      = result.totals.egNet.toFixed(2);
+        document.getElementById('iecNetVol').textContent     = result.totals.iecNet.toFixed(2);
+        document.getElementById('grossVolCuft').textContent  = (result.totals.gross * 0.0353147).toFixed(3);
+        document.getElementById('egNetVolCuft').textContent  = (result.totals.egNet * 0.0353147).toFixed(3);
+        document.getElementById('iecNetVolCuft').textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+      }
+      showMessages(result.validationErrors, result.warnings, result.calcErrors);
+
+      const canvas = document.getElementById('schematicCanvas');
+      if (canvas && result.leaves && result.leaves.length > 0) {
+        drawSchematic(result.leaves, currentConfig, canvas);
+      } else if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      alert('Configuration loaded and calculated.');
     } catch (err) {
       alert('Error: ' + err.message);
     }
