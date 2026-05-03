@@ -12,6 +12,12 @@
         <div class="left-panel">
             <h1>Refrigerator Net Storage Volume Calculator</h1>
             <p>ES 3794 / IEC 62552 compliant</p>
+            <div class="sticky-buttons">
+                <button id="calculateBtn">Calculate</button>
+                <button id="saveBtn">Save Configuration (JSON)</button>
+                <button id="loadBtn">Load Configuration (JSON)</button>
+                <button id="exportBtn">Export Results (CSV)</button>
+            </div>
 
             <!-- External Dimensions -->
             <fieldset>
@@ -67,15 +73,17 @@
                 <div id="messages"></div>
             </fieldset>
 
-            <button id="calculateBtn">Calculate</button>
-            <button id="saveBtn">Save Configuration (JSON)</button>
-            <button id="loadBtn">Load Configuration (JSON)</button>
-            <button id="exportBtn">Export Results (CSV)</button>
         </div>
 
         <!-- RIGHT PANEL: Schematic -->
         <div class="right-panel">
-            <canvas id="schematicCanvas" width="500" height="700"></canvas>
+            <canvas id="schematicCanvas" width="600" height="800"></canvas>
+            <!-- Overlay indicator when schematic is outdated -->
+            <div id="schematicOverlay" class="schematic-overlay hidden">
+                Schematic not updated – click Calculate
+            </div>
+            <!-- Tooltip -->
+            <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
         </div>
     </div>
 

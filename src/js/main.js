@@ -23,11 +23,26 @@ const loadBtn             = document.getElementById('loadBtn');
 const exportBtn           = document.getElementById('exportBtn');
 const messagesDiv         = document.getElementById('messages');
 const messagesFieldset    = document.getElementById('messagesFieldset');
+const schematicOverlay    = document.getElementById('schematicOverlay');
+const schematicTooltip    = document.getElementById('schematicTooltip');
 
 let currentConfig = null;
+let dirtySchematic = false;   // True when input changed after last calculation
+
+// ---- Mark schematic dirty on any input change ------------------------
+function markDirty() {
+  dirtySchematic = true;
+  schematicOverlay.classList.remove('hidden');
+}
+
+// Attach input listeners to all relevant fields
+document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
 
 // ---- Dynamic compartment builder -------------------------------------
-numCompartmentsInput.addEventListener('input', buildCompartmentUI);
+numCompartmentsInput.addEventListener('input', () => {
+  markDirty();
+  buildCompartmentUI();
+});
 buildCompartmentUI();
 
 function buildCompartmentUI() {
@@ -102,6 +117,7 @@ function buildCompartmentUI() {
   // Vertical split toggle listeners
   compartmentBuilder.querySelectorAll('input[data-action="toggleVertical"]').forEach(cb => {
     cb.addEventListener('change', function() {
+      markDirty();
       const compIdx = this.dataset.comp;
       const vertContainer = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
       const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
@@ -120,17 +136,17 @@ function buildCompartmentUI() {
 
   // Attach button handlers with sub support
   compartmentBuilder.querySelectorAll('button[data-action="addShelf"]').forEach(btn => {
-    btn.addEventListener('click', () => addShelf(btn.dataset.comp, btn.dataset.sub || ''));
+    btn.addEventListener('click', () => { markDirty(); addShelf(btn.dataset.comp, btn.dataset.sub || ''); });
   });
   compartmentBuilder.querySelectorAll('button[data-action="addDrawer"]').forEach(btn => {
-    btn.addEventListener('click', () => addDrawer(btn.dataset.comp, btn.dataset.sub || ''));
+    btn.addEventListener('click', () => { markDirty(); addDrawer(btn.dataset.comp, btn.dataset.sub || ''); });
   });
   compartmentBuilder.querySelectorAll('button[data-action="addBin"]').forEach(btn => {
-    btn.addEventListener('click', () => addBin(btn.dataset.comp, btn.dataset.sub || ''));
+    btn.addEventListener('click', () => { markDirty(); addBin(btn.dataset.comp, btn.dataset.sub || ''); });
   });
 }
 
-// ---- Add fitting helpers (updated with sub support) ------------------
+// ---- Add fitting helpers (updated with position for drawers) --------
 function addShelf(compIndex, sub = '') {
   const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
   const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]${subAttr}`);
@@ -151,6 +167,7 @@ function addDrawer(compIndex, sub = '') {
   if (!container) return;
   const div = document.createElement('div');
   div.innerHTML = `
+    <label>Pos from floor (mm): <input type="number" step="any" value="0" class="drawer-pos"></label>
     <label>Outer W (mm): <input type="number" step="any" value="300" class="drawer-w"></label>
     <label>Outer D (mm): <input type="number" step="any" value="300" class="drawer-d"></label>
     <label>Outer H (mm): <input type="number" step="any" value="150" class="drawer-h"></label>
@@ -197,13 +214,15 @@ function collectFittings(compIndex, sub, type) {
         });
       }
     } else if (type === 'drawer') {
-      const w = parseFloat(row.querySelector('.drawer-w').value);
-      const d = parseFloat(row.querySelector('.drawer-d').value);
-      const h = parseFloat(row.querySelector('.drawer-h').value);
-      const t = parseFloat(row.querySelector('.drawer-t').value);
-      if (!isNaN(w) && !isNaN(d) && !isNaN(h) && !isNaN(t)) {
+      const pos   = parseFloat(row.querySelector('.drawer-pos').value);
+      const w     = parseFloat(row.querySelector('.drawer-w').value);
+      const d     = parseFloat(row.querySelector('.drawer-d').value);
+      const h     = parseFloat(row.querySelector('.drawer-h').value);
+      const t     = parseFloat(row.querySelector('.drawer-t').value);
+      if (!isNaN(w) && !isNaN(d) && !isNaN(h) && !isNaN(t) && !isNaN(pos)) {
         items.push({
           id: `${compIndex}-${sub}-drawer-${items.length}`,
+          positionFromFloor: pos,
           outerWidth: w,
           outerDepth: d,
           outerHeight: h,
@@ -247,7 +266,7 @@ function buildConfigFromForm() {
   const airGap = parseFloat(sealOffsetInput.value);
 
   const count = parseInt(numCompartmentsInput.value) || 1;
-  const leaves = [];   // children for the horizontal root
+  const leaves = [];
 
   for (let i = 0; i < count; i++) {
     const typeSelect = compartmentBuilder.querySelector(`select[data-comp="${i}"][data-field="type"]`);
@@ -396,12 +415,17 @@ calculateBtn.addEventListener('click', () => {
 
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
+  // Draw schematic and mark clean
   const canvas = document.getElementById('schematicCanvas');
   if (canvas && result.leaves && result.leaves.length > 0) {
-    drawSchematic(result.leaves, currentConfig, canvas);
+    drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+    dirtySchematic = false;
+    schematicOverlay.classList.add('hidden');
   } else if (canvas) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    dirtySchematic = false;
+    schematicOverlay.classList.add('hidden');
   }
 });
 
@@ -446,12 +470,10 @@ loadBtn.addEventListener('click', () => {
 
       const canvas = document.getElementById('schematicCanvas');
       if (canvas && result.leaves && result.leaves.length > 0) {
-        drawSchematic(result.leaves, currentConfig, canvas);
-      } else if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+        dirtySchematic = false;
+        schematicOverlay.classList.add('hidden');
       }
-
       alert('Configuration loaded and calculated.');
     } catch (err) {
       alert('Error: ' + err.message);
