@@ -1,0 +1,20 @@
+# Ignore operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Ignore log files
+*.log
+
+# Editor/IDE folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# If you later use Node.js, you can add node_modules here
+node_modules/
+
+# Temporary files
+*.tmp
+~$*
