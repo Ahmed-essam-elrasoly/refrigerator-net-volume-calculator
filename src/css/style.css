@@ -1,0 +1,46 @@
+body {
+    font-family: Arial, sans-serif;
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 0 15px;
+    background: #f8f9fa;
+    color: #333;
+}
+h1 {
+    text-align: center;
+    margin-bottom: 5px;
+}
+.container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+fieldset {
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px 15px;
+}
+legend {
+    font-weight: bold;
+    padding: 0 5px;
+}
+label {
+    display: inline-block;
+    margin: 5px 10px 5px 0;
+}
+input[type="number"] {
+    width: 80px;
+}
+button {
+    margin: 5px 10px 5px 0;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+#results p {
+    font-weight: bold;
+}
+.error { color: red; }
+.warning { color: orange; }
+#messages { margin-top: 10px; }
