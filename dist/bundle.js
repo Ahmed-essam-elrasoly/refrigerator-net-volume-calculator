@@ -1,8 +1,53 @@
 (() => {
+  // src/js/settings.js
+  var DEFAULTS = {
+    iceMakerRemovable: true,
+    // deduct from EG Net if true
+    lightRemovable: true,
+    // deduct from EG Net if true
+    iecFactor: 0.97,
+    // IEC fixed deduction factor
+    mm3ToL: 1e-6,
+    lToCuft: 0.0353147,
+    displayPrecisionL: 2,
+    displayPrecisionCuft: 3,
+    canvasWidth: 600,
+    canvasHeight: 800,
+    autoCalculate: false,
+    // auto‑run calculate on input change
+    showDirtyOverlay: true
+  };
+  var STORAGE_KEY = "refrigerator-calc-settings";
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...DEFAULTS, ...parsed };
+      }
+    } catch (e) {
+    }
+    return { ...DEFAULTS };
+  }
+  function saveSettings(settings2) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings2));
+  }
+  var settings = loadSettings();
+  function updateSettings(newSettings) {
+    Object.assign(settings, newSettings);
+    saveSettings(settings);
+    document.dispatchEvent(new CustomEvent("settings-changed", { detail: settings }));
+  }
+  function resetSettings() {
+    Object.assign(settings, DEFAULTS);
+    saveSettings(settings);
+    document.dispatchEvent(new CustomEvent("settings-changed", { detail: settings }));
+  }
+  function getSettings() {
+    return { ...settings };
+  }
+
   // src/js/engine/calc.js
-  var MM3_TO_L = 1e-6;
-  var L_TO_CUFT = 0.0353147;
-  var EG_FACTOR = 0.97;
   function deriveRootSpace(cabinet) {
     const { external, wallThicknesses: w, airGap } = cabinet;
     return {
@@ -13,7 +58,7 @@
   }
   function shelfVol(shelf, availableWidth) {
     const w = shelf.width ?? availableWidth;
-    return w * shelf.depth * shelf.thickness * MM3_TO_L;
+    return w * shelf.depth * shelf.thickness * settings.mm3ToL;
   }
   function drawerStructVol(drawer) {
     const { outerWidth: oW, outerDepth: oD, outerHeight: oH, wallThickness: t } = drawer;
@@ -22,7 +67,7 @@
     const innerD = oD - 2 * t;
     const innerH = oH - t;
     const innerVol = innerW * innerD * innerH;
-    return (outerVol - innerVol) * MM3_TO_L;
+    return (outerVol - innerVol) * settings.mm3ToL;
   }
   function binStructVol(bin) {
     const { outerWidth: oW, outerHeight: oH, outerDepth: oD, wallThickness: t } = bin;
@@ -31,33 +76,42 @@
     const innerH = oH - 2 * t;
     const innerD = oD - t;
     const innerVol = innerW * innerH * innerD;
-    return (outerVol - innerVol) * MM3_TO_L;
+    return (outerVol - innerVol) * settings.mm3ToL;
   }
   function calcLeaf(leaf, space, excludedFittingIds = /* @__PURE__ */ new Set()) {
     const { width, height, depth } = space;
     const fittings = leaf.fittings;
-    const gross = width * depth * height * MM3_TO_L;
-    const egNet = gross * EG_FACTOR;
-    let deductions = 0;
+    const gross = width * depth * height * settings.mm3ToL;
+    let userRemoveDeductions = 0;
+    let allFittingDeductions = 0;
     for (const shelf of fittings.shelves) {
       if (excludedFittingIds.has(shelf.id)) continue;
-      deductions += shelfVol(shelf, width);
+      const vol = shelfVol(shelf, width);
+      userRemoveDeductions += vol;
+      allFittingDeductions += vol;
     }
     for (const drawer of fittings.drawers) {
       if (excludedFittingIds.has(drawer.id)) continue;
-      deductions += drawerStructVol(drawer);
+      const vol = drawerStructVol(drawer);
+      userRemoveDeductions += vol;
+      allFittingDeductions += vol;
     }
     for (const bin of fittings.doorBins) {
       if (excludedFittingIds.has(bin.id)) continue;
-      deductions += binStructVol(bin);
+      const vol = binStructVol(bin);
+      userRemoveDeductions += vol;
+      allFittingDeductions += vol;
     }
     if (fittings.iceMakerHousing?.volume != null) {
-      deductions += fittings.iceMakerHousing.volume;
+      allFittingDeductions += fittings.iceMakerHousing.volume;
+      if (settings.iceMakerRemovable) userRemoveDeductions += fittings.iceMakerHousing.volume;
     }
     if (fittings.lightHousing?.volume != null) {
-      deductions += fittings.lightHousing.volume;
+      allFittingDeductions += fittings.lightHousing.volume;
+      if (settings.lightRemovable) userRemoveDeductions += fittings.lightHousing.volume;
     }
-    const iecNet = egNet - deductions;
+    const egNet = gross - userRemoveDeductions;
+    const iecNet = gross * settings.iecFactor - allFittingDeductions;
     return {
       leafId: leaf.id,
       leafType: leaf.type,
@@ -65,8 +119,8 @@
       gross,
       egNet,
       iecNet,
-      fittingErrors: [...excludedFittingIds],
-      fittings: leaf.fittings
+      fittings: leaf.fittings,
+      fittingErrors: [...excludedFittingIds]
     };
   }
   function aggregateTotals(leaves) {
@@ -79,10 +133,10 @@
     return { gross, egNet, iecNet };
   }
   function toCuft(litres) {
-    return litres * L_TO_CUFT;
+    return litres * settings.lToCuft;
   }
   function roundForDisplay(val, unit) {
-    return unit === "cuft" ? Math.round(val * 1e3) / 1e3 : Math.round(val * 100) / 100;
+    return unit === "cuft" ? Math.round(val * Math.pow(10, settings.displayPrecisionCuft)) / Math.pow(10, settings.displayPrecisionCuft) : Math.round(val * Math.pow(10, settings.displayPrecisionL)) / Math.pow(10, settings.displayPrecisionL);
   }
   function formatLeafDisplay(leaf) {
     return {
@@ -964,6 +1018,132 @@ Wall: ${bin.wallThickness} mm`
     canvas.addEventListener("mousemove", canvas._schematicMouseMove);
   }
 
+  // src/js/ui/settingsModal.js
+  var modal;
+  var closeBtn;
+  var settingsForm;
+  var saveBtn;
+  var exportBtn;
+  var importBtn;
+  var resetBtn;
+  function initSettingsModal() {
+    modal = document.getElementById("settingsModal");
+    closeBtn = document.getElementById("closeSettings");
+    settingsForm = document.getElementById("settingsForm");
+    saveBtn = document.getElementById("settingsSave");
+    exportBtn = document.getElementById("settingsExport");
+    importBtn = document.getElementById("settingsImport");
+    resetBtn = document.getElementById("settingsReset");
+    closeBtn.addEventListener("click", hide);
+    saveBtn.addEventListener("click", () => {
+      collectAndSave();
+      hide();
+    });
+    exportBtn.addEventListener("click", exportSettings);
+    importBtn.addEventListener("click", importSettings);
+    resetBtn.addEventListener("click", resetAndClose);
+    window.addEventListener("click", (e) => {
+      if (e.target === modal) hide();
+    });
+  }
+  function showModal() {
+    buildForm();
+    modal.classList.remove("hidden");
+  }
+  function hide() {
+    modal.classList.add("hidden");
+  }
+  function resetAndClose() {
+    if (confirm("Reset all settings to factory defaults?")) {
+      resetSettings();
+      buildForm();
+      hide();
+    }
+  }
+  function buildForm() {
+    const s = getSettings();
+    settingsForm.innerHTML = `
+    <fieldset>
+      <legend>Volume Calculation Constants</legend>
+      <label>IEC fixed deduction factor (0\u20111): <input type="number" id="setIecFactor" value="${s.iecFactor}" step="0.01" min="0" max="1"></label>
+      <label>mm\xB3 \u2192 Litre: <input type="number" id="setMm3ToL" value="${s.mm3ToL}" step="0.0000001" min="0"></label>
+      <label>Litre \u2192 cu.ft: <input type="number" id="setLToCuft" value="${s.lToCuft}" step="0.0000001" min="0"></label>
+    </fieldset>
+    <fieldset>
+      <legend>ES 3794 / IEC Deductions</legend>
+      <p><em>Egyptian Net = Gross \u2212 User\u2011removable accessories (shelves, drawers, door bins, and housings if marked removable).</em></p>
+      <label><input type="checkbox" id="setIceMakerRemovable" ${s.iceMakerRemovable ? "checked" : ""}> Ice maker housing is user\u2011removable</label>
+      <label><input type="checkbox" id="setLightRemovable" ${s.lightRemovable ? "checked" : ""}> Light housing is user\u2011removable</label>
+    </fieldset>
+    <fieldset>
+      <legend>Display & Canvas</legend>
+      <label>Decimal places (Litres): <input type="number" id="setPrecisionL" value="${s.displayPrecisionL}" min="0" max="5"></label>
+      <label>Decimal places (cu.ft): <input type="number" id="setPrecisionCuft" value="${s.displayPrecisionCuft}" min="0" max="5"></label>
+      <label>Canvas width: <input type="number" id="setCanvasW" value="${s.canvasWidth}" step="10" min="200"></label>
+      <label>Canvas height: <input type="number" id="setCanvasH" value="${s.canvasHeight}" step="10" min="200"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Behaviour</legend>
+      <label><input type="checkbox" id="setAutoCalculate" ${s.autoCalculate ? "checked" : ""}> Auto\u2011calculate on input change</label>
+      <label><input type="checkbox" id="setShowDirtyOverlay" ${s.showDirtyOverlay ? "checked" : ""}> Show \u201Cschematic outdated\u201D overlay</label>
+    </fieldset>
+  `;
+  }
+  function collectAndSave() {
+    const iceMakerRemovable = document.getElementById("setIceMakerRemovable").checked;
+    const lightRemovable = document.getElementById("setLightRemovable").checked;
+    const iecFactor = parseFloat(document.getElementById("setIecFactor").value) || 0.97;
+    const mm3ToL = parseFloat(document.getElementById("setMm3ToL").value) || 1e-6;
+    const lToCuft = parseFloat(document.getElementById("setLToCuft").value) || 0.0353147;
+    const displayPrecisionL = parseInt(document.getElementById("setPrecisionL").value) || 2;
+    const displayPrecisionCuft = parseInt(document.getElementById("setPrecisionCuft").value) || 3;
+    const canvasWidth = parseInt(document.getElementById("setCanvasW").value) || 600;
+    const canvasHeight = parseInt(document.getElementById("setCanvasH").value) || 800;
+    const autoCalculate = document.getElementById("setAutoCalculate").checked;
+    const showDirtyOverlay = document.getElementById("setShowDirtyOverlay").checked;
+    updateSettings({
+      iceMakerRemovable,
+      lightRemovable,
+      iecFactor,
+      mm3ToL,
+      lToCuft,
+      displayPrecisionL,
+      displayPrecisionCuft,
+      canvasWidth,
+      canvasHeight,
+      autoCalculate,
+      showDirtyOverlay
+    });
+  }
+  function exportSettings() {
+    const blob = new Blob([JSON.stringify(getSettings(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "refrigerator-calc-settings.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function importSettings() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const imported = JSON.parse(text);
+        updateSettings({ ...getSettings(), ...imported });
+        buildForm();
+        alert("Settings imported. Save & close to apply.");
+      } catch (err) {
+        alert("Invalid settings file.");
+      }
+    };
+    input.click();
+  }
+
   // src/js/main.js
   var extHeightInput = document.getElementById("extHeight");
   var extWidthInput = document.getElementById("extWidth");
@@ -980,18 +1160,23 @@ Wall: ${bin.wallThickness} mm`
   var numCompartmentsInput = document.getElementById("numCompartments");
   var compartmentBuilder = document.getElementById("compartmentBuilder");
   var calculateBtn = document.getElementById("calculateBtn");
-  var saveBtn = document.getElementById("saveBtn");
+  var saveBtn2 = document.getElementById("saveBtn");
   var loadBtn = document.getElementById("loadBtn");
-  var exportBtn = document.getElementById("exportBtn");
+  var exportBtn2 = document.getElementById("exportBtn");
   var messagesDiv = document.getElementById("messages");
   var messagesFieldset = document.getElementById("messagesFieldset");
   var schematicOverlay = document.getElementById("schematicOverlay");
   var schematicTooltip = document.getElementById("schematicTooltip");
+  var settingsBtn = document.getElementById("settingsBtn");
   var currentConfig = null;
   var dirtySchematic = false;
   function markDirty() {
     dirtySchematic = true;
-    schematicOverlay.classList.remove("hidden");
+    if (settings.showDirtyOverlay) {
+      schematicOverlay.classList.remove("hidden");
+    } else {
+      schematicOverlay.classList.add("hidden");
+    }
   }
   document.querySelectorAll("input, select").forEach((el) => el.addEventListener("input", markDirty));
   numCompartmentsInput.addEventListener("input", () => {
@@ -1340,27 +1525,32 @@ Wall: ${bin.wallThickness} mm`
     currentConfig = config;
     const result = runCalculation(config);
     if (result.leaves && result.totals) {
-      document.getElementById("grossVol").textContent = result.totals.gross.toFixed(2);
-      document.getElementById("egNetVol").textContent = result.totals.egNet.toFixed(2);
-      document.getElementById("iecNetVol").textContent = result.totals.iecNet.toFixed(2);
-      document.getElementById("grossVolCuft").textContent = (result.totals.gross * 0.0353147).toFixed(3);
-      document.getElementById("egNetVolCuft").textContent = (result.totals.egNet * 0.0353147).toFixed(3);
-      document.getElementById("iecNetVolCuft").textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+      const disp = formatTotalsDisplay(result.totals);
+      document.getElementById("grossVol").textContent = disp.gross;
+      document.getElementById("egNetVol").textContent = disp.egNet;
+      document.getElementById("iecNetVol").textContent = disp.iecNet;
+      document.getElementById("grossVolCuft").textContent = disp.grossCuft;
+      document.getElementById("egNetVolCuft").textContent = disp.egNetCuft;
+      document.getElementById("iecNetVolCuft").textContent = disp.iecNetCuft;
     }
     showMessages(result.validationErrors, result.warnings, result.calcErrors);
     const canvas = document.getElementById("schematicCanvas");
-    if (canvas && result.leaves && result.leaves.length > 0) {
-      drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
-      dirtySchematic = false;
-      schematicOverlay.classList.add("hidden");
-    } else if (canvas) {
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      dirtySchematic = false;
-      schematicOverlay.classList.add("hidden");
+    if (canvas) {
+      canvas.width = settings.canvasWidth;
+      canvas.height = settings.canvasHeight;
+      if (result.leaves && result.leaves.length > 0) {
+        drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+        dirtySchematic = false;
+        schematicOverlay.classList.add("hidden");
+      } else {
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        dirtySchematic = false;
+        schematicOverlay.classList.add("hidden");
+      }
     }
   });
-  saveBtn.addEventListener("click", () => {
+  saveBtn2.addEventListener("click", () => {
     if (!currentConfig) {
       alert("Calculate first");
       return;
@@ -1389,16 +1579,19 @@ Wall: ${bin.wallThickness} mm`
         sealOffsetInput.value = config.cabinet.airGap;
         const result = runCalculation(config);
         if (result.leaves && result.totals) {
-          document.getElementById("grossVol").textContent = result.totals.gross.toFixed(2);
-          document.getElementById("egNetVol").textContent = result.totals.egNet.toFixed(2);
-          document.getElementById("iecNetVol").textContent = result.totals.iecNet.toFixed(2);
-          document.getElementById("grossVolCuft").textContent = (result.totals.gross * 0.0353147).toFixed(3);
-          document.getElementById("egNetVolCuft").textContent = (result.totals.egNet * 0.0353147).toFixed(3);
-          document.getElementById("iecNetVolCuft").textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+          const disp = formatTotalsDisplay(result.totals);
+          document.getElementById("grossVol").textContent = disp.gross;
+          document.getElementById("egNetVol").textContent = disp.egNet;
+          document.getElementById("iecNetVol").textContent = disp.iecNet;
+          document.getElementById("grossVolCuft").textContent = disp.grossCuft;
+          document.getElementById("egNetVolCuft").textContent = disp.egNetCuft;
+          document.getElementById("iecNetVolCuft").textContent = disp.iecNetCuft;
         }
         showMessages(result.validationErrors, result.warnings, result.calcErrors);
         const canvas = document.getElementById("schematicCanvas");
-        if (canvas && result.leaves && result.leaves.length > 0) {
+        if (canvas) {
+          canvas.width = settings.canvasWidth;
+          canvas.height = settings.canvasHeight;
           drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
           dirtySchematic = false;
           schematicOverlay.classList.add("hidden");
@@ -1410,12 +1603,26 @@ Wall: ${bin.wallThickness} mm`
     };
     input.click();
   });
-  exportBtn.addEventListener("click", () => {
+  exportBtn2.addEventListener("click", () => {
     if (!currentConfig) {
       alert("Calculate first");
       return;
     }
     const result = runCalculation(currentConfig);
     downloadResultsCSV(result, currentConfig.meta.name);
+  });
+  initSettingsModal();
+  settingsBtn.addEventListener("click", showModal);
+  document.addEventListener("input", (e) => {
+    if (settings.autoCalculate && e.target.closest(".left-panel")) {
+      calculateBtn.click();
+    }
+  });
+  document.addEventListener("settings-changed", () => {
+    if (settings.autoCalculate && currentConfig) {
+      calculateBtn.click();
+    } else {
+      markDirty();
+    }
   });
 })();
