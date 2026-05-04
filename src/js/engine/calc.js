@@ -1,5 +1,20 @@
 import { settings } from '../settings.js';
 
+/**
+ * Derives the available internal space at the root of the tree
+ * from cabinet external dimensions, wall thicknesses, and air gap.
+ * @param {import('./types').CabinetConfig['cabinet']} cabinet
+ * @returns {import('./types').Space}
+ */
+export function deriveRootSpace(cabinet) {
+  const { external, wallThicknesses: w, airGap } = cabinet;
+  return {
+    width:  external.width  - w.left  - w.right,
+    height: external.height - w.top   - w.bottom,
+    depth:  external.depth  - w.rear  - w.door - airGap,
+  };
+}
+
 // Volume of a shelf slab in L
 export function shelfVol(shelf, availableWidth) {
   const w = shelf.width ?? availableWidth;
