@@ -505,3 +505,11 @@ document.addEventListener('input', (e) => {
     calculateBtn.click();
   }
 });
+document.addEventListener('settings-changed', () => {
+  // Mark schematic dirty if not auto-calculating, or force recalc if auto
+  if (settings.autoCalculate && currentConfig) {
+    calculateBtn.click();
+  } else {
+    markDirty();
+  }
+});
