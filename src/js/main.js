@@ -1,7 +1,8 @@
 import { runCalculation } from './engine/index.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawSchematic } from './ui/schematic.js';
-
+import { initSettingsModal, showModal } from './ui/settingsModal.js';
+import { settings } from './settings.js';
 // ---- DOM references ---------------------------------------------------
 const extHeightInput      = document.getElementById('extHeight');
 const extWidthInput       = document.getElementById('extWidth');
@@ -25,16 +26,20 @@ const messagesDiv         = document.getElementById('messages');
 const messagesFieldset    = document.getElementById('messagesFieldset');
 const schematicOverlay    = document.getElementById('schematicOverlay');
 const schematicTooltip    = document.getElementById('schematicTooltip');
-
+const settingsBtn = document.getElementById('settingsBtn');
+ 
 let currentConfig = null;
 let dirtySchematic = false;   // True when input changed after last calculation
 
 // ---- Mark schematic dirty on any input change ------------------------
 function markDirty() {
   dirtySchematic = true;
-  schematicOverlay.classList.remove('hidden');
+  if (settings.showDirtyOverlay) {
+    schematicOverlay.classList.remove('hidden');
+  } else {
+    schematicOverlay.classList.add('hidden');
+  }
 }
-
 // Attach input listeners to all relevant fields
 document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
 
@@ -469,7 +474,9 @@ loadBtn.addEventListener('click', () => {
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
       const canvas = document.getElementById('schematicCanvas');
-      if (canvas && result.leaves && result.leaves.length > 0) {
+      if (canvas) {
+        canvas.width = settings.canvasWidth;
+        canvas.height = settings.canvasHeight;
         drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
         dirtySchematic = false;
         schematicOverlay.classList.add('hidden');
@@ -486,4 +493,15 @@ exportBtn.addEventListener('click', () => {
   if (!currentConfig) { alert('Calculate first'); return; }
   const result = runCalculation(currentConfig);
   downloadResultsCSV(result, currentConfig.meta.name);
+});
+// ---- Settings Modal --------------------------------------------------
+initSettingsModal();
+settingsBtn.addEventListener('click', showModal);
+
+// Auto‑calculate on input change if enabled
+document.addEventListener('input', (e) => {
+  if (settings.autoCalculate && e.target.closest('.left-panel')) {
+    // Only trigger if the input is inside the calculator panel
+    calculateBtn.click();
+  }
 });
