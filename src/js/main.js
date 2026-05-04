@@ -3,6 +3,8 @@ import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io
 import { drawSchematic } from './ui/schematic.js';
 import { initSettingsModal, showModal } from './ui/settingsModal.js';
 import { settings } from './settings.js';
+import { formatTotalsDisplay } from './engine/calc.js';
+
 // ---- DOM references ---------------------------------------------------
 const extHeightInput      = document.getElementById('extHeight');
 const extWidthInput       = document.getElementById('extWidth');
@@ -26,10 +28,10 @@ const messagesDiv         = document.getElementById('messages');
 const messagesFieldset    = document.getElementById('messagesFieldset');
 const schematicOverlay    = document.getElementById('schematicOverlay');
 const schematicTooltip    = document.getElementById('schematicTooltip');
-const settingsBtn = document.getElementById('settingsBtn');
- 
+const settingsBtn         = document.getElementById('settingsBtn');
+
 let currentConfig = null;
-let dirtySchematic = false;   // True when input changed after last calculation
+let dirtySchematic = false;
 
 // ---- Mark schematic dirty on any input change ------------------------
 function markDirty() {
@@ -40,6 +42,7 @@ function markDirty() {
     schematicOverlay.classList.add('hidden');
   }
 }
+
 // Attach input listeners to all relevant fields
 document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
 
@@ -410,27 +413,32 @@ calculateBtn.addEventListener('click', () => {
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
-    document.getElementById('grossVol').textContent      = result.totals.gross.toFixed(2);
-    document.getElementById('egNetVol').textContent      = result.totals.egNet.toFixed(2);
-    document.getElementById('iecNetVol').textContent     = result.totals.iecNet.toFixed(2);
-    document.getElementById('grossVolCuft').textContent  = (result.totals.gross * 0.0353147).toFixed(3);
-    document.getElementById('egNetVolCuft').textContent  = (result.totals.egNet * 0.0353147).toFixed(3);
-    document.getElementById('iecNetVolCuft').textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+    const disp = formatTotalsDisplay(result.totals);
+    document.getElementById('grossVol').textContent      = disp.gross;
+    document.getElementById('egNetVol').textContent      = disp.egNet;
+    document.getElementById('iecNetVol').textContent     = disp.iecNet;
+    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+    document.getElementById('egNetVolCuft').textContent  = disp.egNetCuft;
+    document.getElementById('iecNetVolCuft').textContent = disp.iecNetCuft;
   }
 
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
-  // Draw schematic and mark clean
+  // Apply canvas size from settings before drawing
   const canvas = document.getElementById('schematicCanvas');
-  if (canvas && result.leaves && result.leaves.length > 0) {
-    drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
-    dirtySchematic = false;
-    schematicOverlay.classList.add('hidden');
-  } else if (canvas) {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    dirtySchematic = false;
-    schematicOverlay.classList.add('hidden');
+  if (canvas) {
+    canvas.width = settings.canvasWidth;
+    canvas.height = settings.canvasHeight;
+    if (result.leaves && result.leaves.length > 0) {
+      drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+      dirtySchematic = false;
+      schematicOverlay.classList.add('hidden');
+    } else {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      dirtySchematic = false;
+      schematicOverlay.classList.add('hidden');
+    }
   }
 });
 
@@ -464,12 +472,13 @@ loadBtn.addEventListener('click', () => {
 
       const result = runCalculation(config);
       if (result.leaves && result.totals) {
-        document.getElementById('grossVol').textContent      = result.totals.gross.toFixed(2);
-        document.getElementById('egNetVol').textContent      = result.totals.egNet.toFixed(2);
-        document.getElementById('iecNetVol').textContent     = result.totals.iecNet.toFixed(2);
-        document.getElementById('grossVolCuft').textContent  = (result.totals.gross * 0.0353147).toFixed(3);
-        document.getElementById('egNetVolCuft').textContent  = (result.totals.egNet * 0.0353147).toFixed(3);
-        document.getElementById('iecNetVolCuft').textContent = (result.totals.iecNet * 0.0353147).toFixed(3);
+        const disp = formatTotalsDisplay(result.totals);
+        document.getElementById('grossVol').textContent      = disp.gross;
+        document.getElementById('egNetVol').textContent      = disp.egNet;
+        document.getElementById('iecNetVol').textContent     = disp.iecNet;
+        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+        document.getElementById('egNetVolCuft').textContent  = disp.egNetCuft;
+        document.getElementById('iecNetVolCuft').textContent = disp.iecNetCuft;
       }
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
@@ -494,19 +503,19 @@ exportBtn.addEventListener('click', () => {
   const result = runCalculation(currentConfig);
   downloadResultsCSV(result, currentConfig.meta.name);
 });
+
 // ---- Settings Modal --------------------------------------------------
 initSettingsModal();
 settingsBtn.addEventListener('click', showModal);
 
-// Auto‑calculate on input change if enabled
+// ---- Auto‑calculate & settings change handler ------------------------
 document.addEventListener('input', (e) => {
   if (settings.autoCalculate && e.target.closest('.left-panel')) {
-    // Only trigger if the input is inside the calculator panel
     calculateBtn.click();
   }
 });
+
 document.addEventListener('settings-changed', () => {
-  // Mark schematic dirty if not auto-calculating, or force recalc if auto
   if (settings.autoCalculate && currentConfig) {
     calculateBtn.click();
   } else {
