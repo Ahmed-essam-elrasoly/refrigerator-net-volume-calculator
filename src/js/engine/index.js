@@ -7,9 +7,9 @@
  *   runCalculation(config) → CalcResult
  */
 
-import { deriveRootSpace, aggregateTotals } from './calc.js';
-import { validateStructure }                from './validationPass1.js';
-import { traverseAndCompute }               from './traversal.js';
+import { deriveRootSpace, aggregateTotals, walkBoundaries } from './calc.js';
+import { validateStructure }                                from './validationPass1.js';
+import { traverseAndCompute }                               from './traversal.js';
 
 // ---------------------------------------------------------------------------
 // Cabinet-level pre-checks (run before Pass 2 tree traversal)
@@ -24,7 +24,7 @@ import { traverseAndCompute }               from './traversal.js';
  */
 function validateCabinet(cabinet) {
   const errors = [];
-  const { external, wallThicknesses: w } = cabinet;
+  const { external, wallThicknessesByType, layout, airGap } = cabinet;
 
   // Positive external dimensions
   for (const [key, val] of Object.entries(external)) {
@@ -33,7 +33,26 @@ function validateCabinet(cabinet) {
     }
   }
 
-  // Wall ratio: each thickness < 50% of corresponding external dimension
+  // Compute effective wall thicknesses (same logic as deriveRootSpace)
+  const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
+  walkBoundaries(layout, boundaryTypes, true, true, true, true);
+  const effective = {};
+  const allTypes = ['fresh','freezer','flex'];
+  for (const face of ['top','bottom','left','right']) {
+    let max = 0;
+    for (const t of boundaryTypes[face]) {
+      const val = wallThicknessesByType[t]?.[face] ?? 0;
+      if (val > max) max = val;
+    }
+    if (boundaryTypes[face].size === 0) {
+      for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
+    }
+    effective[face] = max;
+  }
+  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
+  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
+
+  // Wall ratio checks using effective thicknesses
   const pairs = [
     ['top',    external.height, 'height'],
     ['bottom', external.height, 'height'],
@@ -42,9 +61,8 @@ function validateCabinet(cabinet) {
     ['rear',   external.depth,  'depth'],
     ['door',   external.depth,  'depth'],
   ];
-
   for (const [face, extDim, dimName] of pairs) {
-    const thickness = w[face];
+    const thickness = effective[face];
     if (thickness >= extDim * 0.5) {
       errors.push({
         rule:    'wallRatio',
@@ -54,13 +72,13 @@ function validateCabinet(cabinet) {
   }
 
   // Air gap positive
-  if (cabinet.airGap <= 0) {
-    errors.push({ rule: 'positiveValues', message: `airGap must be > 0, got ${cabinet.airGap}` });
+  if (airGap <= 0) {
+    errors.push({ rule: 'positiveValues', message: `airGap must be > 0, got ${airGap}` });
   }
 
   // Internal dimensions positive
   if (errors.length === 0) {
-    const rootSpace = deriveRootSpace(cabinet);
+    const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
     for (const [dim, val] of Object.entries(rootSpace)) {
       if (val <= 0) {
         errors.push({
@@ -120,15 +138,6 @@ function checkHierarchy(leaves, totals) {
 /**
  * Runs the full calculation pipeline on a cabinet configuration.
  *
- * Pipeline:
- *   1. Pass 1 — structural validation (dimension-agnostic)
- *   2. Cabinet-level pre-checks (wall ratios, positive internal space)
- *   3. Pass 2 — space derivation + dimension-dependent validation + leaf calc
- *   4. Post-calc — hierarchy check
- *
- * Always returns a CalcResult. Inspect validationErrors and calcErrors
- * to determine whether the output is trustworthy.
- *
  * @param {import('./types').CabinetConfig} config
  * @returns {import('./types').CalcResult}
  */
@@ -145,7 +154,7 @@ export function runCalculation(config) {
   const structErrors = validateStructure(config.cabinet.layout);
   if (structErrors.length) {
     result.validationErrors = structErrors;
-    return result; // halt: structural errors block everything
+    return result;
   }
 
   // Cabinet-level pre-checks
@@ -156,7 +165,7 @@ export function runCalculation(config) {
   }
 
   // Derive root space
-  const rootSpace = deriveRootSpace(config.cabinet);
+  const rootSpace = deriveRootSpace(config.cabinet, config.cabinet.layout);
 
   // Pass 2 — space derivation + dimension checks + calculation
   const { leaves, errors: dimErrors, warnings } = traverseAndCompute(

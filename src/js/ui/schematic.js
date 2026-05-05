@@ -1,6 +1,7 @@
-export function drawSchematic(leaves, config, canvas, tooltipDiv) {
+export function drawSchematic(leaves, effectiveWalls, config, canvas, tooltipDiv) {
   const ctx = canvas.getContext('2d');
-  const { external, wallThicknesses: w } = config.cabinet;
+  const { external } = config.cabinet;
+  const w = effectiveWalls;   // effective thicknesses
 
   const PAD = { left: 50, top: 30, right: 30, bottom: 30 };
   const drawW = canvas.width  - PAD.left - PAD.right;
@@ -72,25 +73,23 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
 
   const hitRegions = [];
 
-  // Draw compartments and fittings
   leafRects.forEach((rect) => {
     const x = intLeft + rect.x * scale;
     const y = intTop  + rect.y * scale;
-    const w = rect.width  * scale;
-    const h = rect.height * scale;
-    const compBottom = y + h;
+    const wComp = rect.width  * scale;
+    const hComp = rect.height * scale;
+    const compBottom = y + hComp;
     const leafData = leaves[rect.leafIdx];
 
-    // Compartment background
     ctx.fillStyle = rect.leafIdx % 2 === 0 ? '#e8f0e8' : '#ffffff';
-    ctx.fillRect(x, y, w, h);
+    ctx.fillRect(x, y, wComp, hComp);
     ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, h);
+    ctx.strokeRect(x, y, wComp, hComp);
     ctx.fillStyle = '#000'; ctx.font = '11px Arial';
     ctx.fillText(rect.type, x + 4, y + 13);
 
     hitRegions.push({
-      rect: { x, y, w, h },
+      rect: { x, y, w: wComp, h: hComp },
       label: `Compartment: ${rect.type}`,
       info: leafData ? 
         `W×D×H: ${rect.width.toFixed(0)}×${leafData.space.depth.toFixed(0)}×${rect.height.toFixed(0)} mm\n` +
@@ -98,17 +97,14 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
         : 'No data'
     });
 
-    // Shelves (respecting optional width)
+    // Shelves
     if (rect.fittings?.shelves) {
       for (const shelf of rect.fittings.shelves) {
         const shelfY = compBottom - shelf.positionFromFloor * scale;
-        const shelfW = (shelf.width !== null) ? shelf.width * scale : w;
-        const shelfX = x + (w - shelfW) / 2;   // centre if narrower than full width
+        const shelfW = (shelf.width !== null) ? shelf.width * scale : wComp;
+        const shelfX = x + (wComp - shelfW) / 2;
         ctx.strokeStyle = '#b22222'; ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(shelfX, shelfY);
-        ctx.lineTo(shelfX + shelfW, shelfY);
-        ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(shelfX, shelfY); ctx.lineTo(shelfX + shelfW, shelfY); ctx.stroke();
         hitRegions.push({
           rect: { x: shelfX, y: shelfY - 2, w: shelfW, h: 4 },
           label: 'Shelf',
@@ -118,7 +114,7 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
       }
     }
 
-    // Drawers (grouped by position, side‑by‑side)
+    // Drawers (grouped by position)
     const drawers = rect.fittings?.drawers;
     if (drawers && drawers.length > 0) {
       const groups = {};
@@ -132,17 +128,15 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
         const posNum = parseFloat(pos);
         const totalOuterW = group.reduce((sum, d) => sum + d.outerWidth, 0);
         let groupScale = scale;
-        if (totalOuterW * scale > w - 10) groupScale = (w - 10) / totalOuterW;
+        if (totalOuterW * scale > wComp - 10) groupScale = (wComp - 10) / totalOuterW;
         let xOffset = x + 5;
-        const baseY = compBottom - posNum * scale; // bottom edge of drawer
+        const baseY = compBottom - posNum * scale;
         group.forEach(d => {
           const dw = d.outerWidth * groupScale;
           const dh = d.outerHeight * groupScale;
-          const dy = baseY - dh; // top edge
-          ctx.fillStyle = '#d4a373';
-          ctx.fillRect(xOffset, dy, dw, dh);
-          ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-          ctx.strokeRect(xOffset, dy, dw, dh);
+          const dy = baseY - dh;
+          ctx.fillStyle = '#d4a373'; ctx.fillRect(xOffset, dy, dw, dh);
+          ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(xOffset, dy, dw, dh);
           hitRegions.push({
             rect: { x: xOffset, y: dy, w: dw, h: dh },
             label: 'Drawer',
@@ -154,46 +148,35 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
     }
   });
 
-  // ---------- Draw closed transparent door & bins ----------
-  // Draw door overlay over the entire internal cavity
+  // Closed door & bins
   ctx.save();
-  ctx.globalAlpha = 0.15;
-  ctx.fillStyle = '#aaccff';
+  ctx.globalAlpha = 0.15; ctx.fillStyle = '#aaccff';
   ctx.fillRect(intLeft, intTop, intW, intH);
   ctx.restore();
   ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1;
   ctx.strokeRect(intLeft, intTop, intW, intH);
   ctx.fillStyle = '#000'; ctx.font = '10px Arial';
-  
-  // Draw door bins as transparent rectangles spanning full compartment width
+  ctx.fillText('DOOR (closed)', intLeft + 4, intTop + 10);
+
   leafRects.forEach((rect) => {
     const x = intLeft + rect.x * scale;
     const y = intTop  + rect.y * scale;
-    const w = rect.width  * scale;
-    const h = rect.height * scale;
+    const wComp = rect.width  * scale;
+    const hComp = rect.height * scale;
     const bins = rect.fittings?.doorBins;
     if (!bins || bins.length === 0) return;
-
     const totalBinsHeight = bins.reduce((sum, b) => sum + b.outerHeight * scale, 0);
     const gap = 3 * scale;
     const totalStackH = totalBinsHeight + (bins.length - 1) * gap;
-    let startY = y + (h - totalStackH) / 2; // centre vertically
+    let startY = y + (hComp - totalStackH) / 2;
     if (startY < y) startY = y + 2;
-
     for (const bin of bins) {
       const bh = bin.outerHeight * scale;
-      const bx = x;
-      const bw = w;                       // full width
-      const by = startY;
-
-      ctx.save();
-      ctx.globalAlpha = 0.4;
-      ctx.fillStyle = '#7f8c8d';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.restore();
+      const bx = x; const bw = wComp; const by = startY;
+      ctx.save(); ctx.globalAlpha = 0.4; ctx.fillStyle = '#7f8c8d';
+      ctx.fillRect(bx, by, bw, bh); ctx.restore();
       ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5;
       ctx.strokeRect(bx, by, bw, bh);
-
       hitRegions.push({
         rect: { x: bx, y: by, w: bw, h: bh },
         label: 'Door Bin',
@@ -205,44 +188,31 @@ export function drawSchematic(leaves, config, canvas, tooltipDiv) {
 
   ctx.restore();
 
-  // ---------- Tooltip hover handling ----------
-  if (canvas._schematicMouseMove) {
-    canvas.removeEventListener('mousemove', canvas._schematicMouseMove);
-  }
+  // Tooltip hover handling
+  if (canvas._schematicMouseMove) canvas.removeEventListener('mousemove', canvas._schematicMouseMove);
   canvas._schematicMouseMove = (e) => {
     const canvasRect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / canvasRect.width;
     const scaleY = canvas.height / canvasRect.height;
     const mouseCanvasX = (e.clientX - canvasRect.left) * scaleX - PAD.left;
     const mouseCanvasY = (e.clientY - canvasRect.top)  * scaleY - PAD.top;
-
-    let bestRegion = null;
-    let bestArea = Infinity;
-
-    // Find all matching hit regions and pick the smallest one
+    let bestRegion = null, bestArea = Infinity;
     for (const region of hitRegions) {
       if (mouseCanvasX >= region.rect.x && mouseCanvasX <= region.rect.x + region.rect.w &&
           mouseCanvasY >= region.rect.y && mouseCanvasY <= region.rect.y + region.rect.h) {
         const area = region.rect.w * region.rect.h;
-        if (area < bestArea) {
-          bestRegion = region;
-          bestArea = area;
-        }
+        if (area < bestArea) { bestRegion = region; bestArea = area; }
       }
     }
-
     if (bestRegion) {
       tooltipDiv.classList.remove('hidden');
       tooltipDiv.innerHTML = `<strong>${bestRegion.label}</strong><br>${bestRegion.info.replace(/\n/g, '<br>')}`;
       const panelRect = document.querySelector('.right-panel').getBoundingClientRect();
-      let left = e.clientX - panelRect.left + 15;
-      let top  = e.clientY - panelRect.top + 15;
-      const tw = tooltipDiv.offsetWidth;
-      const th = tooltipDiv.offsetHeight;
+      let left = e.clientX - panelRect.left + 15, top = e.clientY - panelRect.top + 15;
+      const tw = tooltipDiv.offsetWidth, th = tooltipDiv.offsetHeight;
       if (left + tw > panelRect.width) left = left - tw - 30;
       if (top + th > panelRect.height) top = top - th - 30;
-      tooltipDiv.style.left = left + 'px';
-      tooltipDiv.style.top  = top + 'px';
+      tooltipDiv.style.left = left + 'px'; tooltipDiv.style.top = top + 'px';
     } else {
       tooltipDiv.classList.add('hidden');
     }
