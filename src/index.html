@@ -34,17 +34,12 @@
                 <label>Depth (mm): <input type="number" id="extDepth" min="1" step="any" required></label>
             </fieldset>
 
-            <!-- Wall/Insulation Thickness -->
+            <!-- Per‑Type Wall Thicknesses -->
             <fieldset>
-                <legend>Wall/Insulation Thickness (mm)</legend>
-                <label>Top: <input type="number" id="wallTop" value="50" step="any" required></label>
-                <label>Bottom: <input type="number" id="wallBottom" value="50" step="any" required></label>
-                <label>Left: <input type="number" id="wallLeft" value="50" step="any" required></label>
-                <label>Right: <input type="number" id="wallRight" value="50" step="any" required></label>
-                <label>Rear: <input type="number" id="wallRear" value="50" step="any" required></label>
-                <label>Door: <input type="number" id="wallDoor" value="70" step="any" required></label>
+                <legend>Wall/Insulation Thickness (mm) – per type</legend>
+                <div id="wallThicknessPerType"></div>
+                <button type="button" id="copyToAllTypesBtn">📋 Copy Fresh Food → all types</button>
             </fieldset>
-
             <!-- Partition Divider Thickness -->
             <fieldset>
                 <legend>Partition Divider Thickness (mm)</legend>

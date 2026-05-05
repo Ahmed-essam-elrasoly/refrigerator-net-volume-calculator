@@ -48,13 +48,64 @@
   }
 
   // src/js/engine/calc.js
-  function deriveRootSpace(cabinet) {
-    const { external, wallThicknesses: w, airGap } = cabinet;
-    return {
-      width: external.width - w.left - w.right,
-      height: external.height - w.top - w.bottom,
-      depth: external.depth - w.rear - w.door - airGap
+  function deriveRootSpace(cabinet, layout) {
+    const { external, wallThicknessesByType, airGap } = cabinet;
+    const boundaryTypes = {
+      top: /* @__PURE__ */ new Set(),
+      bottom: /* @__PURE__ */ new Set(),
+      left: /* @__PURE__ */ new Set(),
+      right: /* @__PURE__ */ new Set()
     };
+    walkBoundaries(layout, boundaryTypes, true, true, true, true);
+    const allTypes = ["fresh", "freezer", "flex"];
+    const effective = {};
+    for (const face of ["top", "bottom", "left", "right"]) {
+      const typesForFace = boundaryTypes[face];
+      let maxVal = 0;
+      for (const type of typesForFace) {
+        const val = wallThicknessesByType[type]?.[face] ?? 0;
+        if (val > maxVal) maxVal = val;
+      }
+      if (typesForFace.size === 0) {
+        for (const type of allTypes) {
+          const val = wallThicknessesByType[type]?.[face] ?? 0;
+          if (val > maxVal) maxVal = val;
+        }
+      }
+      effective[face] = maxVal;
+    }
+    effective.rear = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.rear ?? 0));
+    effective.door = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.door ?? 0));
+    return {
+      width: external.width - effective.left - effective.right,
+      height: external.height - effective.top - effective.bottom,
+      depth: external.depth - effective.rear - effective.door - airGap
+    };
+  }
+  function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
+    if (node.nodeType === "leaf") {
+      if (topMost) boundary.top.add(node.type);
+      if (bottomMost) boundary.bottom.add(node.type);
+      if (leftMost) boundary.left.add(node.type);
+      if (rightMost) boundary.right.add(node.type);
+    } else if (node.nodeType === "horizontal") {
+      const children = node.children;
+      for (let i = 0; i < children.length; i++) {
+        const isFirst = i === 0;
+        const isLast = i === children.length - 1;
+        walkBoundaries(
+          children[i].node,
+          boundary,
+          topMost && isFirst,
+          bottomMost && isLast,
+          leftMost,
+          rightMost
+        );
+      }
+    } else if (node.nodeType === "vertical") {
+      walkBoundaries(node.left, boundary, topMost, bottomMost, true, false);
+      walkBoundaries(node.right, boundary, topMost, bottomMost, false, true);
+    }
   }
   function shelfVol(shelf, availableWidth) {
     const w = shelf.width ?? availableWidth;
@@ -561,12 +612,29 @@
   // src/js/engine/index.js
   function validateCabinet(cabinet) {
     const errors = [];
-    const { external, wallThicknesses: w } = cabinet;
+    const { external, wallThicknessesByType, layout, airGap } = cabinet;
     for (const [key, val] of Object.entries(external)) {
       if (val <= 0) {
         errors.push({ rule: "positiveValues", message: `external.${key} must be > 0, got ${val}` });
       }
     }
+    const boundaryTypes = { top: /* @__PURE__ */ new Set(), bottom: /* @__PURE__ */ new Set(), left: /* @__PURE__ */ new Set(), right: /* @__PURE__ */ new Set() };
+    walkBoundaries(layout, boundaryTypes, true, true, true, true);
+    const effective = {};
+    const allTypes = ["fresh", "freezer", "flex"];
+    for (const face of ["top", "bottom", "left", "right"]) {
+      let max = 0;
+      for (const t of boundaryTypes[face]) {
+        const val = wallThicknessesByType[t]?.[face] ?? 0;
+        if (val > max) max = val;
+      }
+      if (boundaryTypes[face].size === 0) {
+        for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
+      }
+      effective[face] = max;
+    }
+    effective.rear = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.rear ?? 0));
+    effective.door = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.door ?? 0));
     const pairs = [
       ["top", external.height, "height"],
       ["bottom", external.height, "height"],
@@ -576,7 +644,7 @@
       ["door", external.depth, "depth"]
     ];
     for (const [face, extDim, dimName] of pairs) {
-      const thickness = w[face];
+      const thickness = effective[face];
       if (thickness >= extDim * 0.5) {
         errors.push({
           rule: "wallRatio",
@@ -584,11 +652,11 @@
         });
       }
     }
-    if (cabinet.airGap <= 0) {
-      errors.push({ rule: "positiveValues", message: `airGap must be > 0, got ${cabinet.airGap}` });
+    if (airGap <= 0) {
+      errors.push({ rule: "positiveValues", message: `airGap must be > 0, got ${airGap}` });
     }
     if (errors.length === 0) {
-      const rootSpace = deriveRootSpace(cabinet);
+      const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
       for (const [dim, val] of Object.entries(rootSpace)) {
         if (val <= 0) {
           errors.push({
@@ -648,7 +716,7 @@
       result.validationErrors = cabinetErrors;
       return result;
     }
-    const rootSpace = deriveRootSpace(config.cabinet);
+    const rootSpace = deriveRootSpace(config.cabinet, config.cabinet.layout);
     const { leaves, errors: dimErrors, warnings } = traverseAndCompute(
       config.cabinet.layout,
       rootSpace
@@ -790,9 +858,10 @@
   }
 
   // src/js/ui/schematic.js
-  function drawSchematic(leaves, config, canvas, tooltipDiv) {
+  function drawSchematic(leaves, effectiveWalls, config, canvas, tooltipDiv) {
     const ctx = canvas.getContext("2d");
-    const { external, wallThicknesses: w } = config.cabinet;
+    const { external } = config.cabinet;
+    const w = effectiveWalls;
     const PAD = { left: 50, top: 30, right: 30, bottom: 30 };
     const drawW = canvas.width - PAD.left - PAD.right;
     const drawH = canvas.height - PAD.top - PAD.bottom;
@@ -856,20 +925,20 @@
     leafRects.forEach((rect) => {
       const x = intLeft + rect.x * scale;
       const y = intTop + rect.y * scale;
-      const w2 = rect.width * scale;
-      const h = rect.height * scale;
-      const compBottom = y + h;
+      const wComp = rect.width * scale;
+      const hComp = rect.height * scale;
+      const compBottom = y + hComp;
       const leafData = leaves[rect.leafIdx];
       ctx.fillStyle = rect.leafIdx % 2 === 0 ? "#e8f0e8" : "#ffffff";
-      ctx.fillRect(x, y, w2, h);
+      ctx.fillRect(x, y, wComp, hComp);
       ctx.strokeStyle = "#999";
       ctx.lineWidth = 1;
-      ctx.strokeRect(x, y, w2, h);
+      ctx.strokeRect(x, y, wComp, hComp);
       ctx.fillStyle = "#000";
       ctx.font = "11px Arial";
       ctx.fillText(rect.type, x + 4, y + 13);
       hitRegions.push({
-        rect: { x, y, w: w2, h },
+        rect: { x, y, w: wComp, h: hComp },
         label: `Compartment: ${rect.type}`,
         info: leafData ? `W\xD7D\xD7H: ${rect.width.toFixed(0)}\xD7${leafData.space.depth.toFixed(0)}\xD7${rect.height.toFixed(0)} mm
 Gross: ${leafData.gross.toFixed(2)} L
@@ -879,8 +948,8 @@ IEC Net: ${leafData.iecNet.toFixed(2)} L` : "No data"
       if (rect.fittings?.shelves) {
         for (const shelf of rect.fittings.shelves) {
           const shelfY = compBottom - shelf.positionFromFloor * scale;
-          const shelfW = shelf.width !== null ? shelf.width * scale : w2;
-          const shelfX = x + (w2 - shelfW) / 2;
+          const shelfW = shelf.width !== null ? shelf.width * scale : wComp;
+          const shelfX = x + (wComp - shelfW) / 2;
           ctx.strokeStyle = "#b22222";
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -910,7 +979,7 @@ Width: ${shelf.width} mm` : "\nFull width")
           const posNum = parseFloat(pos);
           const totalOuterW = group.reduce((sum, d) => sum + d.outerWidth, 0);
           let groupScale = scale;
-          if (totalOuterW * scale > w2 - 10) groupScale = (w2 - 10) / totalOuterW;
+          if (totalOuterW * scale > wComp - 10) groupScale = (wComp - 10) / totalOuterW;
           let xOffset = x + 5;
           const baseY = compBottom - posNum * scale;
           group.forEach((d) => {
@@ -944,22 +1013,23 @@ Wall: ${d.wallThickness} mm`
     ctx.strokeRect(intLeft, intTop, intW, intH);
     ctx.fillStyle = "#000";
     ctx.font = "10px Arial";
+    ctx.fillText("DOOR (closed)", intLeft + 4, intTop + 10);
     leafRects.forEach((rect) => {
       const x = intLeft + rect.x * scale;
       const y = intTop + rect.y * scale;
-      const w2 = rect.width * scale;
-      const h = rect.height * scale;
+      const wComp = rect.width * scale;
+      const hComp = rect.height * scale;
       const bins = rect.fittings?.doorBins;
       if (!bins || bins.length === 0) return;
       const totalBinsHeight = bins.reduce((sum, b) => sum + b.outerHeight * scale, 0);
       const gap = 3 * scale;
       const totalStackH = totalBinsHeight + (bins.length - 1) * gap;
-      let startY = y + (h - totalStackH) / 2;
+      let startY = y + (hComp - totalStackH) / 2;
       if (startY < y) startY = y + 2;
       for (const bin of bins) {
         const bh = bin.outerHeight * scale;
         const bx = x;
-        const bw = w2;
+        const bw = wComp;
         const by = startY;
         ctx.save();
         ctx.globalAlpha = 0.4;
@@ -979,17 +1049,14 @@ Wall: ${bin.wallThickness} mm`
       }
     });
     ctx.restore();
-    if (canvas._schematicMouseMove) {
-      canvas.removeEventListener("mousemove", canvas._schematicMouseMove);
-    }
+    if (canvas._schematicMouseMove) canvas.removeEventListener("mousemove", canvas._schematicMouseMove);
     canvas._schematicMouseMove = (e) => {
       const canvasRect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / canvasRect.width;
       const scaleY = canvas.height / canvasRect.height;
       const mouseCanvasX = (e.clientX - canvasRect.left) * scaleX - PAD.left;
       const mouseCanvasY = (e.clientY - canvasRect.top) * scaleY - PAD.top;
-      let bestRegion = null;
-      let bestArea = Infinity;
+      let bestRegion = null, bestArea = Infinity;
       for (const region of hitRegions) {
         if (mouseCanvasX >= region.rect.x && mouseCanvasX <= region.rect.x + region.rect.w && mouseCanvasY >= region.rect.y && mouseCanvasY <= region.rect.y + region.rect.h) {
           const area = region.rect.w * region.rect.h;
@@ -1003,10 +1070,8 @@ Wall: ${bin.wallThickness} mm`
         tooltipDiv.classList.remove("hidden");
         tooltipDiv.innerHTML = `<strong>${bestRegion.label}</strong><br>${bestRegion.info.replace(/\n/g, "<br>")}`;
         const panelRect = document.querySelector(".right-panel").getBoundingClientRect();
-        let left = e.clientX - panelRect.left + 15;
-        let top = e.clientY - panelRect.top + 15;
-        const tw = tooltipDiv.offsetWidth;
-        const th = tooltipDiv.offsetHeight;
+        let left = e.clientX - panelRect.left + 15, top = e.clientY - panelRect.top + 15;
+        const tw = tooltipDiv.offsetWidth, th = tooltipDiv.offsetHeight;
         if (left + tw > panelRect.width) left = left - tw - 30;
         if (top + th > panelRect.height) top = top - th - 30;
         tooltipDiv.style.left = left + "px";
@@ -1148,12 +1213,6 @@ Wall: ${bin.wallThickness} mm`
   var extHeightInput = document.getElementById("extHeight");
   var extWidthInput = document.getElementById("extWidth");
   var extDepthInput = document.getElementById("extDepth");
-  var wallTopInput = document.getElementById("wallTop");
-  var wallBottomInput = document.getElementById("wallBottom");
-  var wallLeftInput = document.getElementById("wallLeft");
-  var wallRightInput = document.getElementById("wallRight");
-  var wallRearInput = document.getElementById("wallRear");
-  var wallDoorInput = document.getElementById("wallDoor");
   var divHorizInput = document.getElementById("divHoriz");
   var divVertInput = document.getElementById("divVert");
   var sealOffsetInput = document.getElementById("sealOffset");
@@ -1179,6 +1238,69 @@ Wall: ${bin.wallThickness} mm`
   var configSlotB = null;
   var currentConfig = null;
   var dirtySchematic = false;
+  var wallThicknessByType = null;
+  function getEffectiveThicknesses(config) {
+    const { external, wallThicknessesByType, layout } = config.cabinet;
+    const boundaryTypes = { top: /* @__PURE__ */ new Set(), bottom: /* @__PURE__ */ new Set(), left: /* @__PURE__ */ new Set(), right: /* @__PURE__ */ new Set() };
+    walkBoundaries(layout, boundaryTypes, true, true, true, true);
+    const eff = {};
+    const allTypes = ["fresh", "freezer", "flex"];
+    for (const face of ["top", "bottom", "left", "right"]) {
+      let max = 0;
+      for (const t of boundaryTypes[face]) {
+        const val = wallThicknessesByType[t]?.[face] ?? 0;
+        if (val > max) max = val;
+      }
+      if (boundaryTypes[face].size === 0) {
+        for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
+      }
+      eff[face] = max;
+    }
+    eff.rear = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.rear ?? 0));
+    eff.door = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.door ?? 0));
+    return eff;
+  }
+  function buildWallThicknessUI() {
+    const container = document.getElementById("wallThicknessPerType");
+    const types = ["fresh", "freezer", "flex"];
+    const labels = ["Fresh Food", "Freezer", "Convertible"];
+    const faces = ["top", "bottom", "left", "right", "rear", "door"];
+    const defaultValues = {
+      top: 50,
+      bottom: 50,
+      left: 50,
+      right: 50,
+      rear: 50,
+      door: 70
+    };
+    const currentValues = wallThicknessByType || {};
+    let html = '<table style="width:100%; border:1px solid #ccc; border-collapse:collapse;">';
+    html += "<tr><th></th><th>Top</th><th>Bottom</th><th>Left</th><th>Right</th><th>Rear</th><th>Door</th></tr>";
+    for (let t = 0; t < types.length; t++) {
+      const type = types[t];
+      html += `<tr><td><strong>${labels[t]}</strong></td>`;
+      for (const face of faces) {
+        const val = currentValues[type] && currentValues[type][face] != null ? currentValues[type][face] : defaultValues[face];
+        html += `<td><input type="number" id="wall-${type}-${face}" value="${val}" step="any" min="0" style="width:60px;"></td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</table>";
+    container.innerHTML = html;
+    document.getElementById("copyToAllTypesBtn").addEventListener("click", () => {
+      const freshValues = {};
+      for (const face of faces) {
+        freshValues[face] = parseFloat(document.getElementById(`wall-fresh-${face}`).value) || defaultValues[face];
+      }
+      for (const otherType of ["freezer", "flex"]) {
+        for (const face of faces) {
+          document.getElementById(`wall-${otherType}-${face}`).value = freshValues[face];
+        }
+      }
+      markDirty();
+    });
+    container.querySelectorAll("input").forEach((inp) => inp.addEventListener("input", markDirty));
+  }
   function markDirty() {
     dirtySchematic = true;
     if (settings.showDirtyOverlay) {
@@ -1193,6 +1315,7 @@ Wall: ${bin.wallThickness} mm`
     buildCompartmentUI();
   });
   buildCompartmentUI();
+  buildWallThicknessUI();
   function buildCompartmentUI() {
     const count = Math.max(1, Math.min(8, parseInt(numCompartmentsInput.value) || 1));
     compartmentBuilder.innerHTML = "";
@@ -1250,7 +1373,7 @@ Wall: ${bin.wallThickness} mm`
           <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
         </fieldset>
       </div>
-      
+
       <div class="singleSubContainer" data-comp="${i}">
         <fieldset>
           <legend>Shelves</legend>
@@ -1270,7 +1393,8 @@ Wall: ${bin.wallThickness} mm`
         <fieldset>
           <legend>Mechanical Housings</legend>
           <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
-          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>        </fieldset>
+          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
+        </fieldset>
       </div>
     `;
       compartmentBuilder.appendChild(fieldset);
@@ -1312,53 +1436,6 @@ Wall: ${bin.wallThickness} mm`
       });
     });
   }
-  function addFittingsToDOM(compIdx, sub, fittings) {
-    if (!fittings) return;
-    for (const shelf of fittings.shelves ?? []) {
-      addShelf(compIdx, sub);
-      const container = document.querySelector(`.shelfContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
-      if (!container) continue;
-      const rows = container.querySelectorAll(":scope > div");
-      const lastRow = rows[rows.length - 1];
-      if (!lastRow) continue;
-      lastRow.querySelector(".shelf-pos").value = shelf.positionFromFloor;
-      lastRow.querySelector(".shelf-thick").value = shelf.thickness;
-      lastRow.querySelector(".shelf-depth").value = shelf.depth;
-      const widthInput = lastRow.querySelector(".shelf-width");
-      if (widthInput) widthInput.value = shelf.width !== null ? shelf.width : "";
-    }
-    for (const drawer of fittings.drawers ?? []) {
-      addDrawer(compIdx, sub);
-      const container = document.querySelector(`.drawerContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
-      if (!container) continue;
-      const rows = container.querySelectorAll(":scope > div");
-      const lastRow = rows[rows.length - 1];
-      if (!lastRow) continue;
-      lastRow.querySelector(".drawer-pos").value = drawer.positionFromFloor ?? 0;
-      lastRow.querySelector(".drawer-w").value = drawer.outerWidth;
-      lastRow.querySelector(".drawer-d").value = drawer.outerDepth;
-      lastRow.querySelector(".drawer-h").value = drawer.outerHeight;
-      lastRow.querySelector(".drawer-t").value = drawer.wallThickness;
-    }
-    for (const bin of fittings.doorBins ?? []) {
-      addBin(compIdx, sub);
-      const container = document.querySelector(`.binContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
-      if (!container) continue;
-      const rows = container.querySelectorAll(":scope > div");
-      const lastRow = rows[rows.length - 1];
-      if (!lastRow) continue;
-      lastRow.querySelector(".bin-w").value = bin.outerWidth;
-      lastRow.querySelector(".bin-h").value = bin.outerHeight;
-      lastRow.querySelector(".bin-d").value = bin.outerDepth;
-      lastRow.querySelector(".bin-t").value = bin.wallThickness;
-    }
-  }
-  function getHousingInputs(compIndex, sub) {
-    const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
-    const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
-    const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
-    return { ice: iceInput, light: lightInput };
-  }
   function addShelf(compIndex, sub = "") {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
     const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]${subAttr}`);
@@ -1369,8 +1446,13 @@ Wall: ${bin.wallThickness} mm`
     <label>Thickness (mm): <input type="number" step="any" value="5" class="shelf-thick"></label>
     <label>Depth (mm): <input type="number" step="any" value="300" class="shelf-depth"></label>
     <label>Width (mm, blank=full): <input type="number" step="any" class="shelf-width" placeholder="optional"></label>
+    <button type="button" class="remove-fitting-btn">\u2715 Remove</button>
   `;
     container.appendChild(div);
+    div.querySelector(".remove-fitting-btn").addEventListener("click", () => {
+      div.remove();
+      markDirty();
+    });
   }
   function addDrawer(compIndex, sub = "") {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
@@ -1383,8 +1465,13 @@ Wall: ${bin.wallThickness} mm`
     <label>Outer D (mm): <input type="number" step="any" value="300" class="drawer-d"></label>
     <label>Outer H (mm): <input type="number" step="any" value="150" class="drawer-h"></label>
     <label>Wall t (mm): <input type="number" step="any" value="3" class="drawer-t"></label>
+    <button type="button" class="remove-fitting-btn">\u2715 Remove</button>
   `;
     container.appendChild(div);
+    div.querySelector(".remove-fitting-btn").addEventListener("click", () => {
+      div.remove();
+      markDirty();
+    });
   }
   function addBin(compIndex, sub = "") {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
@@ -1396,8 +1483,19 @@ Wall: ${bin.wallThickness} mm`
     <label>Outer H (mm): <input type="number" step="any" value="100" class="bin-h"></label>
     <label>Outer D (mm): <input type="number" step="any" value="80" class="bin-d"></label>
     <label>Wall t (mm): <input type="number" step="any" value="2" class="bin-t"></label>
+    <button type="button" class="remove-fitting-btn">\u2715 Remove</button>
   `;
     container.appendChild(div);
+    div.querySelector(".remove-fitting-btn").addEventListener("click", () => {
+      div.remove();
+      markDirty();
+    });
+  }
+  function getHousingInputs(compIndex, sub) {
+    const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
+    const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
+    const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
+    return { ice: iceInput, light: lightInput };
   }
   function getHousingVolumes(compIndex, sub) {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
@@ -1471,14 +1569,17 @@ Wall: ${bin.wallThickness} mm`
       width: parseFloat(extWidthInput.value),
       depth: parseFloat(extDepthInput.value)
     };
-    const wallThicknesses = {
-      top: parseFloat(wallTopInput.value),
-      bottom: parseFloat(wallBottomInput.value),
-      left: parseFloat(wallLeftInput.value),
-      right: parseFloat(wallRightInput.value),
-      rear: parseFloat(wallRearInput.value),
-      door: parseFloat(wallDoorInput.value)
-    };
+    const types = ["fresh", "freezer", "flex"];
+    const faces = ["top", "bottom", "left", "right", "rear", "door"];
+    const wallThicknessesByType = {};
+    for (const type of types) {
+      wallThicknessesByType[type] = {};
+      for (const face of faces) {
+        const el = document.getElementById(`wall-${type}-${face}`);
+        wallThicknessesByType[type][face] = parseFloat(el.value) || 0;
+      }
+    }
+    wallThicknessByType = wallThicknessesByType;
     const airGap = parseFloat(sealOffsetInput.value);
     const count = parseInt(numCompartmentsInput.value) || 1;
     const leaves = [];
@@ -1553,9 +1654,7 @@ Wall: ${bin.wallThickness} mm`
               drawers,
               doorBins: bins,
               iceMakerHousing: { volume: housing.ice },
-              // ← new
               lightHousing: { volume: housing.light }
-              // ← new
             }
           }
         });
@@ -1578,6 +1677,12 @@ Wall: ${bin.wallThickness} mm`
         thickness: parseFloat(divHorizInput.value) || 20
       }))
     };
+    const cabinet = {
+      external,
+      wallThicknessesByType,
+      airGap: parseFloat(sealOffsetInput.value),
+      layout: rootNode
+    };
     return {
       schemaVersion: "1.0",
       meta: {
@@ -1585,25 +1690,30 @@ Wall: ${bin.wallThickness} mm`
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       },
-      cabinet: {
-        external,
-        wallThicknesses,
-        airGap,
-        layout: rootNode
-      }
+      cabinet
     };
   }
   function populateUIFromConfig(config) {
     extHeightInput.value = config.cabinet.external.height;
     extWidthInput.value = config.cabinet.external.width;
     extDepthInput.value = config.cabinet.external.depth;
-    wallTopInput.value = config.cabinet.wallThicknesses.top;
-    wallBottomInput.value = config.cabinet.wallThicknesses.bottom;
-    wallLeftInput.value = config.cabinet.wallThicknesses.left;
-    wallRightInput.value = config.cabinet.wallThicknesses.right;
-    wallRearInput.value = config.cabinet.wallThicknesses.rear;
-    wallDoorInput.value = config.cabinet.wallThicknesses.door;
     sealOffsetInput.value = config.cabinet.airGap;
+    let perType = config.cabinet.wallThicknessesByType;
+    if (!perType && config.cabinet.wallThicknesses) {
+      const old = config.cabinet.wallThicknesses;
+      perType = {};
+      for (const type of ["fresh", "freezer", "flex"]) {
+        perType[type] = { ...old };
+      }
+    } else if (!perType) {
+      const def = { top: 50, bottom: 50, left: 50, right: 50, rear: 50, door: 70 };
+      perType = {};
+      for (const type of ["fresh", "freezer", "flex"]) {
+        perType[type] = { ...def };
+      }
+    }
+    wallThicknessByType = perType;
+    buildWallThicknessUI();
     const layout = config.cabinet.layout;
     if (layout.nodeType !== "horizontal") return;
     const compartmentCount = layout.children.length;
@@ -1656,6 +1766,18 @@ Wall: ${bin.wallThickness} mm`
       }
     }
   }
+  function addFittingsToDOM(compIdx, sub, fittings) {
+    if (!fittings) return;
+    for (const shelf of fittings.shelves ?? []) {
+      addShelf(compIdx, sub);
+    }
+    for (const drawer of fittings.drawers ?? []) {
+      addDrawer(compIdx, sub);
+    }
+    for (const bin of fittings.doorBins ?? []) {
+      addBin(compIdx, sub);
+    }
+  }
   function showMessages(errors, warnings, calcErrors) {
     messagesDiv.innerHTML = "";
     const all = [
@@ -1694,7 +1816,8 @@ Wall: ${bin.wallThickness} mm`
       canvas.width = settings.canvasWidth;
       canvas.height = settings.canvasHeight;
       if (result.leaves && result.leaves.length > 0) {
-        drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+        const effectiveWalls = getEffectiveThicknesses(currentConfig);
+        drawSchematic(result.leaves, effectiveWalls, currentConfig, canvas, schematicTooltip);
         dirtySchematic = false;
         schematicOverlay.classList.add("hidden");
       } else {
@@ -1744,7 +1867,8 @@ Wall: ${bin.wallThickness} mm`
           canvas.width = settings.canvasWidth;
           canvas.height = settings.canvasHeight;
           if (result.leaves && result.leaves.length > 0) {
-            drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+            const effectiveWalls = getEffectiveThicknesses(currentConfig);
+            drawSchematic(result.leaves, effectiveWalls, currentConfig, canvas, schematicTooltip);
             dirtySchematic = false;
             schematicOverlay.classList.add("hidden");
           }
@@ -1771,12 +1895,6 @@ Wall: ${bin.wallThickness} mm`
     extHeightInput.value = "";
     extWidthInput.value = "";
     extDepthInput.value = "";
-    wallTopInput.value = 50;
-    wallBottomInput.value = 50;
-    wallLeftInput.value = 50;
-    wallRightInput.value = 50;
-    wallRearInput.value = 50;
-    wallDoorInput.value = 70;
     divHorizInput.value = 20;
     divVertInput.value = 20;
     sealOffsetInput.value = 5;
@@ -1786,6 +1904,8 @@ Wall: ${bin.wallThickness} mm`
     compareSlotsBtn.style.display = "none";
     configSlotA = null;
     configSlotB = null;
+    wallThicknessByType = null;
+    buildWallThicknessUI();
     buildCompartmentUI();
     document.getElementById("grossVol").textContent = "--";
     document.getElementById("egNetVol").textContent = "--";
@@ -1854,60 +1974,28 @@ Wall: ${bin.wallThickness} mm`
     const hasLeavesB = resultB && resultB.leaves && resultB.totals;
     const fmtTotals = (totals) => {
       if (!totals) return { gross: "-", egNet: "-", iecNet: "-", grossCuft: "-", egNetCuft: "-", iecNetCuft: "-" };
-      const d = formatTotalsDisplay(totals);
-      return d;
+      return formatTotalsDisplay(totals);
     };
     const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
     const tB = fmtTotals(hasLeavesB ? resultB.totals : null);
-    let html = `
-    <table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <thead>
-        <tr>
-          <th></th>
-          <th colspan="2">Slot A</th>
-          <th colspan="2">Slot B</th>
-        </tr>
-        <tr>
-          <th></th>
-          <th>Litres</th><th>cu.ft.</th>
-          <th>Litres</th><th>cu.ft.</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Gross</strong></td>
-          <td>${tA.gross}</td><td>${tA.grossCuft}</td>
-          <td>${tB.gross}</td><td>${tB.grossCuft}</td>
-        </tr>
-        <tr>
-          <td><strong>EG Net</strong></td>
-          <td>${tA.egNet}</td><td>${tA.egNetCuft}</td>
-          <td>${tB.egNet}</td><td>${tB.egNetCuft}</td>
-        </tr>
-        <tr>
-          <td><strong>IEC Net</strong></td>
-          <td>${tA.iecNet}</td><td>${tA.iecNetCuft}</td>
-          <td>${tB.iecNet}</td><td>${tB.iecNetCuft}</td>
-        </tr>
-        </tbody>
-    </table>
-  `;
+    let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
+      <thead><tr><th></th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
+      <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
+      <tbody><tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
+      <tr><td><strong>EG Net</strong></td><td>${tA.egNet}</td><td>${tA.egNetCuft}</td><td>${tB.egNet}</td><td>${tB.egNetCuft}</td></tr>
+      <tr><td><strong>IEC Net</strong></td><td>${tA.iecNet}</td><td>${tA.iecNetCuft}</td><td>${tB.iecNet}</td><td>${tB.iecNetCuft}</td></tr>
+      </tbody></table>`;
     if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
       html += `<h3>Per\u2011Compartment Breakdown</h3>`;
       const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
-      html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">`;
-      html += `<tr><th>Compartment</th><th colspan="3">Slot A</th><th colspan="3">Slot B</th></tr>`;
-      html += `<tr><th></th><th>Gross</th><th>EG</th><th>IEC</th><th>Gross</th><th>EG</th><th>IEC</th></tr>`;
+      html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
+      <tr><th>Compartment</th><th colspan="3">Slot A</th><th colspan="3">Slot B</th></tr>
+      <tr><th></th><th>Gross</th><th>EG</th><th>IEC</th><th>Gross</th><th>EG</th><th>IEC</th></tr>`;
       for (let i = 0; i < maxLeaves; i++) {
-        const leafA = resultA.leaves[i];
-        const leafB = resultB.leaves[i];
+        const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
         const fmtA = leafA ? formatLeafDisplay(leafA) : { gross: "-", egNet: "-", iecNet: "-" };
         const fmtB = leafB ? formatLeafDisplay(leafB) : { gross: "-", egNet: "-", iecNet: "-" };
-        html += `<tr>
-        <td>Comp ${i + 1}</td>
-        <td>${fmtA.gross}</td><td>${fmtA.egNet}</td><td>${fmtA.iecNet}</td>
-        <td>${fmtB.gross}</td><td>${fmtB.egNet}</td><td>${fmtB.iecNet}</td>
-        </tr>`;
+        html += `<tr><td>Comp ${i + 1}</td><td>${fmtA.gross}</td><td>${fmtA.egNet}</td><td>${fmtA.iecNet}</td><td>${fmtB.gross}</td><td>${fmtB.egNet}</td><td>${fmtB.iecNet}</td></tr>`;
       }
       html += `</table>`;
     }

@@ -183,3 +183,16 @@ button {
 .modal label { display: block; margin: 6px 0; }
 .settings-actions { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-actions button { flex: 1; min-width: 80px; }
+.remove-fitting-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    margin-left: 6px;
+}
+.remove-fitting-btn:hover {
+    background: #c0392b;
+}

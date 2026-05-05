@@ -12,16 +12,6 @@
  */
 
 /**
- * @typedef {Object} WallThicknesses
- * @property {number} top
- * @property {number} bottom
- * @property {number} left
- * @property {number} right
- * @property {number} rear
- * @property {number} door
- */
-
-/**
  * Available space passed down the node tree.
  * All values in mm. Derived once per node from parent context.
  * @typedef {Object} Space
@@ -118,9 +108,15 @@
  * @typedef {Object} CabinetConfig
  * @property {string}         schemaVersion
  * @property {{ name: string, createdAt: string, updatedAt: string }} meta
- * @property {{ external: ExternalDims, wallThicknesses: WallThicknesses, airGap: number, layout: Node }} cabinet
+  * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
  */
 
+/**
+ * @typedef {Object} WallThicknessesByType
+ * @property {Object} fresh - {top, bottom, left, right, rear, door}
+ * @property {Object} freezer
+ * @property {Object} flex
+ */
 /**
  * Per-leaf volume result. All volumes in L at full precision.
  * Rounded values are derived at display time only.

@@ -1,18 +1,82 @@
 import { settings } from '../settings.js';
 
 /**
- * Derives the available internal space at the root of the tree
- * from cabinet external dimensions, wall thicknesses, and air gap.
- * @param {import('./types').CabinetConfig['cabinet']} cabinet
+ * Derives internal root space using per‑type wall thicknesses and the layout tree.
+ * @param {object} cabinet - { external, wallThicknessesByType, airGap }
+ * @param {object} layout - the root node tree
  * @returns {import('./types').Space}
  */
-export function deriveRootSpace(cabinet) {
-  const { external, wallThicknesses: w, airGap } = cabinet;
-  return {
-    width:  external.width  - w.left  - w.right,
-    height: external.height - w.top   - w.bottom,
-    depth:  external.depth  - w.rear  - w.door - airGap,
+export function deriveRootSpace(cabinet, layout) {
+  const { external, wallThicknessesByType, airGap } = cabinet;
+  
+  // Helper: find all leaf types touching a given side
+  const boundaryTypes = {
+    top: new Set(),
+    bottom: new Set(),
+    left: new Set(),
+    right: new Set(),
   };
+  
+  // Walk the tree to collect which types appear at the extremes
+  walkBoundaries(layout, boundaryTypes, true, true, true, true);
+  
+  const allTypes = ['fresh','freezer','flex']; // all possible types
+  // Effective thickness for a face = max thickness among types touching that face
+  const effective = {};
+  for (const face of ['top','bottom','left','right']) {
+    const typesForFace = boundaryTypes[face];
+    let maxVal = 0;
+    for (const type of typesForFace) {
+      const val = wallThicknessesByType[type]?.[face] ?? 0;
+      if (val > maxVal) maxVal = val;
+    }
+    // If no type touches the face (shouldn't happen), fallback to max over all types
+    if (typesForFace.size === 0) {
+      for (const type of allTypes) {
+        const val = wallThicknessesByType[type]?.[face] ?? 0;
+        if (val > maxVal) maxVal = val;
+      }
+    }
+    effective[face] = maxVal;
+  }
+  
+  // Rear and door: max over all types
+  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
+  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
+  
+  return {
+    width:  external.width  - effective.left - effective.right,
+    height: external.height - effective.top  - effective.bottom,
+    depth:  external.depth  - effective.rear - effective.door - airGap,
+  };
+}
+
+// Recursive function to collect types that touch the boundaries
+export function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
+  if (node.nodeType === 'leaf') {
+    if (topMost) boundary.top.add(node.type);
+    if (bottomMost) boundary.bottom.add(node.type);
+    if (leftMost) boundary.left.add(node.type);
+    if (rightMost) boundary.right.add(node.type);
+  } else if (node.nodeType === 'horizontal') {
+    const children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const isFirst = (i === 0);
+      const isLast = (i === children.length - 1);
+      walkBoundaries(
+        children[i].node,
+        boundary,
+        topMost && isFirst,
+        bottomMost && isLast,
+        leftMost,
+        rightMost
+      );
+    }
+  } else if (node.nodeType === 'vertical') {
+    // left child touches left, right child touches right
+    walkBoundaries(node.left,  boundary, topMost, bottomMost, true, false);
+    walkBoundaries(node.right, boundary, topMost, bottomMost, false, true);
+  }
 }
 
 // Volume of a shelf slab in L
