@@ -1168,6 +1168,15 @@ Wall: ${bin.wallThickness} mm`
   var schematicOverlay = document.getElementById("schematicOverlay");
   var schematicTooltip = document.getElementById("schematicTooltip");
   var settingsBtn = document.getElementById("settingsBtn");
+  var resetAllBtn = document.getElementById("resetAllBtn");
+  var storeSlotABtn = document.getElementById("storeSlotABtn");
+  var storeSlotBBtn = document.getElementById("storeSlotBBtn");
+  var compareSlotsBtn = document.getElementById("compareSlotsBtn");
+  var comparisonModal = document.getElementById("comparisonModal");
+  var closeComparison = document.getElementById("closeComparison");
+  var comparisonContent = document.getElementById("comparisonContent");
+  var configSlotA = null;
+  var configSlotB = null;
   var currentConfig = null;
   var dirtySchematic = false;
   function markDirty() {
@@ -1221,6 +1230,12 @@ Wall: ${bin.wallThickness} mm`
           <button type="button" data-action="addBin" data-comp="${i}" data-sub="left">Add Door Bin</button>
         </fieldset>
         <fieldset>
+          <legend>Mechanical Housings</legend>
+          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
+          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
+        </fieldset>
+
+        <fieldset>
           <legend>Right sub-compartment</legend>
           <div class="shelfContainer" data-comp="${i}" data-sub="right"></div>
           <button type="button" data-action="addShelf" data-comp="${i}" data-sub="right">Add Shelf</button>
@@ -1229,8 +1244,13 @@ Wall: ${bin.wallThickness} mm`
           <div class="binContainer" data-comp="${i}" data-sub="right"></div>
           <button type="button" data-action="addBin" data-comp="${i}" data-sub="right">Add Door Bin</button>
         </fieldset>
+        <fieldset>
+          <legend>Mechanical Housings</legend>
+          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
+          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
+        </fieldset>
       </div>
-
+      
       <div class="singleSubContainer" data-comp="${i}">
         <fieldset>
           <legend>Shelves</legend>
@@ -1247,6 +1267,10 @@ Wall: ${bin.wallThickness} mm`
           <div class="binContainer" data-comp="${i}"></div>
           <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
         </fieldset>
+        <fieldset>
+          <legend>Mechanical Housings</legend>
+          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
+          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>        </fieldset>
       </div>
     `;
       compartmentBuilder.appendChild(fieldset);
@@ -1288,6 +1312,53 @@ Wall: ${bin.wallThickness} mm`
       });
     });
   }
+  function addFittingsToDOM(compIdx, sub, fittings) {
+    if (!fittings) return;
+    for (const shelf of fittings.shelves ?? []) {
+      addShelf(compIdx, sub);
+      const container = document.querySelector(`.shelfContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
+      if (!container) continue;
+      const rows = container.querySelectorAll(":scope > div");
+      const lastRow = rows[rows.length - 1];
+      if (!lastRow) continue;
+      lastRow.querySelector(".shelf-pos").value = shelf.positionFromFloor;
+      lastRow.querySelector(".shelf-thick").value = shelf.thickness;
+      lastRow.querySelector(".shelf-depth").value = shelf.depth;
+      const widthInput = lastRow.querySelector(".shelf-width");
+      if (widthInput) widthInput.value = shelf.width !== null ? shelf.width : "";
+    }
+    for (const drawer of fittings.drawers ?? []) {
+      addDrawer(compIdx, sub);
+      const container = document.querySelector(`.drawerContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
+      if (!container) continue;
+      const rows = container.querySelectorAll(":scope > div");
+      const lastRow = rows[rows.length - 1];
+      if (!lastRow) continue;
+      lastRow.querySelector(".drawer-pos").value = drawer.positionFromFloor ?? 0;
+      lastRow.querySelector(".drawer-w").value = drawer.outerWidth;
+      lastRow.querySelector(".drawer-d").value = drawer.outerDepth;
+      lastRow.querySelector(".drawer-h").value = drawer.outerHeight;
+      lastRow.querySelector(".drawer-t").value = drawer.wallThickness;
+    }
+    for (const bin of fittings.doorBins ?? []) {
+      addBin(compIdx, sub);
+      const container = document.querySelector(`.binContainer[data-comp="${compIdx}"]${sub ? `[data-sub="${sub}"]` : ":not([data-sub])"}`);
+      if (!container) continue;
+      const rows = container.querySelectorAll(":scope > div");
+      const lastRow = rows[rows.length - 1];
+      if (!lastRow) continue;
+      lastRow.querySelector(".bin-w").value = bin.outerWidth;
+      lastRow.querySelector(".bin-h").value = bin.outerHeight;
+      lastRow.querySelector(".bin-d").value = bin.outerDepth;
+      lastRow.querySelector(".bin-t").value = bin.wallThickness;
+    }
+  }
+  function getHousingInputs(compIndex, sub) {
+    const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
+    const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
+    const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
+    return { ice: iceInput, light: lightInput };
+  }
   function addShelf(compIndex, sub = "") {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
     const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]${subAttr}`);
@@ -1327,6 +1398,17 @@ Wall: ${bin.wallThickness} mm`
     <label>Wall t (mm): <input type="number" step="any" value="2" class="bin-t"></label>
   `;
     container.appendChild(div);
+  }
+  function getHousingVolumes(compIndex, sub) {
+    const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
+    const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
+    const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
+    const iceVol = iceInput && iceInput.value !== "" ? parseFloat(iceInput.value) : null;
+    const lightVol = lightInput && lightInput.value !== "" ? parseFloat(lightInput.value) : null;
+    return {
+      ice: iceVol != null && !isNaN(iceVol) ? iceVol : null,
+      light: lightVol != null && !isNaN(lightVol) ? lightVol : null
+    };
   }
   function collectFittings(compIndex, sub, type) {
     const subAttr = sub ? `[data-sub="${sub}"]` : ":not([data-sub])";
@@ -1416,6 +1498,8 @@ Wall: ${bin.wallThickness} mm`
         const rightShelves = collectFittings(i, "right", "shelf");
         const rightDrawers = collectFittings(i, "right", "drawer");
         const rightBins = collectFittings(i, "right", "bin");
+        const leftHousing = getHousingVolumes(i, "left");
+        const rightHousing = getHousingVolumes(i, "right");
         const divThickness = parseFloat(divVertInput.value) || 20;
         const vertNode = {
           nodeType: "vertical",
@@ -1430,8 +1514,8 @@ Wall: ${bin.wallThickness} mm`
               shelves: leftShelves,
               drawers: leftDrawers,
               doorBins: leftBins,
-              iceMakerHousing: { volume: null },
-              lightHousing: { volume: null }
+              iceMakerHousing: { volume: leftHousing.ice },
+              lightHousing: { volume: leftHousing.light }
             }
           },
           right: {
@@ -1442,8 +1526,8 @@ Wall: ${bin.wallThickness} mm`
               shelves: rightShelves,
               drawers: rightDrawers,
               doorBins: rightBins,
-              iceMakerHousing: { volume: null },
-              lightHousing: { volume: null }
+              iceMakerHousing: { volume: rightHousing.ice },
+              lightHousing: { volume: rightHousing.light }
             }
           }
         };
@@ -1456,6 +1540,7 @@ Wall: ${bin.wallThickness} mm`
         const shelves = collectFittings(i, "", "shelf");
         const drawers = collectFittings(i, "", "drawer");
         const bins = collectFittings(i, "", "bin");
+        const housing = getHousingVolumes(i, "");
         leaves.push({
           heightMode: "ratio",
           heightValue: heightRatio,
@@ -1467,8 +1552,10 @@ Wall: ${bin.wallThickness} mm`
               shelves,
               drawers,
               doorBins: bins,
-              iceMakerHousing: { volume: null },
-              lightHousing: { volume: null }
+              iceMakerHousing: { volume: housing.ice },
+              // ← new
+              lightHousing: { volume: housing.light }
+              // ← new
             }
           }
         });
@@ -1506,6 +1593,69 @@ Wall: ${bin.wallThickness} mm`
       }
     };
   }
+  function populateUIFromConfig(config) {
+    extHeightInput.value = config.cabinet.external.height;
+    extWidthInput.value = config.cabinet.external.width;
+    extDepthInput.value = config.cabinet.external.depth;
+    wallTopInput.value = config.cabinet.wallThicknesses.top;
+    wallBottomInput.value = config.cabinet.wallThicknesses.bottom;
+    wallLeftInput.value = config.cabinet.wallThicknesses.left;
+    wallRightInput.value = config.cabinet.wallThicknesses.right;
+    wallRearInput.value = config.cabinet.wallThicknesses.rear;
+    wallDoorInput.value = config.cabinet.wallThicknesses.door;
+    sealOffsetInput.value = config.cabinet.airGap;
+    const layout = config.cabinet.layout;
+    if (layout.nodeType !== "horizontal") return;
+    const compartmentCount = layout.children.length;
+    numCompartmentsInput.value = compartmentCount;
+    buildCompartmentUI();
+    for (let i = 0; i < compartmentCount; i++) {
+      const child = layout.children[i];
+      const compIdx = i;
+      const heightRatioInput = document.querySelector(`input[data-comp="${compIdx}"][data-field="heightRatio"]`);
+      if (heightRatioInput) heightRatioInput.value = child.heightValue;
+      if (child.node.nodeType === "leaf") {
+        const vertCheckbox = document.querySelector(`input[data-action="toggleVertical"][data-comp="${compIdx}"]`);
+        if (vertCheckbox) vertCheckbox.checked = false;
+        const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
+        const vertContainer = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
+        const ratioLabel = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
+        if (singleContainer) singleContainer.style.display = "block";
+        if (vertContainer) vertContainer.style.display = "none";
+        if (ratioLabel) ratioLabel.style.display = "none";
+        const leaf = child.node;
+        const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
+        if (typeSelect) typeSelect.value = leaf.type;
+        addFittingsToDOM(compIdx, "", leaf.fittings);
+        const housingInputs = getHousingInputs(compIdx, "");
+        if (housingInputs.ice) housingInputs.ice.value = leaf.fittings.iceMakerHousing?.volume ?? "";
+        if (housingInputs.light) housingInputs.light.value = leaf.fittings.lightHousing?.volume ?? "";
+      } else if (child.node.nodeType === "vertical") {
+        const vertCheckbox = document.querySelector(`input[data-action="toggleVertical"][data-comp="${compIdx}"]`);
+        if (vertCheckbox) vertCheckbox.checked = true;
+        const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
+        const vertContainer = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
+        const ratioLabel = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
+        if (singleContainer) singleContainer.style.display = "none";
+        if (vertContainer) vertContainer.style.display = "block";
+        if (ratioLabel) ratioLabel.style.display = "inline";
+        const leftRatioInput = document.querySelector(`input[data-comp="${compIdx}"][data-field="leftWidthRatio"]`);
+        if (leftRatioInput) leftRatioInput.value = child.node.leftWidthRatio;
+        const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
+        if (typeSelect && child.node.left && child.node.left.type) {
+          typeSelect.value = child.node.left.type;
+        }
+        addFittingsToDOM(compIdx, "left", child.node.left.fittings);
+        addFittingsToDOM(compIdx, "right", child.node.right.fittings);
+        const leftHousingInputs = getHousingInputs(compIdx, "left");
+        if (leftHousingInputs.ice) leftHousingInputs.ice.value = child.node.left.fittings.iceMakerHousing?.volume ?? "";
+        if (leftHousingInputs.light) leftHousingInputs.light.value = child.node.left.fittings.lightHousing?.volume ?? "";
+        const rightHousingInputs = getHousingInputs(compIdx, "right");
+        if (rightHousingInputs.ice) rightHousingInputs.ice.value = child.node.right.fittings.iceMakerHousing?.volume ?? "";
+        if (rightHousingInputs.light) rightHousingInputs.light.value = child.node.right.fittings.lightHousing?.volume ?? "";
+      }
+    }
+  }
   function showMessages(errors, warnings, calcErrors) {
     messagesDiv.innerHTML = "";
     const all = [
@@ -1523,6 +1673,11 @@ Wall: ${bin.wallThickness} mm`
   calculateBtn.addEventListener("click", () => {
     const config = buildConfigFromForm();
     currentConfig = config;
+    if (currentConfig) {
+      storeSlotABtn.style.display = "inline-block";
+      storeSlotBBtn.style.display = "inline-block";
+      compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
+    }
     const result = runCalculation(config);
     if (result.leaves && result.totals) {
       const disp = formatTotalsDisplay(result.totals);
@@ -1567,16 +1722,12 @@ Wall: ${bin.wallThickness} mm`
       try {
         const config = await loadConfigFromFile(file);
         currentConfig = config;
-        extHeightInput.value = config.cabinet.external.height;
-        extWidthInput.value = config.cabinet.external.width;
-        extDepthInput.value = config.cabinet.external.depth;
-        wallTopInput.value = config.cabinet.wallThicknesses.top;
-        wallBottomInput.value = config.cabinet.wallThicknesses.bottom;
-        wallLeftInput.value = config.cabinet.wallThicknesses.left;
-        wallRightInput.value = config.cabinet.wallThicknesses.right;
-        wallRearInput.value = config.cabinet.wallThicknesses.rear;
-        wallDoorInput.value = config.cabinet.wallThicknesses.door;
-        sealOffsetInput.value = config.cabinet.airGap;
+        if (currentConfig) {
+          storeSlotABtn.style.display = "inline-block";
+          storeSlotBBtn.style.display = "inline-block";
+          compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
+        }
+        populateUIFromConfig(config);
         const result = runCalculation(config);
         if (result.leaves && result.totals) {
           const disp = formatTotalsDisplay(result.totals);
@@ -1592,9 +1743,11 @@ Wall: ${bin.wallThickness} mm`
         if (canvas) {
           canvas.width = settings.canvasWidth;
           canvas.height = settings.canvasHeight;
-          drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
-          dirtySchematic = false;
-          schematicOverlay.classList.add("hidden");
+          if (result.leaves && result.leaves.length > 0) {
+            drawSchematic(result.leaves, currentConfig, canvas, schematicTooltip);
+            dirtySchematic = false;
+            schematicOverlay.classList.add("hidden");
+          }
         }
         alert("Configuration loaded and calculated.");
       } catch (err) {
@@ -1613,6 +1766,44 @@ Wall: ${bin.wallThickness} mm`
   });
   initSettingsModal();
   settingsBtn.addEventListener("click", showModal);
+  resetAllBtn.addEventListener("click", () => {
+    if (!confirm("Reset all fields to default values and clear results?")) return;
+    extHeightInput.value = "";
+    extWidthInput.value = "";
+    extDepthInput.value = "";
+    wallTopInput.value = 50;
+    wallBottomInput.value = 50;
+    wallLeftInput.value = 50;
+    wallRightInput.value = 50;
+    wallRearInput.value = 50;
+    wallDoorInput.value = 70;
+    divHorizInput.value = 20;
+    divVertInput.value = 20;
+    sealOffsetInput.value = 5;
+    numCompartmentsInput.value = 2;
+    storeSlotABtn.style.display = "none";
+    storeSlotBBtn.style.display = "none";
+    compareSlotsBtn.style.display = "none";
+    configSlotA = null;
+    configSlotB = null;
+    buildCompartmentUI();
+    document.getElementById("grossVol").textContent = "--";
+    document.getElementById("egNetVol").textContent = "--";
+    document.getElementById("iecNetVol").textContent = "--";
+    document.getElementById("grossVolCuft").textContent = "--";
+    document.getElementById("egNetVolCuft").textContent = "--";
+    document.getElementById("iecNetVolCuft").textContent = "--";
+    messagesDiv.innerHTML = "";
+    messagesFieldset.style.display = "none";
+    const canvas = document.getElementById("schematicCanvas");
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    schematicOverlay.classList.add("hidden");
+    dirtySchematic = false;
+    currentConfig = null;
+  });
   document.addEventListener("input", (e) => {
     if (settings.autoCalculate && e.target.closest(".left-panel")) {
       calculateBtn.click();
@@ -1625,4 +1816,101 @@ Wall: ${bin.wallThickness} mm`
       markDirty();
     }
   });
+  storeSlotABtn.addEventListener("click", () => {
+    if (!currentConfig) return;
+    configSlotA = JSON.parse(JSON.stringify(currentConfig));
+    alert("Configuration stored in Slot A.");
+    compareSlotsBtn.style.display = "inline-block";
+  });
+  storeSlotBBtn.addEventListener("click", () => {
+    if (!currentConfig) return;
+    configSlotB = JSON.parse(JSON.stringify(currentConfig));
+    alert("Configuration stored in Slot B.");
+    compareSlotsBtn.style.display = "inline-block";
+  });
+  compareSlotsBtn.addEventListener("click", () => {
+    if (!configSlotA && !configSlotB) {
+      alert("No stored configurations to compare.");
+      return;
+    }
+    let resultA = null, resultB = null;
+    if (configSlotA) resultA = runCalculation(configSlotA);
+    if (configSlotB) resultB = runCalculation(configSlotB);
+    buildComparisonTable(resultA, resultB);
+    comparisonModal.classList.remove("hidden");
+  });
+  closeComparison.addEventListener("click", () => {
+    comparisonModal.classList.add("hidden");
+  });
+  window.addEventListener("click", (e) => {
+    if (e.target === comparisonModal) comparisonModal.classList.add("hidden");
+  });
+  function buildComparisonTable(resultA, resultB) {
+    if (!resultA && !resultB) {
+      comparisonContent.innerHTML = "<p>No configurations stored.</p>";
+      return;
+    }
+    const hasLeavesA = resultA && resultA.leaves && resultA.totals;
+    const hasLeavesB = resultB && resultB.leaves && resultB.totals;
+    const fmtTotals = (totals) => {
+      if (!totals) return { gross: "-", egNet: "-", iecNet: "-", grossCuft: "-", egNetCuft: "-", iecNetCuft: "-" };
+      const d = formatTotalsDisplay(totals);
+      return d;
+    };
+    const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
+    const tB = fmtTotals(hasLeavesB ? resultB.totals : null);
+    let html = `
+    <table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th></th>
+          <th colspan="2">Slot A</th>
+          <th colspan="2">Slot B</th>
+        </tr>
+        <tr>
+          <th></th>
+          <th>Litres</th><th>cu.ft.</th>
+          <th>Litres</th><th>cu.ft.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Gross</strong></td>
+          <td>${tA.gross}</td><td>${tA.grossCuft}</td>
+          <td>${tB.gross}</td><td>${tB.grossCuft}</td>
+        </tr>
+        <tr>
+          <td><strong>EG Net</strong></td>
+          <td>${tA.egNet}</td><td>${tA.egNetCuft}</td>
+          <td>${tB.egNet}</td><td>${tB.egNetCuft}</td>
+        </tr>
+        <tr>
+          <td><strong>IEC Net</strong></td>
+          <td>${tA.iecNet}</td><td>${tA.iecNetCuft}</td>
+          <td>${tB.iecNet}</td><td>${tB.iecNetCuft}</td>
+        </tr>
+        </tbody>
+    </table>
+  `;
+    if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
+      html += `<h3>Per\u2011Compartment Breakdown</h3>`;
+      const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
+      html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">`;
+      html += `<tr><th>Compartment</th><th colspan="3">Slot A</th><th colspan="3">Slot B</th></tr>`;
+      html += `<tr><th></th><th>Gross</th><th>EG</th><th>IEC</th><th>Gross</th><th>EG</th><th>IEC</th></tr>`;
+      for (let i = 0; i < maxLeaves; i++) {
+        const leafA = resultA.leaves[i];
+        const leafB = resultB.leaves[i];
+        const fmtA = leafA ? formatLeafDisplay(leafA) : { gross: "-", egNet: "-", iecNet: "-" };
+        const fmtB = leafB ? formatLeafDisplay(leafB) : { gross: "-", egNet: "-", iecNet: "-" };
+        html += `<tr>
+        <td>Comp ${i + 1}</td>
+        <td>${fmtA.gross}</td><td>${fmtA.egNet}</td><td>${fmtA.iecNet}</td>
+        <td>${fmtB.gross}</td><td>${fmtB.egNet}</td><td>${fmtB.iecNet}</td>
+        </tr>`;
+      }
+      html += `</table>`;
+    }
+    comparisonContent.innerHTML = html;
+  }
 })();
