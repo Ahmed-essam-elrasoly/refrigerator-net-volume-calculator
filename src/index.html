@@ -18,6 +18,12 @@
                 <button id="saveBtn">Save Configuration (JSON)</button>
                 <button id="loadBtn">Load Configuration (JSON)</button>
                 <button id="exportBtn">Export Results (CSV)</button>
+                <button id="resetAllBtn">🔄 Reset All</button>
+                                <!-- slot storage buttons (hidden until a config exists) -->
+                <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
+                <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
+                <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
+
             </div>
 
             <!-- External Dimensions -->
@@ -55,7 +61,7 @@
             <!-- Compartments -->
             <fieldset>
                 <legend>Compartments (max 8)</legend>
-                <label>Number of compartments: <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
+                <label>Number of compartments (1–8): <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
                 <div id="compartmentBuilder"></div>
             </fieldset>
 
@@ -86,9 +92,6 @@
             <!-- Tooltip -->
             <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
         </div>
-    </div>
-
-    <script type="module" src="js/main.js"></script>
     <!-- Settings Modal -->
 <div id="settingsModal" class="modal hidden">
   <div class="modal-content">
@@ -103,5 +106,15 @@
     </div>
   </div>
 </div>
+    </div>
+            <div id="comparisonModal" class="modal hidden">
+              <div class="modal-content">
+                <span class="close-btn" id="closeComparison">&times;</span>
+                <h2>Side‑by‑Side Comparison</h2>
+                <div id="comparisonContent"></div>
+              </div>
+            </div>
+
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
