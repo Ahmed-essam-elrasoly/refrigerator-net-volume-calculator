@@ -4,7 +4,7 @@ import { drawSchematic } from './ui/schematic.js';
 import { initSettingsModal, showModal } from './ui/settingsModal.js';
 import { settings } from './settings.js';
 import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries } from './engine/calc.js';
-
+import { initThermoUI } from './ui/thermoUI.js';
 // ---- DOM references ---------------------------------------------------
 const extHeightInput      = document.getElementById('extHeight');
 const extWidthInput       = document.getElementById('extWidth');
@@ -120,7 +120,7 @@ numCompartmentsInput.addEventListener('input', () => {
 });
 buildCompartmentUI();
 buildWallThicknessUI();
-
+initThermoUI();
 function buildCompartmentUI() {
   const count = Math.max(1, Math.min(8, parseInt(numCompartmentsInput.value) || 1));
   compartmentBuilder.innerHTML = '';

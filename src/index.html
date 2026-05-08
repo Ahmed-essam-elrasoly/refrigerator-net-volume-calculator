@@ -74,7 +74,55 @@
                 <legend>Messages</legend>
                 <div id="messages"></div>
             </fieldset>
-
+            <!-- Thermodynamic Analysis Section -->
+            <details id="thermoSection" style="margin-top:15px;">
+            <summary style="cursor:pointer; font-weight:bold; padding:5px;">Thermodynamic Analysis</summary>
+            <fieldset>
+                <legend>Temperature Setting</legend>
+                <label>Outside T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
+                <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
+                <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
+            </fieldset>
+            <fieldset>
+                <legend>Refrigerant</legend>
+                <select id="thermoRefrigerant">
+                <option value="R-600a">R-600a</option>
+                <option value="R-134a">R-134a</option>
+                </select>
+            </fieldset>
+            <fieldset>
+                <legend>Fan</legend>
+                <label>Total airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
+            </fieldset>
+            <details id="thermoAdvanced">
+                <summary>Advanced Parameters</summary>
+                <fieldset>
+                <legend>Compressor</legend>
+                <p>EGX80CLC 100V 50Hz (fixed)</p>
+                </fieldset>
+                <fieldset>
+                <legend>Subcool & Discharge</legend>
+                <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+                <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
+                </fieldset>
+                <fieldset>
+                <legend>Cabinet Bottom Geometry</legend>
+                <label>Hb (mm): <input type="number" id="thermoHb" step="any"></label>
+                <label>Db1 (mm): <input type="number" id="thermoDb1" step="any"></label>
+                <label>Db2 (mm): <input type="number" id="thermoDb2" step="any"></label>
+                <label>Door gap (mm): <input type="number" id="thermoDoorGap" step="any"></label>
+                <label>Packing pos (mm): <input type="number" id="thermoPackPos" step="any"></label>
+                </fieldset>
+                <fieldset>
+                <legend>Defrost</legend>
+                <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+                <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
+                </fieldset>
+            </details>
+            <button id="thermoRunBtn" style="margin:10px 0;">Run Thermal Analysis</button>
+            <div id="thermoResults"></div>
+            <div id="thermoErrors"></div>
+            </details>
         </div>
 
         <!-- RIGHT PANEL: Schematic -->
