@@ -50,9 +50,9 @@ export function runThermoAnalysis(config) {
   }
 
   if (config.fixedTemps) {
-    const { T0, TF, TR } = config.fixedTemps;
-    if ([T0, TF, TR].some(v => typeof v !== 'number')) {
-      errors.push('fixedTemps must contain numeric T0, TF, TR.');
+    const { T0, TF, TR, TE } = config.fixedTemps;
+    if ([T0, TF, TR, TE].some(v => typeof v !== 'number')) {
+      errors.push('fixedTemps must contain numeric T0, TF, TR, TE.');
     }
   }
 
@@ -169,6 +169,7 @@ export function buildDefaultConfig(overrides = {}) {
       T0: 30,
       TF: -18,
       TR: 3,
+      TE: -23.3,
     },
     fan: {
       totalAirflow: SJ54H_COMPONENTS.fan.totalAirflow_m3h,
