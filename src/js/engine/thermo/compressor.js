@@ -28,16 +28,28 @@ export function calcInputPower(TC, TE, compParams) {
   return base * Kw * rpmRatio;
 }
 
+/**
+ * @param {number} TC          Condensing temperature (°C)
+ * @param {number} TE          Evaporating temperature (°C) – used only for pressure Pe
+ * @param {string} refrigerantName
+ * @param {object} compParams  Must contain T_suction (°C)
+ * @param {number} subcool
+ */
 export function compressorState(TC, TE, refrigerantName, compParams, subcool) {
   const rf = getRefrigerantFunctions(refrigerantName);
   const Pe = rf.satPressure(TE);
   const Pc = rf.satPressure(TC);
+
+  // Suction state uses fixed T_suction, not TE
+  const T_suc = compParams.T_suction;          // 32.2 °C
+  const v_suc = rf.specificVolume(T_suc, Pe);  // specific volume at suction condition
   const etaV = calcVolumetricEfficiency(TC, TE, compParams, rf.satPressure);
-  const v = rf.specificVolume(TE, Pe);
-  const mdot = calcMassFlow(etaV, compParams.rpm, compParams.Vc, v);
-  const h_suction = rf.vaporEnthalpy(TE, Pe);
+  const mdot = calcMassFlow(etaV, compParams.rpm, compParams.Vc, v_suc);
+
+  const h_suction = rf.vaporEnthalpy(T_suc, Pe);
   const Tsub = TC - subcool;
   const h_liquid = rf.liquidEnthalpy(Tsub);
+
   return {
     etaV,
     massFlow: mdot,

@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "start": "npx serve src",
-    "build": "node build.mjs",
-    "test": "node tests/engine.test.mjs"
-  },
+"scripts": {
+  "start": "npx serve src",
+  "build": "node build.mjs",
+  "test": "node tests/thermal.test.mjs",
+  "test:engine": "node tests/engine.test.mjs"
+},
   "devDependencies": {
     "esbuild": "^0.21.0"
   }

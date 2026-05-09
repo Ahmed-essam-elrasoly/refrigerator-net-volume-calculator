@@ -96,33 +96,60 @@
             </fieldset>
             <details id="thermoAdvanced">
                 <summary>Advanced Parameters</summary>
-                <fieldset>
+            <fieldset>
+                <legend>Cabinet Geometry (mm)</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                <label>H (total): <input type="number" id="tg-H" step="any"></label>
+                <label>W (width): <input type="number" id="tg-W" step="any"></label>
+                <label>D (depth): <input type="number" id="tg-D" step="any"></label>
+                <label>Hf (freezer h): <input type="number" id="tg-Hf" step="any"></label>
+                <label>Hr (refrig h): <input type="number" id="tg-Hr" step="any"></label>
+                <label>Hb (bottom step): <input type="number" id="tg-Hb" step="any"></label>
+                <label>Db1 (bottom step1): <input type="number" id="tg-Db1" step="any"></label>
+                <label>Db2 (bottom step2): <input type="number" id="tg-Db2" step="any"></label>
+                <label>Door gap: <input type="number" id="tg-doorGap" step="any"></label>
+                <label>Packing pos: <input type="number" id="tg-packingPos" step="any"></label>
+                </div>
+                <fieldset><legend>Freezer Wall Thicknesses</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                    <label>Top:    <input type="number" id="tg-tFtop"    step="any"></label>
+                    <label>Left:   <input type="number" id="tg-tFleft"   step="any"></label>
+                    <label>Right:  <input type="number" id="tg-tFright"  step="any"></label>
+                    <label>Bottom: <input type="number" id="tg-tFbottom" step="any"></label>
+                    <label>Door:   <input type="number" id="tg-tFdoor"   step="any"></label>
+                    <label>EvaBack: <input type="number" id="tg-tEvaBack" step="any"></label>
+                </div>
+                </fieldset>
+                <fieldset><legend>Refrigerator Wall Thicknesses</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">
+                    <label>Top:    <input type="number" id="tg-tRtop"    step="any"></label>
+                    <label>Left:   <input type="number" id="tg-tRleft"   step="any"></label>
+                    <label>Right:  <input type="number" id="tg-tRright"  step="any"></label>
+                    <label>Back:   <input type="number" id="tg-tRback"   step="any"></label>
+                    <label>Bot1:   <input type="number" id="tg-tRbottom1" step="any"></label>
+                    <label>Bot2:   <input type="number" id="tg-tRbottom2" step="any"></label>
+                    <label>Bot3:   <input type="number" id="tg-tRbottom3" step="any"></label>
+                    <label>Door:   <input type="number" id="tg-tRdoor"   step="any"></label>
+                </div>
+                </fieldset>
+            </fieldset>
+            <!-- ========================================= -->
+
+            <fieldset>
                 <legend>Compressor</legend>
                 <p>EGX80CLC 100V 50Hz (fixed)</p>
-                </fieldset>
-                <fieldset>
+            </fieldset>
+            <fieldset>
                 <legend>Subcool & Discharge</legend>
                 <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
                 <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
-                </fieldset>
-                <fieldset>
-                <legend>Cabinet Bottom Geometry</legend>
-                <label>Hb (mm): <input type="number" id="thermoHb" step="any"></label>
-                <label>Db1 (mm): <input type="number" id="thermoDb1" step="any"></label>
-                <label>Db2 (mm): <input type="number" id="thermoDb2" step="any"></label>
-                <label>Door gap (mm): <input type="number" id="thermoDoorGap" step="any"></label>
-                <label>Packing pos (mm): <input type="number" id="thermoPackPos" step="any"></label>
-                </fieldset>
-                <fieldset>
+            </fieldset>
+            <fieldset>
                 <legend>Defrost</legend>
                 <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
                 <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
-                </fieldset>
-            </details>
-            <button id="thermoRunBtn" style="margin:10px 0;">Run Thermal Analysis</button>
-            <div id="thermoResults"></div>
-            <div id="thermoErrors"></div>
-            </details>
+            </fieldset>
+            </details> 
         </div>
 
         <!-- RIGHT PANEL: Schematic -->

@@ -17,7 +17,6 @@ function calcK(thickness, lambda) {
 }
 
 function kUrethane(t) { return calcK(t, PC.insulation.urethane); }
-function kPacking(t) { return calcK(t, PC.insulation.packing); }
 
 /**
  * @param {object} geom
@@ -48,7 +47,7 @@ export function calcHeatLoads(geom, temps, electrical) {
          + kUrethane(tFright) * AFright * (T0 - TF)
          + kUrethane(tFbottom) * AFbottom * (T0 - TF)
          + kUrethane(tFdoor) * AFdoor * (T0 - TF)
-         + kPacking(packingPos) * AFpackin * (T0 - TF);
+         + PC.insulation.packing * AFpackin * (T0 - TF);
 
   // Partition losses (from DP CON in MAIN)
   const DPCON1 = (0.1219*(TC - TF) + 0.1219*((0.1984*T0 + 0.1219*TF)/(0.1984+0.1219) - TF)*(1-PR)) * (W - tFleft - tFright) / 1000;
@@ -75,7 +74,7 @@ export function calcHeatLoads(geom, temps, electrical) {
          + kUrethane(tRbottom2) * ARbottom2 * (T0 - TR)
          + kUrethane(tRbottom3) * ARbottom3 * (T0 - TR)
          + kUrethane(tRdoor) * ARdoor * (T0 - TR)
-         + kPacking(packingPos) * ARpackin * (T0 - TR);
+         + PC.insulation.packing * ARpackin * (T0 - TR);
 
   const DPCON_R = (0.0546*(TC - TF) - 0.0491*(T0 - TF)) * PR * (Hr*2 + W) / 1000;
   QR += DPCON_R;

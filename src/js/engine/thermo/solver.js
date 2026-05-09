@@ -1,89 +1,115 @@
+// src/js/engine/thermo/solver.js
 import { compressorState } from './compressor.js';
 import { calcHeatLoads } from './heatLoad.js';
 import { calcQCout, calcQCin, computeCondenserAreas } from './condenser.js';
+import { PHYSICAL_CONSTANTS } from './constants.js';
 
+// ---------------------------------------------------------------------------
+// Newton solver for 2‑variable system (T2, PR) – Cramer’s rule
+// ---------------------------------------------------------------------------
 function newtonSolve(F, x0, dx, tol, maxIter) {
-  const n = x0.length;
-  let x = x0.slice();
+  let x = [x0[0], x0[1]];
+
   for (let iter = 0; iter < maxIter; iter++) {
     const f = F(x);
-    if (Math.max(...f.map(Math.abs)) <= tol) return { x, converged: true, iterations: iter+1 };
-    const J = Array.from({ length: n }, () => new Array(n));
-    for (let j = 0; j < n; j++) {
-      const xPert = x.slice(); xPert[j] += dx;
-      const fPert = F(xPert);
-      for (let i = 0; i < n; i++) J[i][j] = (fPert[i] - f[i]) / dx;
+    const res = Math.max(...f.map(Math.abs));
+
+    if (res <= tol) {
+      console.log(`Converged in ${iter+1} iterations.`);
+      return { x, converged: true, iterations: iter + 1 };
     }
-    const A = J.map((row, i) => [...row, -f[i]]);
-    for (let k = 0; k < n; k++) {
-      if (Math.abs(A[k][k]) < 1e-12) return { x, converged: false, iterations: iter+1, error: 'Singular Jacobian' };
-      for (let j = k; j <= n; j++) A[k][j] /= A[k][k];
-      for (let i = 0; i < n; i++) {
-        if (i === k) continue;
-        const fac = A[i][k];
-        for (let j = k; j <= n; j++) A[i][j] -= fac * A[k][j];
+
+    // Build Jacobian by finite differences
+    const J = [[0, 0], [0, 0]];
+    for (let j = 0; j < 2; j++) {
+      const xPert = [x[0], x[1]];
+      xPert[j] += dx;
+      const fPert = F(xPert);
+      for (let i = 0; i < 2; i++) {
+        J[i][j] = (fPert[i] - f[i]) / dx;
       }
     }
-    for (let i = 0; i < n; i++) x[i] += A[i][n];
+
+// For n=2, Cramer’s rule is simpler and faster than LU/Gaussian elimination.
+// If the system ever expands to more unknowns, switch to LU with partial pivoting.
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];    if (Math.abs(det) < 1e-12) {
+      return { x, converged: false, iterations: iter + 1, error: 'Singular Jacobian' };
+    }
+
+    const stepT2 = (-f[0] * J[1][1] + f[1] * J[0][1]) / det;
+    const stepPR = ( J[0][0] * (-f[1]) + J[1][0] * f[0]) / det;   // correct formula
+
+
+    // Apply step with hard physical bounds
+    x[0] = Math.max(-80, Math.min(20, x[0] + stepT2));
+    x[1] = Math.max(0.001, Math.min(0.999, x[1] + stepPR));
+
   }
+
   return { x, converged: false, iterations: maxIter, error: 'Max iterations' };
 }
 
+// ---------------------------------------------------------------------------
+// Inner solver (unchanged, except F is unclamped)
+// ---------------------------------------------------------------------------
 export function createInnerSolver(geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, innerOptions = {}) {
   const { dx = 0.001, tol = 1e-4, maxIter = 100 } = innerOptions;
-  return function solveInner(TC, initialGuess = [-21.25, 0.59]) {
-    const { T0, TF, TR } = fixedTemps;
+  const { T0, TF, TR, TE } = fixedTemps;
+  const rho = PHYSICAL_CONSTANTS.air.density;
+  const cp = PHYSICAL_CONSTANTS.air.cp;
+
+  return function solveInner(TC, initialGuess = null) {
+    const T2_guess = initialGuess ? initialGuess[0] : -21.2483006297973;
+    const PR_guess = initialGuess ? initialGuess[1] : 0.5905646101665666;
+
     const F = (x) => {
-      let [T2, PR] = x;
-      PR = Math.max(0.001, Math.min(1, PR));
-      const heatLoads = calcHeatLoads(geom, { T0, TF, TR, T2, TC, PR }, electrical);
-      const TE = T2;
+      const T2 = x[0];
+      const PR = x[1];
+      const temps = { T0, TF, TR, T2, TC, PR };
+      const heatLoads = calcHeatLoads(geom, temps, electrical);
       const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
       const Qtotal = heatLoads.QF + heatLoads.QR + heatLoads.QEV;
       const F2 = Qtotal - comp.coolingCapacity * PR;
 
-      // Air distribution (as in Excel)
-      const rho = 1.365;  // or from fan config
-      const cp = 0.24;
-      const T3 = T2 + heatLoads.QEV / (fan.totalAirflow * rho * cp * PR);
-      const MR = TR !== T3 ? heatLoads.QR / (rho * cp * (TR - T3) * PR) : 0;
-      const MF = fan.totalAirflow - Math.max(0, MR);
-      const QF_prime = MF * rho * cp * (TF - T2) * PR;
-      const F1 = heatLoads.QF - QF_prime;
+      const denom = fan.totalAirflow * rho * cp * PR;
+      let F1;
+      if (denom < 1e-12) {
+        F1 = heatLoads.QF;
+      } else {
+        const T3 = T2 + heatLoads.QEV / denom;
+        const MR = (Math.abs(TR - T3) < 1e-9) ? 0
+                   : heatLoads.QR / (rho * cp * (TR - T3) * PR);
+        const MF = fan.totalAirflow - MR;
+        const QF_prime = MF * rho * cp * (TF - T2) * PR;
+        F1 = heatLoads.QF - QF_prime;
+      }
       return [F1, F2];
     };
 
-    const result = newtonSolve(F, initialGuess, dx, tol, maxIter);
-    if (!result.converged) return { T2: result.x[0], PR: result.x[1], converged: false, error: result.error };
-    const finalT2 = result.x[0], finalPR = Math.max(0.001, Math.min(1, result.x[1]));
-    const finalHeatLoads = calcHeatLoads(geom, { T0: fixedTemps.T0, TF: fixedTemps.TF, TR: fixedTemps.TR, T2: finalT2, TC, PR: finalPR }, electrical);
-    const finalComp = compressorState(TC, finalT2, refrigerant, compParams, subcool);
+    const result = newtonSolve(F, [T2_guess, PR_guess], dx, tol, maxIter);
+    if (!result.converged) {
+      return { T2: result.x[0], PR: result.x[1], converged: false, error: result.error };
+    }
+
+    const finalT2 = result.x[0];
+    const finalPR = result.x[1];
+    const temps = { T0, TF, TR, T2: finalT2, TC, PR: finalPR };
+    const finalHeatLoads = calcHeatLoads(geom, temps, electrical);
+    const finalComp = compressorState(TC, TE, refrigerant, compParams, subcool);
     return {
-      T2: finalT2,
-      PR: finalPR,
-      converged: true,
-      iterations: result.iterations,
-      heatLoads: finalHeatLoads,
-      compressor: finalComp,
+      T2: finalT2, PR: finalPR, converged: true, iterations: result.iterations,
+      heatLoads: finalHeatLoads, compressor: finalComp,
     };
   };
 }
-
+// ---------------------------------------------------------------------------
+// Outer solver (unchanged)
+// ---------------------------------------------------------------------------
 export function solveThermalSystem(config) {
   const {
-    geom,
-    compParams,
-    condenserConfig,
-    refrigerant,
-    subcool,
-    dischargeTemp,
-    fixedTemps,
-    fan,
-    electrical,
-    TC0 = 54.4,
-    DH = 0.001,
-    tolOuter = 0.0005,
-    maxIterOuter = 100,
+    geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp,
+    fixedTemps, fan, electrical,
+    TC0 = 54.4, DH = 0.001, tolOuter = 0.0005, maxIterOuter = 100,
     innerOptions = {},
   } = config;
 
@@ -103,17 +129,17 @@ export function solveThermalSystem(config) {
     if (Math.abs(F3) < tolOuter) {
       return {
         TC, T2: inner.T2, PR: inner.PR, converged: true,
-        outerIterations: iter+1, innerTotalIterations: totalInnerIters,
+        outerIterations: iter + 1, innerTotalIterations: totalInnerIters,
         heatLoads: inner.heatLoads, compressor: inner.compressor,
       };
     }
 
-    const innerPert = innerSolver(TC + DH, [inner.T2, inner.PR]);
+    const innerPert = innerSolver(TC + DH);
     if (!innerPert.converged) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Perturbation inner loop failed' };
     totalInnerIters += innerPert.iterations;
     const QCoutPert = calcQCout(TC + DH, fixedTemps.T0, fixedTemps.TF, condenserAreas);
     const QCinPert = calcQCin(TC + DH, innerPert.T2, refrigerant, compParams, subcool, dischargeTemp);
-    const dF3dTC = ( (QCoutPert - QCinPert) - F3 ) / DH;
+    const dF3dTC = ((QCoutPert - QCinPert) - F3) / DH;
     if (Math.abs(dF3dTC) < 1e-9) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative' };
     TC -= F3 / dF3dTC;
   }
