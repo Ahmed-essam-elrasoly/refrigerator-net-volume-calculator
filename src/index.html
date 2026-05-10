@@ -25,7 +25,47 @@
                 <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
 
             </div>
+            <!-- ======================= UNIFIED CABINET GEOMETRY ======================= -->
+            <fieldset>
+            <legend>Cabinet Geometry (shared)</legend>
 
+            <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
+            <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
+            <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
+
+            <label>Freezer height Hf (mm): <input type="number" id="geom-Hf" step="any"></label>
+            <label>Refrigerator height Hr (mm): <input type="number" id="geom-Hr" step="any"></label><br>
+
+            <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
+            <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
+            <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
+
+            <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label>
+            <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
+            <label>Air gap (mm): <input type="number" id="geom-airGap" step="any"></label><br>
+
+            <fieldset>
+                <legend>Freezer Wall Thicknesses (mm)</legend>
+                <label>Top:    <input type="number" id="geom-walls-freezer-top" step="any"></label>
+                <label>Bottom: <input type="number" id="geom-walls-freezer-bottom" step="any"></label>
+                <label>Left:   <input type="number" id="geom-walls-freezer-left" step="any"></label>
+                <label>Right:  <input type="number" id="geom-walls-freezer-right" step="any"></label>
+                <label>Door:   <input type="number" id="geom-walls-freezer-door" step="any"></label>
+                <label>Rear:   <input type="number" id="geom-walls-freezer-rear" step="any"></label>
+            </fieldset>
+
+            <fieldset>
+                <legend>Refrigerator Wall Thicknesses (mm)</legend>
+                <label>Top:     <input type="number" id="geom-walls-refrigerator-top" step="any"></label>
+                <label>Bottom1: <input type="number" id="geom-walls-refrigerator-bottom1" step="any"></label>
+                <label>Bottom2: <input type="number" id="geom-walls-refrigerator-bottom2" step="any"></label>
+                <label>Bottom3: <input type="number" id="geom-walls-refrigerator-bottom3" step="any"></label>
+                <label>Left:    <input type="number" id="geom-walls-refrigerator-left" step="any"></label>
+                <label>Right:   <input type="number" id="geom-walls-refrigerator-right" step="any"></label>
+                <label>Rear:    <input type="number" id="geom-walls-refrigerator-rear" step="any"></label>
+                <label>Door:    <input type="number" id="geom-walls-refrigerator-door" step="any"></label>
+            </fieldset>
+            </fieldset>
             <!-- External Dimensions -->
             <fieldset>
                 <legend>External Cabinet Dimensions</legend>
@@ -77,6 +117,9 @@
             <!-- Thermodynamic Analysis Section -->
             <details id="thermoSection" style="margin-top:15px;">
             <summary style="cursor:pointer; font-weight:bold; padding:5px;">Thermodynamic Analysis</summary>
+                <button id="thermoRunBtn" style="margin:10px 0;">Run Thermal Analysis</button>
+                <div id="thermoResults"></div>
+                <div id="thermoErrors"></div>
             <fieldset>
                 <legend>Temperature Setting</legend>
                 <label>Outside T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>

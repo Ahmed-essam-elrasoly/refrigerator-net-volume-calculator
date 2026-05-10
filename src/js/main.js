@@ -5,6 +5,7 @@ import { initSettingsModal, showModal } from './ui/settingsModal.js';
 import { settings } from './settings.js';
 import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries } from './engine/calc.js';
 import { initThermoUI } from './ui/thermoUI.js';
+import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat } from './engine/geometry.js';
 // ---- DOM references ---------------------------------------------------
 const extHeightInput      = document.getElementById('extHeight');
 const extWidthInput       = document.getElementById('extWidth');
@@ -36,7 +37,74 @@ let configSlotB = null;
 let currentConfig = null;
 let dirtySchematic = false;
 let wallThicknessByType = null;
+// Shared cabinet geometry
+let currentGeometry = { ...DEFAULT_CABINET };
 
+function readGeometryFromPanel() {
+  const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
+  return {
+    H: g('geom-H') ?? DEFAULT_CABINET.H,
+    W: g('geom-W') ?? DEFAULT_CABINET.W,
+    D: g('geom-D') ?? DEFAULT_CABINET.D,
+    Hf: g('geom-Hf') ?? DEFAULT_CABINET.Hf,
+    Hr: g('geom-Hr') ?? DEFAULT_CABINET.Hr,
+    Hb: g('geom-Hb') ?? DEFAULT_CABINET.Hb,
+    Db1: g('geom-Db1') ?? DEFAULT_CABINET.Db1,
+    Db2: g('geom-Db2') ?? DEFAULT_CABINET.Db2,
+    doorGap: g('geom-doorGap') ?? DEFAULT_CABINET.doorGap,
+    packingPos: g('geom-packingPos') ?? DEFAULT_CABINET.packingPos,
+    airGap: g('geom-airGap') ?? DEFAULT_CABINET.airGap,
+    walls: {
+      freezer: {
+        top:     g('geom-walls-freezer-top') ?? DEFAULT_CABINET.walls.freezer.top,
+        bottom:  g('geom-walls-freezer-bottom') ?? DEFAULT_CABINET.walls.freezer.bottom,
+        left:    g('geom-walls-freezer-left') ?? DEFAULT_CABINET.walls.freezer.left,
+        right:   g('geom-walls-freezer-right') ?? DEFAULT_CABINET.walls.freezer.right,
+        door:    g('geom-walls-freezer-door') ?? DEFAULT_CABINET.walls.freezer.door,
+        rear:    g('geom-walls-freezer-rear') ?? DEFAULT_CABINET.walls.freezer.rear,
+      },
+      refrigerator: {
+        top:     g('geom-walls-refrigerator-top') ?? DEFAULT_CABINET.walls.refrigerator.top,
+        bottom1: g('geom-walls-refrigerator-bottom1') ?? DEFAULT_CABINET.walls.refrigerator.bottom1,
+        bottom2: g('geom-walls-refrigerator-bottom2') ?? DEFAULT_CABINET.walls.refrigerator.bottom2,
+        bottom3: g('geom-walls-refrigerator-bottom3') ?? DEFAULT_CABINET.walls.refrigerator.bottom3,
+        left:    g('geom-walls-refrigerator-left') ?? DEFAULT_CABINET.walls.refrigerator.left,
+        right:   g('geom-walls-refrigerator-right') ?? DEFAULT_CABINET.walls.refrigerator.right,
+        rear:    g('geom-walls-refrigerator-rear') ?? DEFAULT_CABINET.walls.refrigerator.rear,
+        door:    g('geom-walls-refrigerator-door') ?? DEFAULT_CABINET.walls.refrigerator.door,
+      }
+    }
+  };
+}
+
+function writeGeometryToPanel(geom) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('geom-H', geom.H);
+  set('geom-W', geom.W);
+  set('geom-D', geom.D);
+  set('geom-Hf', geom.Hf);
+  set('geom-Hr', geom.Hr);
+  set('geom-Hb', geom.Hb);
+  set('geom-Db1', geom.Db1);
+  set('geom-Db2', geom.Db2);
+  set('geom-doorGap', geom.doorGap);
+  set('geom-packingPos', geom.packingPos);
+  set('geom-airGap', geom.airGap);
+  set('geom-walls-freezer-top', geom.walls.freezer.top);
+  set('geom-walls-freezer-bottom', geom.walls.freezer.bottom);
+  set('geom-walls-freezer-left', geom.walls.freezer.left);
+  set('geom-walls-freezer-right', geom.walls.freezer.right);
+  set('geom-walls-freezer-door', geom.walls.freezer.door);
+  set('geom-walls-freezer-rear', geom.walls.freezer.rear);
+  set('geom-walls-refrigerator-top', geom.walls.refrigerator.top);
+  set('geom-walls-refrigerator-bottom1', geom.walls.refrigerator.bottom1);
+  set('geom-walls-refrigerator-bottom2', geom.walls.refrigerator.bottom2);
+  set('geom-walls-refrigerator-bottom3', geom.walls.refrigerator.bottom3);
+  set('geom-walls-refrigerator-left', geom.walls.refrigerator.left);
+  set('geom-walls-refrigerator-right', geom.walls.refrigerator.right);
+  set('geom-walls-refrigerator-rear', geom.walls.refrigerator.rear);
+  set('geom-walls-refrigerator-door', geom.walls.refrigerator.door);
+}
 // ---- Effective thickness helper (for schematic) -----------------------
 function getEffectiveThicknesses(config) {
   const { external, wallThicknessesByType, layout } = config.cabinet;
@@ -120,7 +188,11 @@ numCompartmentsInput.addEventListener('input', () => {
 });
 buildCompartmentUI();
 buildWallThicknessUI();
-initThermoUI();
+writeGeometryToPanel(currentGeometry);
+initThermoUI(() => {
+  // Ensure the thermo UI reads the latest geometry from the shared panel
+  return readGeometryFromPanel();
+});
 function buildCompartmentUI() {
   const count = Math.max(1, Math.min(8, parseInt(numCompartmentsInput.value) || 1));
   compartmentBuilder.innerHTML = '';
@@ -382,7 +454,8 @@ function buildConfigFromForm() {
     width:  parseFloat(extWidthInput.value),
     depth:  parseFloat(extDepthInput.value),
   };
-  
+    currentGeometry = readGeometryFromPanel();
+
   const types = ['fresh','freezer','flex'];
   const faces = ['top','bottom','left','right','rear','door'];
   const wallThicknessesByType = {};
@@ -394,6 +467,7 @@ function buildConfigFromForm() {
     }
   }
   wallThicknessByType = wallThicknessesByType;
+  const volumeGeom = toVolumeFormat(currentGeometry);
 
   const airGap = parseFloat(sealOffsetInput.value);
 
@@ -501,14 +575,14 @@ function buildConfigFromForm() {
   };
 
   const cabinet = {
-    external,
-    wallThicknessesByType,
-    airGap: parseFloat(sealOffsetInput.value),
+    external: volumeGeom.external,
+    wallThicknessesByType: volumeGeom.wallThicknessesByType,
+    airGap: volumeGeom.airGap,
     layout: rootNode,
   };
 
   return {
-    schemaVersion: '1.0',
+    schemaVersion: '2.0',
     meta: {
       name: 'UI Config',
       createdAt: new Date().toISOString(),
@@ -517,6 +591,7 @@ function buildConfigFromForm() {
     cabinet
   };
 }
+
 
 // ---- Populate UI from loaded config -----------------------------------
 function populateUIFromConfig(config) {
