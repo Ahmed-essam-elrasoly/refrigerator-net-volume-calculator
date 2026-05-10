@@ -8,6 +8,7 @@ import { solveThermalSystem } from './solver.js';
 import { DEFAULT_GEOMETRY } from './heatLoad.js';
 import { SJ54H_COMPONENTS } from './defaultComponents.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
+import { DEFAULT_CABINET, toThermalFormat } from '../geometry.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -149,7 +150,7 @@ export function runThermoAnalysis(config) {
  */
 export function buildDefaultConfig(overrides = {}) {
   const base = {
-    geom: { ...DEFAULT_GEOMETRY },
+    geom: toThermalFormat(DEFAULT_CABINET),
     compParams: { ...SJ54H_COMPONENTS.compressor },
     condenserConfig: {
       K_side: SJ54H_COMPONENTS.condenser.K_side_kcalhm2C,

@@ -1,7 +1,7 @@
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
-import { DEFAULT_GEOMETRY } from '../engine/thermo/heatLoad.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import { PHYSICAL_CONSTANTS } from '../engine/thermo/constants.js';
+import { DEFAULT_CABINET, toThermalFormat } from '../engine/geometry.js';
 
 let thermoSection, runBtn, resultsDiv, errorDiv;
 
@@ -17,10 +17,6 @@ export function initThermoUI() {
 
   // Initialise dedicated geometry panel with DEFAULT_GEOMETRY
   const geo = DEFAULT_GEOMETRY;
-  for (const [key, value] of Object.entries(geo)) {
-    const el = document.getElementById(`tg-${key}`);
-    if (el) el.value = value;
-  }
 
   // Other defaults (subcool, discharge temp, fan, etc.)
   document.getElementById('thermoSubcool').value  = SJ54H_COMPONENTS.subcool_K;
@@ -34,21 +30,8 @@ function handleRun() {
   clearMessages();
 
   // ---------- Collect geometry from dedicated panel ----------
-  const geomFields = Object.keys(DEFAULT_GEOMETRY);   // array of all property names
-  const geom = {};
-  for (const field of geomFields) {
-    const el = document.getElementById(`tg-${field}`);
-    if (!el) {
-      showError(`Missing geometry input: tg-${field}`);
-      return;
-    }
-    const val = parseFloat(el.value);
-    if (isNaN(val)) {
-      showError(`Invalid number for geometry field: ${field}`);
-      return;
-    }
-    geom[field] = val;
-  }
+  // Build geometry from shared default (will later be replaced by unified app state)
+  const geom = toThermalFormat(DEFAULT_CABINET);  }
 
   // ---------- Fixed temperatures ----------
   const T0 = parseFloat(document.getElementById('thermoT0')?.value);
