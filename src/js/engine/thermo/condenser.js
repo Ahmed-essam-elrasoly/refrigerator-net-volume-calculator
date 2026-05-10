@@ -40,6 +40,8 @@ export function computeCondenserAreas(geom, condenserConfig) {
     RFrontLength, FRPartitionLength, FFrontLength,
     sideKA: K_side * sideArea,
     backKA: K_back * backArea,
+    sideArea,      // raw side area (m²)
+    backArea,      // raw back area (m²)
     k_RFront1, k_RFront2,
     k_FRPartition1, k_FRPartition2,
     k_FFront1, k_FFront2,
