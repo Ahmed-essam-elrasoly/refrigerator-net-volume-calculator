@@ -10,6 +10,7 @@
 import { deriveRootSpace, aggregateTotals, walkBoundaries } from './calc.js';
 import { validateStructure }                                from './validationPass1.js';
 import { traverseAndCompute }                               from './traversal.js';
+import { upgradeConfig, toVolumeFormat } from './geometry.js';
 
 // ---------------------------------------------------------------------------
 // Cabinet-level pre-checks (run before Pass 2 tree traversal)
@@ -142,47 +143,35 @@ function checkHierarchy(leaves, totals) {
  * @returns {import('./types').CalcResult}
  */
 export function runCalculation(config) {
-  const result = {
-    leaves:           null,
-    totals:           null,
-    validationErrors: [],
-    calcErrors:       [],
-    warnings:         [],
-  };
+  const result = { leaves:null, totals:null, validationErrors:[], calcErrors:[], warnings:[] };
 
   // Pass 1 — structural
   const structErrors = validateStructure(config.cabinet.layout);
-  if (structErrors.length) {
-    result.validationErrors = structErrors;
-    return result;
+  if (structErrors.length) { result.validationErrors = structErrors; return result; }
+
+  // Backward compatibility
+  if (config.schemaVersion === '1.0' || (!config.cabinet.geometry && config.cabinet.external)) {
+    config = upgradeConfig(config);
   }
 
-  // Cabinet-level pre-checks
-  const cabinetErrors = validateCabinet(config.cabinet);
-  if (cabinetErrors.length) {
-    result.validationErrors = cabinetErrors;
-    return result;
-  }
+  const { geometry, layout } = config.cabinet;
 
-  // Derive root space
-  const rootSpace = deriveRootSpace(config.cabinet, config.cabinet.layout);
+  // Derive volume format and validate cabinet dimensions
+  const volumeGeom = toVolumeFormat(geometry);
+  const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
+  if (cabinetErrors.length) { result.validationErrors = cabinetErrors; return result; }
 
-  // Pass 2 — space derivation + dimension checks + calculation
-  const { leaves, errors: dimErrors, warnings } = traverseAndCompute(
-    config.cabinet.layout,
-    rootSpace
-  );
+  const rootSpace = deriveRootSpace(volumeGeom, layout);
 
+  // Pass 2
+  const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
   result.validationErrors = dimErrors;
-  result.warnings         = warnings;
-  result.leaves           = leaves;
+  result.warnings = warnings;
+  result.leaves = leaves;
 
-  // Aggregate totals only if we have leaf results
   if (leaves.length > 0) {
     const totals = aggregateTotals(leaves);
     result.totals = totals;
-
-    // Post-calc hierarchy check
     result.calcErrors = checkHierarchy(leaves, totals);
   }
 
