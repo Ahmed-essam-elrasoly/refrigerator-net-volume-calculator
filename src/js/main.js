@@ -5,14 +5,10 @@ import { initSettingsModal, showModal } from './ui/settingsModal.js';
 import { settings } from './settings.js';
 import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries } from './engine/calc.js';
 import { initThermoUI } from './ui/thermoUI.js';
-import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat } from './engine/geometry.js';
-// ---- DOM references ---------------------------------------------------
-const extHeightInput      = document.getElementById('extHeight');
-const extWidthInput       = document.getElementById('extWidth');
-const extDepthInput       = document.getElementById('extDepth');
+import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
+// ---- DOM references (only those that still exist) ---------------------
 const divHorizInput       = document.getElementById('divHoriz');
 const divVertInput        = document.getElementById('divVert');
-const sealOffsetInput     = document.getElementById('sealOffset');
 const numCompartmentsInput= document.getElementById('numCompartments');
 const compartmentBuilder  = document.getElementById('compartmentBuilder');
 const calculateBtn        = document.getElementById('calculateBtn');
@@ -36,8 +32,8 @@ let configSlotA = null;
 let configSlotB = null;
 let currentConfig = null;
 let dirtySchematic = false;
-let wallThicknessByType = null;
-// Shared cabinet geometry
+
+// ---- Shared cabinet geometry ------------------------------------------
 let currentGeometry = { ...DEFAULT_CABINET };
 
 function readGeometryFromPanel() {
@@ -105,68 +101,17 @@ function writeGeometryToPanel(geom) {
   set('geom-walls-refrigerator-rear', geom.walls.refrigerator.rear);
   set('geom-walls-refrigerator-door', geom.walls.refrigerator.door);
 }
-// ---- Effective thickness helper (for schematic) -----------------------
-function getEffectiveThicknesses(config) {
-  const { external, wallThicknessesByType, layout } = config.cabinet;
-  const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
-  walkBoundaries(layout, boundaryTypes, true, true, true, true);
-  const eff = {};
-  const allTypes = ['fresh','freezer','flex'];
-  for (const face of ['top','bottom','left','right']) {
-    let max = 0;
-    for (const t of boundaryTypes[face]) {
-      const val = wallThicknessesByType[t]?.[face] ?? 0;
-      if (val > max) max = val;
-    }
-    if (boundaryTypes[face].size === 0) {
-      for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
-    }
-    eff[face] = max;
-  }
-  eff.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
-  eff.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
-  return eff;
-}
 
-// ---- Build wall thickness UI ------------------------------------------
-function buildWallThicknessUI() {
-  const container = document.getElementById('wallThicknessPerType');
-  const types = ['fresh', 'freezer', 'flex'];
-  const labels = ['Fresh Food', 'Freezer', 'Convertible'];
-  const faces = ['top','bottom','left','right','rear','door'];
-  const defaultValues = {
-    top:50, bottom:50, left:50, right:50, rear:50, door:70
+function getEffectiveThicknesses() {
+  const g = currentGeometry;
+  return {
+    top: Math.max(g.walls.freezer.top, g.walls.refrigerator.top),
+    bottom: Math.max(g.walls.freezer.bottom, g.walls.refrigerator.bottom1, g.walls.refrigerator.bottom2, g.walls.refrigerator.bottom3),
+    left: Math.max(g.walls.freezer.left, g.walls.refrigerator.left),
+    right: Math.max(g.walls.freezer.right, g.walls.refrigerator.right),
+    rear: Math.max(g.walls.freezer.rear, g.walls.refrigerator.rear),
+    door: Math.max(g.walls.freezer.door, g.walls.refrigerator.door),
   };
-  const currentValues = wallThicknessByType || {};
-  
-  let html = '<table style="width:100%; border:1px solid #ccc; border-collapse:collapse;">';
-  html += '<tr><th></th><th>Top</th><th>Bottom</th><th>Left</th><th>Right</th><th>Rear</th><th>Door</th></tr>';
-  for (let t = 0; t < types.length; t++) {
-    const type = types[t];
-    html += `<tr><td><strong>${labels[t]}</strong></td>`;
-    for (const face of faces) {
-      const val = (currentValues[type] && currentValues[type][face] != null) ? currentValues[type][face] : defaultValues[face];
-      html += `<td><input type="number" id="wall-${type}-${face}" value="${val}" step="any" min="0" style="width:60px;"></td>`;
-    }
-    html += '</tr>';
-  }
-  html += '</table>';
-  container.innerHTML = html;
-
-  document.getElementById('copyToAllTypesBtn').addEventListener('click', () => {
-    const freshValues = {};
-    for (const face of faces) {
-      freshValues[face] = parseFloat(document.getElementById(`wall-fresh-${face}`).value) || defaultValues[face];
-    }
-    for (const otherType of ['freezer','flex']) {
-      for (const face of faces) {
-        document.getElementById(`wall-${otherType}-${face}`).value = freshValues[face];
-      }
-    }
-    markDirty();
-  });
-
-  container.querySelectorAll('input').forEach(inp => inp.addEventListener('input', markDirty));
 }
 
 // ---- Mark schematic dirty ---------------------------------------------
@@ -181,13 +126,13 @@ function markDirty() {
 
 document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
 
-// ---- Dynamic compartment builder --------------------------------------
+// ---- Compartment builder (unchanged) ----------------------------------
 numCompartmentsInput.addEventListener('input', () => {
   markDirty();
   buildCompartmentUI();
 });
+
 buildCompartmentUI();
-buildWallThicknessUI();
 writeGeometryToPanel(currentGeometry);
 initThermoUI(() => {
   // Ensure the thermo UI reads the latest geometry from the shared panel
@@ -221,59 +166,57 @@ function buildCompartmentUI() {
       </label>
 
       <div class="verticalSubContainer" data-comp="${i}" style="display:none;">
-        <fieldset>
-          <legend>Left sub-compartment</legend>
-          <div class="shelfContainer" data-comp="${i}" data-sub="left"></div>
-          <button type="button" data-action="addShelf" data-comp="${i}" data-sub="left">Add Shelf</button>
-          <div class="drawerContainer" data-comp="${i}" data-sub="left"></div>
-          <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="left">Add Drawer</button>
-          <div class="binContainer" data-comp="${i}" data-sub="left"></div>
-          <button type="button" data-action="addBin" data-comp="${i}" data-sub="left">Add Door Bin</button>
-        </fieldset>
-        <fieldset>
-          <legend>Mechanical Housings</legend>
-          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
-          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
-        </fieldset>
+<fieldset>
+  <legend>Left sub-compartment</legend>
+  <div class="shelfContainer" data-comp="${i}" data-sub="left"></div>
+  <button type="button" data-action="addShelf" data-comp="${i}" data-sub="left">Add Shelf</button>
+  <div class="drawerContainer" data-comp="${i}" data-sub="left"></div>
+  <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="left">Add Drawer</button>
+  <div class="binContainer" data-comp="${i}" data-sub="left"></div>
+  <button type="button" data-action="addBin" data-comp="${i}" data-sub="left">Add Door Bin</button>
+</fieldset>
+<fieldset>
+  <legend>Mechanical Housings</legend>
+  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
+  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
+</fieldset>
 
-        <fieldset>
-          <legend>Right sub-compartment</legend>
-          <div class="shelfContainer" data-comp="${i}" data-sub="right"></div>
-          <button type="button" data-action="addShelf" data-comp="${i}" data-sub="right">Add Shelf</button>
-          <div class="drawerContainer" data-comp="${i}" data-sub="right"></div>
-          <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="right">Add Drawer</button>
-          <div class="binContainer" data-comp="${i}" data-sub="right"></div>
-          <button type="button" data-action="addBin" data-comp="${i}" data-sub="right">Add Door Bin</button>
-        </fieldset>
-        <fieldset>
-          <legend>Mechanical Housings</legend>
-          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
-          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
-        </fieldset>
-      </div>
+<fieldset>
+  <legend>Right sub-compartment</legend>
+  <div class="shelfContainer" data-comp="${i}" data-sub="right"></div>
+  <button type="button" data-action="addShelf" data-comp="${i}" data-sub="right">Add Shelf</button>
+  <div class="drawerContainer" data-comp="${i}" data-sub="right"></div>
+  <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="right">Add Drawer</button>
+  <div class="binContainer" data-comp="${i}" data-sub="right"></div>
+  <button type="button" data-action="addBin" data-comp="${i}" data-sub="right">Add Door Bin</button>
+</fieldset>
+<fieldset>
+  <legend>Mechanical Housings</legend>
+  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
+  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
+</fieldset>      </div>
 
       <div class="singleSubContainer" data-comp="${i}">
-        <fieldset>
-          <legend>Shelves</legend>
-          <div class="shelfContainer" data-comp="${i}"></div>
-          <button type="button" data-action="addShelf" data-comp="${i}">Add Shelf</button>
-        </fieldset>
-        <fieldset>
-          <legend>Drawers / Crispers</legend>
-          <div class="drawerContainer" data-comp="${i}"></div>
-          <button type="button" data-action="addDrawer" data-comp="${i}">Add Drawer</button>
-        </fieldset>
-        <fieldset>
-          <legend>Door Bins</legend>
-          <div class="binContainer" data-comp="${i}"></div>
-          <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
-        </fieldset>
-        <fieldset>
-          <legend>Mechanical Housings</legend>
-          <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
-          <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
-        </fieldset>
-      </div>
+<fieldset>
+  <legend>Shelves</legend>
+  <div class="shelfContainer" data-comp="${i}"></div>
+  <button type="button" data-action="addShelf" data-comp="${i}">Add Shelf</button>
+</fieldset>
+<fieldset>
+  <legend>Drawers / Crispers</legend>
+  <div class="drawerContainer" data-comp="${i}"></div>
+  <button type="button" data-action="addDrawer" data-comp="${i}">Add Drawer</button>
+</fieldset>
+<fieldset>
+  <legend>Door Bins</legend>
+  <div class="binContainer" data-comp="${i}"></div>
+  <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
+</fieldset>
+<fieldset>
+  <legend>Mechanical Housings</legend>
+  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
+  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
+</fieldset>      </div>
     `;
     compartmentBuilder.appendChild(fieldset);
   }
@@ -449,27 +392,8 @@ function collectFittings(compIndex, sub, type) {
 
 // ---- Build CabinetConfig from DOM -------------------------------------
 function buildConfigFromForm() {
-  const external = {
-    height: parseFloat(extHeightInput.value),
-    width:  parseFloat(extWidthInput.value),
-    depth:  parseFloat(extDepthInput.value),
-  };
-    currentGeometry = readGeometryFromPanel();
-
-  const types = ['fresh','freezer','flex'];
-  const faces = ['top','bottom','left','right','rear','door'];
-  const wallThicknessesByType = {};
-  for (const type of types) {
-    wallThicknessesByType[type] = {};
-    for (const face of faces) {
-      const el = document.getElementById(`wall-${type}-${face}`);
-      wallThicknessesByType[type][face] = parseFloat(el.value) || 0;
-    }
-  }
-  wallThicknessByType = wallThicknessesByType;
+  currentGeometry = readGeometryFromPanel();
   const volumeGeom = toVolumeFormat(currentGeometry);
-
-  const airGap = parseFloat(sealOffsetInput.value);
 
   const count = parseInt(numCompartmentsInput.value) || 1;
   const leaves = [];
@@ -527,11 +451,7 @@ function buildConfigFromForm() {
           },
         },
       };
-      leaves.push({
-        heightMode: 'ratio',
-        heightValue: heightRatio,
-        node: vertNode,
-      });
+      leaves.push({ heightMode: 'ratio', heightValue: heightRatio, node: vertNode });
     } else {
       const shelves = collectFittings(i, '', 'shelf');
       const drawers = collectFittings(i, '', 'drawer');
@@ -556,18 +476,10 @@ function buildConfigFromForm() {
       });
     }
   }
-
-  const totalRatio = leaves.reduce((s, l) => s + l.heightValue, 0);
-  if (totalRatio > 0) { leaves.forEach(l => l.heightValue /= totalRatio); }
-
   const rootNode = {
     nodeType: 'horizontal',
     id: 'root',
-    children: leaves.map(l => ({
-      heightMode: l.heightMode,
-      heightValue: l.heightValue,
-      node: l.node,
-    })),
+    children: leaves.map(l => ({ heightMode: l.heightMode, heightValue: l.heightValue, node: l.node })),
     dividers: Array.from({ length: leaves.length - 1 }, (_, i) => ({
       afterChildIndex: i,
       thickness: parseFloat(divHorizInput.value) || 20,
@@ -577,41 +489,27 @@ function buildConfigFromForm() {
   const cabinet = {
     external: volumeGeom.external,
     wallThicknessesByType: volumeGeom.wallThicknessesByType,
-    airGap: volumeGeom.airGap,
+    airGap: currentGeometry.airGap,
     layout: rootNode,
   };
 
   return {
-    schemaVersion: '2.0',
-    meta: {
-      name: 'UI Config',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    config: {
+      schemaVersion: '2.0',
+      meta: { name: 'UI Config', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      cabinet
     },
-    cabinet
+    layout: rootNode
   };
 }
 
-
-// ---- Populate UI from loaded config -----------------------------------
+// ---- Populate from loaded config --------------------------------------
 function populateUIFromConfig(config) {
-  extHeightInput.value = config.cabinet.external.height;
-  extWidthInput.value  = config.cabinet.external.width;
-  extDepthInput.value  = config.cabinet.external.depth;
-  sealOffsetInput.value = config.cabinet.airGap;
-
-  let perType = config.cabinet.wallThicknessesByType;
-  if (!perType && config.cabinet.wallThicknesses) {
-    const old = config.cabinet.wallThicknesses;
-    perType = {};
-    for (const type of ['fresh','freezer','flex']) { perType[type] = { ...old }; }
-  } else if (!perType) {
-    const def = { top:50, bottom:50, left:50, right:50, rear:50, door:70 };
-    perType = {};
-    for (const type of ['fresh','freezer','flex']) { perType[type] = { ...def }; }
+  if (!config.cabinet.geometry && config.cabinet.external) {
+    config = upgradeConfig(config);
   }
-  wallThicknessByType = perType;
-  buildWallThicknessUI();
+  currentGeometry = config.cabinet.geometry;
+  writeGeometryToPanel(currentGeometry);
 
   const layout = config.cabinet.layout;
   if (layout.nodeType !== 'horizontal') return;
@@ -707,13 +605,14 @@ function showMessages(errors, warnings, calcErrors) {
 
 // ---- Calculate --------------------------------------------------------
 calculateBtn.addEventListener('click', () => {
-  const config = buildConfigFromForm();
+  const { config, layout } = buildConfigFromForm();
   currentConfig = config;
   if (currentConfig) {
     storeSlotABtn.style.display = 'inline-block';
     storeSlotBBtn.style.display = 'inline-block';
     compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
   }
+
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
@@ -733,14 +632,15 @@ calculateBtn.addEventListener('click', () => {
     canvas.width = settings.canvasWidth;
     canvas.height = settings.canvasHeight;
     if (result.leaves && result.leaves.length > 0) {
-      const effectiveWalls = getEffectiveThicknesses(currentConfig);
-      drawSchematic(result.leaves, effectiveWalls, currentConfig, canvas, schematicTooltip);
-      dirtySchematic = false;
-      schematicOverlay.classList.add('hidden');
-    } else {
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      dirtySchematic = false;
+          const effectiveWalls = getEffectiveThicknesses();
+          const tempConfig = {
+            cabinet: {
+              external: { height: currentGeometry.H, width: currentGeometry.W, depth: currentGeometry.D },
+              layout: config.cabinet.layout
+            }
+          };
+          drawSchematic(result.leaves, effectiveWalls, tempConfig, canvas, schematicTooltip);
+          dirtySchematic = false;
       schematicOverlay.classList.add('hidden');
     }
   }
@@ -814,22 +714,17 @@ settingsBtn.addEventListener('click', showModal);
 resetAllBtn.addEventListener('click', () => {
   if (!confirm('Reset all fields to default values and clear results?')) return;
 
-  extHeightInput.value = '';
-  extWidthInput.value  = '';
-  extDepthInput.value  = '';
-  divHorizInput.value  = 20;
-  divVertInput.value   = 20;
-  sealOffsetInput.value = 5;
+  currentGeometry = { ...DEFAULT_CABINET };
+  writeGeometryToPanel(currentGeometry);
+
+  divHorizInput.value = 20;
+  divVertInput.value = 20;
   numCompartmentsInput.value = 2;
   storeSlotABtn.style.display = 'none';
   storeSlotBBtn.style.display = 'none';
   compareSlotsBtn.style.display = 'none';
   configSlotA = null;
   configSlotB = null;
-
-  // Reset per-type walls to defaults
-  wallThicknessByType = null;
-  buildWallThicknessUI();
 
   buildCompartmentUI();
 
@@ -852,7 +747,6 @@ resetAllBtn.addEventListener('click', () => {
   dirtySchematic = false;
   currentConfig = null;
 });
-
 // ---- Auto‑calculate & settings change handler ------------------------
 document.addEventListener('input', (e) => {
   if (settings.autoCalculate && e.target.closest('.left-panel')) {
