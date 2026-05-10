@@ -108,7 +108,7 @@ export function solveThermalSystem(config) {
     totalInnerIters += inner.iterations;
 
     const QCout = calcQCout(TC, T0, fixedTemps.TF, condenserAreas);
-    const QCin = calcQCin(TC, inner.T2, refrigerant, compParams, subcool, dischargeTemp);
+    const QCin = calcQCin(TC, fixedTemps.TE, refrigerant, compParams, subcool, dischargeTemp);
     const F3 = QCout - QCin;
     if (Math.abs(F3) < tolOuter) {
       return {
@@ -128,7 +128,7 @@ export function solveThermalSystem(config) {
     totalInnerIters += innerPert.iterations;
 
     const QCoutPert = calcQCout(TC + DH, T0, fixedTemps.TF, condenserAreas);
-    const QCinPert = calcQCin(TC + DH, innerPert.T2, refrigerant, compParams, subcool, dischargeTemp);
+    const QCinPert = calcQCin(TC + DH, fixedTemps.TE, refrigerant, compParams, subcool, dischargeTemp);
     const dF3dTC = ((QCoutPert - QCinPert) - F3) / DH;
     if (Math.abs(dF3dTC) < 1e-9) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative' };
     TC -= F3 / dF3dTC;
