@@ -1,11 +1,12 @@
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
+import { toThermalFormat } from '../engine/geometry.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import { PHYSICAL_CONSTANTS } from '../engine/thermo/constants.js';
-import { DEFAULT_CABINET, toThermalFormat } from '../engine/geometry.js';
 
+let getGeometryFn = null;
 let thermoSection, runBtn, resultsDiv, errorDiv;
 
-export function initThermoUI() {
+export function initThermoUI(getGeometry) {
   thermoSection = document.getElementById('thermoSection');
   if (!thermoSection) return;
 
@@ -13,12 +14,15 @@ export function initThermoUI() {
   resultsDiv = document.getElementById('thermoResults');
   errorDiv = document.getElementById('thermoErrors');
 
+  if (!runBtn || !resultsDiv || !errorDiv) {
+    console.warn('Thermo UI elements missing – thermal analysis disabled.');
+    return;
+  }
+
+  getGeometryFn = getGeometry;
   runBtn.addEventListener('click', handleRun);
 
-  // Initialise dedicated geometry panel with DEFAULT_GEOMETRY
-  const geo = DEFAULT_GEOMETRY;
-
-  // Other defaults (subcool, discharge temp, fan, etc.)
+  // Pre‑fill other thermal defaults
   document.getElementById('thermoSubcool').value  = SJ54H_COMPONENTS.subcool_K;
   document.getElementById('thermoDiscTemp').value = SJ54H_COMPONENTS.dischargeTemp_C;
   document.getElementById('thermoFanFlow').value  = SJ54H_COMPONENTS.fan.totalAirflow_m3h;
@@ -29,11 +33,14 @@ export function initThermoUI() {
 function handleRun() {
   clearMessages();
 
-  // ---------- Collect geometry from dedicated panel ----------
-  // Build geometry from shared default (will later be replaced by unified app state)
-  const geom = toThermalFormat(DEFAULT_CABINET);  }
+  if (!getGeometryFn) {
+    showError('Geometry source not available.');
+    return;
+  }
 
-  // ---------- Fixed temperatures ----------
+  const cabinetGeom = getGeometryFn();
+  const geom = toThermalFormat(cabinetGeom);
+
   const T0 = parseFloat(document.getElementById('thermoT0')?.value);
   const TF = parseFloat(document.getElementById('thermoTF')?.value);
   const TR = parseFloat(document.getElementById('thermoTR')?.value);
@@ -63,17 +70,14 @@ function handleRun() {
   };
 
   const config = {
-   geom,
+    geom,
     compParams,
     condenserConfig,
     refrigerant,
     subcool,
     dischargeTemp,
-    fixedTemps: { T0, TF, TR, TE: -23.3 },   // add TE
-    fan: {
-      totalAirflow: fanFlow,
-      // density and cp will use defaults from constants inside solver if not provided
-    },
+    fixedTemps: { T0, TF, TR, TE: -23.3 },
+    fan: { totalAirflow: fanFlow },
     electrical: {
       defrostHeater_W: defHeater,
       defrostOn_min: defOnMin,
@@ -92,8 +96,6 @@ function handleRun() {
   }
 }
 
-// displayResults, clearMessages, showError, showWarnings remain unchanged
-/** Display solver results */
 function displayResults(res) {
   if (!res) return;
   const html = `
