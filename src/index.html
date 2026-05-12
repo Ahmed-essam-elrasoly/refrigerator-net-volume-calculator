@@ -7,144 +7,178 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="page">
-        <!-- LEFT PANEL: Calculator -->
-        <div class="left-panel">
-        <h1>Refrigerator Net Storage Volume Calculator</h1>
-        <p>ES 3794 / IEC 62552 compliant</p>
-        <div class="sticky-buttons">
-            <button id="settingsBtn">⚙️ Settings</button>
-            <button id="calculateBtn">Calculate</button>
-            <button id="saveBtn">Save Configuration (JSON)</button>
-            <button id="loadBtn">Load Configuration (JSON)</button>
-            <button id="exportBtn">Export Results (CSV)</button>
-            <button id="resetAllBtn">🔄 Reset All</button>
-            <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
-            <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
-            <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
-        </div>
+<div class="page">
+  <!-- LEFT PANEL: Calculator -->
+  <div class="left-panel">
+    <h1>Refrigerator Net Storage Volume Calculator</h1>
+    <p>Gross &amp; Usable Volume – concept design tool</p>
+    <div class="sticky-buttons">
+      <button id="settingsBtn">⚙️ Settings</button>
+      <button id="calculateBtn">Calculate</button>
+      <button id="saveBtn">Save Configuration (JSON)</button>
+      <button id="loadBtn">Load Configuration (JSON)</button>
+      <button id="exportBtn">Export Results (CSV)</button>
+      <button id="resetAllBtn">🔄 Reset All</button>
+      <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
+      <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
+      <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
+    </div>
 
-        <!-- UNIFIED CABINET GEOMETRY -->
+    <!-- UNIFIED CABINET GEOMETRY -->
+    <fieldset>
+      <legend>Cabinet Geometry (shared)</legend>
+      <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
+      <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
+      <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
+
+      <label>Freezer height Hf (mm): <input type="number" id="geom-Hf" step="any"></label>
+      <label>Refrigerator height Hr (mm): <input type="number" id="geom-Hr" step="any"></label><br>
+
+      <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
+      <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
+      <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
+
+      <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label>
+      <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
+      <label>Air gap (mm): <input type="number" id="geom-airGap" step="any"></label>
+      <label>Usable volume factor (%): <input type="number" id="usableFactor" value="97" step="any" min="0" max="100"></label><br>
+
+      <fieldset>
+        <legend>Freezer Wall Thicknesses (mm)</legend>
+        <label>Top:    <input type="number" id="geom-walls-freezer-top" step="any"></label>
+        <label>Bottom: <input type="number" id="geom-walls-freezer-bottom" step="any"></label>
+        <label>Left:   <input type="number" id="geom-walls-freezer-left" step="any"></label>
+        <label>Right:  <input type="number" id="geom-walls-freezer-right" step="any"></label>
+        <label>Door:   <input type="number" id="geom-walls-freezer-door" step="any"></label>
+        <label>Rear:   <input type="number" id="geom-walls-freezer-rear" step="any"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Refrigerator Wall Thicknesses (mm)</legend>
+        <label>Top:     <input type="number" id="geom-walls-refrigerator-top" step="any"></label>
+        <label>Bottom1: <input type="number" id="geom-walls-refrigerator-bottom1" step="any"></label>
+        <label>Bottom2: <input type="number" id="geom-walls-refrigerator-bottom2" step="any"></label>
+        <label>Bottom3: <input type="number" id="geom-walls-refrigerator-bottom3" step="any"></label>
+        <label>Left:    <input type="number" id="geom-walls-refrigerator-left" step="any"></label>
+        <label>Right:   <input type="number" id="geom-walls-refrigerator-right" step="any"></label>
+        <label>Rear:    <input type="number" id="geom-walls-refrigerator-rear" step="any"></label>
+        <label>Door:    <input type="number" id="geom-walls-refrigerator-door" step="any"></label>
+      </fieldset>
+    </fieldset>
+
+    <!-- Partition Divider Thickness -->
+    <fieldset>
+      <legend>Partition Divider Thickness (mm)</legend>
+      <label>Horizontal: <input type="number" id="divHoriz" value="20" step="any" required></label>
+    </fieldset>
+
+    <!-- Compartments -->
+    <fieldset>
+      <legend>Compartments</legend>
+      <label>Number of compartments (1–2):
+        <input type="number" id="numCompartments" min="1" max="2" value="2" required>
+      </label>
+      <div id="compartmentBuilder"></div>
+    </fieldset>
+
+    <!-- Results -->
+    <fieldset>
+      <legend>Calculated Volumes</legend>
+      <div id="results">
+        <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
+        <p>Usable Volume: <span id="usableVol">--</span> L (<span id="usableVolCuft">--</span> cu. ft.)</p>
+      </div>
+    </fieldset>
+
+    <fieldset id="messagesFieldset" style="display:none;">
+      <legend>Messages</legend>
+      <div id="messages"></div>
+    </fieldset>
+
+    <!-- Thermodynamic Analysis -->
+    <details id="thermoSection" style="margin-top:15px;">
+      <summary style="cursor:pointer; font-weight:bold; padding:5px;">Thermodynamic Analysis</summary>
+      <button id="thermoRunBtn" style="margin:10px 0;">Run Thermal Analysis</button>
+      <div id="thermoResults"></div>
+      <div id="thermoErrors"></div>
+      <fieldset>
+        <legend>Temperature Setting</legend>
+        <label>Outside T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
+        <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
+        <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Refrigerant</legend>
+        <select id="thermoRefrigerant">
+          <option value="R-600a">R-600a</option>
+          <option value="R-134a">R-134a</option>
+        </select>
+      </fieldset>
+      <fieldset>
+        <legend>Fan</legend>
+        <label>Total airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
+      </fieldset>
+      <details id="thermoAdvanced">
+        <summary>Advanced Parameters</summary>
         <fieldset>
-            <legend>Cabinet Geometry (shared)</legend>
-            <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
-            <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
-            <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
-
-            <label>Freezer height Hf (mm): <input type="number" id="geom-Hf" step="any"></label>
-            <label>Refrigerator height Hr (mm): <input type="number" id="geom-Hr" step="any"></label><br>
-
-            <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
-            <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
-            <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
-
-            <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label>
-            <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
-            <label>Air gap (mm): <input type="number" id="geom-airGap" step="any"></label><br>
-
-            <fieldset>
-                <legend>Freezer Wall Thicknesses (mm)</legend>
-                <label>Top:    <input type="number" id="geom-walls-freezer-top" step="any"></label>
-                <label>Bottom: <input type="number" id="geom-walls-freezer-bottom" step="any"></label>
-                <label>Left:   <input type="number" id="geom-walls-freezer-left" step="any"></label>
-                <label>Right:  <input type="number" id="geom-walls-freezer-right" step="any"></label>
-                <label>Door:   <input type="number" id="geom-walls-freezer-door" step="any"></label>
-                <label>Rear:   <input type="number" id="geom-walls-freezer-rear" step="any"></label>
-            </fieldset>
-
-            <fieldset>
-                <legend>Refrigerator Wall Thicknesses (mm)</legend>
-                <label>Top:     <input type="number" id="geom-walls-refrigerator-top" step="any"></label>
-                <label>Bottom1: <input type="number" id="geom-walls-refrigerator-bottom1" step="any"></label>
-                <label>Bottom2: <input type="number" id="geom-walls-refrigerator-bottom2" step="any"></label>
-                <label>Bottom3: <input type="number" id="geom-walls-refrigerator-bottom3" step="any"></label>
-                <label>Left:    <input type="number" id="geom-walls-refrigerator-left" step="any"></label>
-                <label>Right:   <input type="number" id="geom-walls-refrigerator-right" step="any"></label>
-                <label>Rear:    <input type="number" id="geom-walls-refrigerator-rear" step="any"></label>
-                <label>Door:    <input type="number" id="geom-walls-refrigerator-door" step="any"></label>
-            </fieldset>
+          <legend>Compressor</legend>
+          <p>EGX80CLC 100V 50Hz (fixed)</p>
         </fieldset>
-
-        <!-- Partition Divider Thickness -->
         <fieldset>
-            <legend>Partition Divider Thickness (mm)</legend>
-            <label>Horizontal: <input type="number" id="divHoriz" value="20" step="any" required></label>
-            <label>Vertical: <input type="number" id="divVert" value="20" step="any" required></label>
+          <legend>Subcool &amp; Discharge</legend>
+          <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+          <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
         </fieldset>
-
-        <!-- Compartments -->
         <fieldset>
-            <legend>Compartments (max 8)</legend>
-            <label>Number of compartments (1–8): <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
-            <div id="compartmentBuilder"></div>
+          <legend>Defrost</legend>
+          <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+          <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
         </fieldset>
+      </details>
+    </details>
+  </div>
 
-        <!-- Results -->
-        <fieldset>
-            <legend>Calculated Volumes</legend>
-            <div id="results">
-            <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
-            <p>Egyptian Net (ES 3794): <span id="egNetVol">--</span> L (<span id="egNetVolCuft">--</span> cu. ft.)</p>
-            <p>IEC Net (IEC 62552): <span id="iecNetVol">--</span> L (<span id="iecNetVolCuft">--</span> cu. ft.)</p>
-            </div>
-        </fieldset>
+  <!-- SPLITTER -->
+  <div class="splitter" id="splitter"></div>
 
-        <fieldset id="messagesFieldset" style="display:none;">
-            <legend>Messages</legend>
-            <div id="messages"></div>
-        </fieldset>
+  <!-- RIGHT PANEL: Schematics -->
+  <div class="right-panel">
+    <canvas id="schematicFront" width="400" height="600"></canvas>
+    <canvas id="schematicSide"  width="400" height="600"></canvas>
+    <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated – click Calculate</div>
+    <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
+  </div>
+</div>
 
-        <!-- Thermodynamic Analysis -->
-        <details id="thermoSection" style="margin-top:15px;">
-            <summary style="cursor:pointer; font-weight:bold; padding:5px;">Thermodynamic Analysis</summary>
-            <button id="thermoRunBtn" style="margin:10px 0;">Run Thermal Analysis</button>
-            <div id="thermoResults"></div>
-            <div id="thermoErrors"></div>
-            <fieldset>
-            <legend>Temperature Setting</legend>
-            <label>Outside T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
-            <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
-            <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
-            </fieldset>
-            <fieldset>
-            <legend>Refrigerant</legend>
-            <select id="thermoRefrigerant">
-                <option value="R-600a">R-600a</option>
-                <option value="R-134a">R-134a</option>
-            </select>
-            </fieldset>
-            <fieldset>
-            <legend>Fan</legend>
-            <label>Total airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
-            </fieldset>
-            <details id="thermoAdvanced">
-            <summary>Advanced Parameters</summary>
-            <fieldset>
-                <legend>Compressor</legend>
-                <p>EGX80CLC 100V 50Hz (fixed)</p>
-            </fieldset>
-            <fieldset>
-                <legend>Subcool & Discharge</legend>
-                <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
-                <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
-            </fieldset>
-            <fieldset>
-                <legend>Defrost</legend>
-                <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
-                <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
-            </fieldset>
-            </details>
-        </details>
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-content">
+    <span class="close-btn" id="closeSettings">&times;</span>
+    <h2>Settings</h2>
+    <div id="settingsForm"></div>
+    <div class="settings-actions">
+      <button id="settingsSave">Save &amp; Close</button>
+      <button id="settingsExport">Export Settings</button>
+      <button id="settingsImport">Import Settings</button>
+      <button id="settingsReset">Reset Defaults</button>
+    </div>
+  </div>
+</div>
+
+<!-- Comparison Modal -->
+<div id="comparisonModal" class="modal hidden">
+  <div class="modal-content">
+    <span class="close-btn" id="closeComparison">&times;</span>
+    <h2>Side‑by‑Side Comparison</h2>
+    <div id="comparisonContent"></div>
+  </div>
 </div>
         <!-- RIGHT PANEL: Schematic -->
         <div class="right-panel">
-            <canvas id="schematicCanvas" width="600" height="800"></canvas>
-            <!-- Overlay indicator when schematic is outdated -->
-            <div id="schematicOverlay" class="schematic-overlay hidden">
-                Schematic not updated – click Calculate
-            </div>
-            <!-- Tooltip -->
-            <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
+        <canvas id="schematicFront" width="400" height="600"></canvas>
+        <canvas id="schematicSide"  width="400" height="600"></canvas>
+        <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated – click Calculate</div>
+        <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
         </div>
     <!-- Settings Modal -->
 <div id="settingsModal" class="modal hidden">
