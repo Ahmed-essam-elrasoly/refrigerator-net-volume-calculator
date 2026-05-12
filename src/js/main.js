@@ -1,14 +1,14 @@
 import { runCalculation } from './engine/index.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
-import { drawSchematic } from './ui/schematic.js';
+import { drawFrontView, drawSideView } from './ui/schematic.js';
 import { initSettingsModal, showModal } from './ui/settingsModal.js';
 import { settings } from './settings.js';
-import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries } from './engine/calc.js';
+import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries, roundForDisplay } from './engine/calc.js';
 import { initThermoUI } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 // ---- DOM references (only those that still exist) ---------------------
 const divHorizInput       = document.getElementById('divHoriz');
-const divVertInput        = document.getElementById('divVert');
+const usableFactorInput = document.getElementById('usableFactor'); 
 const numCompartmentsInput= document.getElementById('numCompartments');
 const compartmentBuilder  = document.getElementById('compartmentBuilder');
 const calculateBtn        = document.getElementById('calculateBtn');
@@ -27,6 +27,31 @@ const compareSlotsBtn     = document.getElementById('compareSlotsBtn');
 const comparisonModal     = document.getElementById('comparisonModal');
 const closeComparison     = document.getElementById('closeComparison');
 const comparisonContent   = document.getElementById('comparisonContent');
+const splitter = document.getElementById('splitter');
+const leftPanel = document.querySelector('.left-panel');
+let isResizing = false;
+let startX, startWidth;
+
+splitter.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  startX = e.clientX;
+  startWidth = leftPanel.getBoundingClientRect().width;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const delta = e.clientX - startX;
+  const newWidth = Math.max(300, Math.min(800, startWidth + delta));
+  leftPanel.style.flex = `0 0 ${newWidth}px`;
+});
+
+document.addEventListener('mouseup', () => {
+  isResizing = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+});
 
 let configSlotA = null;
 let configSlotB = null;
@@ -139,7 +164,7 @@ initThermoUI(() => {
   return readGeometryFromPanel();
 });
 function buildCompartmentUI() {
-  const count = Math.max(1, Math.min(8, parseInt(numCompartmentsInput.value) || 1));
+  const count = Math.max(1, Math.min(2, parseInt(numCompartmentsInput.value) || 1));
   compartmentBuilder.innerHTML = '';
 
   for (let i = 0; i < count; i++) {
@@ -148,247 +173,19 @@ function buildCompartmentUI() {
       <legend>Compartment ${i + 1}</legend>
       <label>Type:
         <select data-comp="${i}" data-field="type">
-          <option value="fresh">Fresh Food</option>
           <option value="freezer">Freezer</option>
-          <option value="flex">Convertible</option>
+          <option value="fresh">Fresh</option>
         </select>
       </label>
       <label>Height Ratio (0-1):
-        <input type="number" data-comp="${i}" data-field="heightRatio" step="0.01" min="0.01" max="1" value="0.5">
+        <input type="number" data-comp="${i}" data-field="heightRatio" step="0.01" min="0.01" max="1" value="${i === 0 ? 0.4 : 0.6}">
       </label>
-
-      <label>
-        <input type="checkbox" data-comp="${i}" data-action="toggleVertical"> Split vertically
-      </label>
-      <label class="vert-ratio-label" data-comp="${i}" style="display:none;">
-        Left width ratio (0-1):
-        <input type="number" data-comp="${i}" data-field="leftWidthRatio" step="0.01" min="0.1" max="0.9" value="0.5">
-      </label>
-
-      <div class="verticalSubContainer" data-comp="${i}" style="display:none;">
-<fieldset>
-  <legend>Left sub-compartment</legend>
-  <div class="shelfContainer" data-comp="${i}" data-sub="left"></div>
-  <button type="button" data-action="addShelf" data-comp="${i}" data-sub="left">Add Shelf</button>
-  <div class="drawerContainer" data-comp="${i}" data-sub="left"></div>
-  <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="left">Add Drawer</button>
-  <div class="binContainer" data-comp="${i}" data-sub="left"></div>
-  <button type="button" data-action="addBin" data-comp="${i}" data-sub="left">Add Door Bin</button>
-</fieldset>
-<fieldset>
-  <legend>Mechanical Housings</legend>
-  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
-  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="left" placeholder="optional"></label>
-</fieldset>
-
-<fieldset>
-  <legend>Right sub-compartment</legend>
-  <div class="shelfContainer" data-comp="${i}" data-sub="right"></div>
-  <button type="button" data-action="addShelf" data-comp="${i}" data-sub="right">Add Shelf</button>
-  <div class="drawerContainer" data-comp="${i}" data-sub="right"></div>
-  <button type="button" data-action="addDrawer" data-comp="${i}" data-sub="right">Add Drawer</button>
-  <div class="binContainer" data-comp="${i}" data-sub="right"></div>
-  <button type="button" data-action="addBin" data-comp="${i}" data-sub="right">Add Door Bin</button>
-</fieldset>
-<fieldset>
-  <legend>Mechanical Housings</legend>
-  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
-  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="right" placeholder="optional"></label>
-</fieldset>      </div>
-
-      <div class="singleSubContainer" data-comp="${i}">
-<fieldset>
-  <legend>Shelves</legend>
-  <div class="shelfContainer" data-comp="${i}"></div>
-  <button type="button" data-action="addShelf" data-comp="${i}">Add Shelf</button>
-</fieldset>
-<fieldset>
-  <legend>Drawers / Crispers</legend>
-  <div class="drawerContainer" data-comp="${i}"></div>
-  <button type="button" data-action="addDrawer" data-comp="${i}">Add Drawer</button>
-</fieldset>
-<fieldset>
-  <legend>Door Bins</legend>
-  <div class="binContainer" data-comp="${i}"></div>
-  <button type="button" data-action="addBin" data-comp="${i}">Add Door Bin</button>
-</fieldset>
-<fieldset>
-  <legend>Mechanical Housings</legend>
-  <label>Ice maker (L): <input type="number" step="any" class="ice-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
-  <label>Light housing (L): <input type="number" step="any" class="light-vol" data-comp="${i}" data-sub="" placeholder="optional"></label>
-</fieldset>      </div>
     `;
     compartmentBuilder.appendChild(fieldset);
   }
-
-  // Vertical split toggle listeners
-  compartmentBuilder.querySelectorAll('input[data-action="toggleVertical"]').forEach(cb => {
-    cb.addEventListener('change', function() {
-      markDirty();
-      const compIdx = this.dataset.comp;
-      const vertContainer = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
-      const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
-      const ratioLabel = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
-      if (this.checked) {
-        vertContainer.style.display = 'block';
-        singleContainer.style.display = 'none';
-        if (ratioLabel) ratioLabel.style.display = 'inline';
-      } else {
-        vertContainer.style.display = 'none';
-        singleContainer.style.display = 'block';
-        if (ratioLabel) ratioLabel.style.display = 'none';
-      }
-    });
-  });
-
-  // Attach button handlers with sub support
-  compartmentBuilder.querySelectorAll('button[data-action="addShelf"]').forEach(btn => {
-    btn.addEventListener('click', () => { markDirty(); addShelf(btn.dataset.comp, btn.dataset.sub || ''); });
-  });
-  compartmentBuilder.querySelectorAll('button[data-action="addDrawer"]').forEach(btn => {
-    btn.addEventListener('click', () => { markDirty(); addDrawer(btn.dataset.comp, btn.dataset.sub || ''); });
-  });
-  compartmentBuilder.querySelectorAll('button[data-action="addBin"]').forEach(btn => {
-    btn.addEventListener('click', () => { markDirty(); addBin(btn.dataset.comp, btn.dataset.sub || ''); });
-  });
 }
-
 // ---- Add fitting helpers (with remove buttons) ------------------------
-function addShelf(compIndex, sub = '') {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const container = document.querySelector(`.shelfContainer[data-comp="${compIndex}"]${subAttr}`);
-  if (!container) return;
-  const div = document.createElement('div');
-  div.innerHTML = `
-    <label>Pos from floor (mm): <input type="number" step="any" value="100" class="shelf-pos"></label>
-    <label>Thickness (mm): <input type="number" step="any" value="5" class="shelf-thick"></label>
-    <label>Depth (mm): <input type="number" step="any" value="300" class="shelf-depth"></label>
-    <label>Width (mm, blank=full): <input type="number" step="any" class="shelf-width" placeholder="optional"></label>
-    <button type="button" class="remove-fitting-btn">✕ Remove</button>
-  `;
-  container.appendChild(div);
-  div.querySelector('.remove-fitting-btn').addEventListener('click', () => {
-    div.remove();
-    markDirty();
-  });
-}
 
-function addDrawer(compIndex, sub = '') {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const container = document.querySelector(`.drawerContainer[data-comp="${compIndex}"]${subAttr}`);
-  if (!container) return;
-  const div = document.createElement('div');
-  div.innerHTML = `
-    <label>Pos from floor (mm): <input type="number" step="any" value="0" class="drawer-pos"></label>
-    <label>Outer W (mm): <input type="number" step="any" value="300" class="drawer-w"></label>
-    <label>Outer D (mm): <input type="number" step="any" value="300" class="drawer-d"></label>
-    <label>Outer H (mm): <input type="number" step="any" value="150" class="drawer-h"></label>
-    <label>Wall t (mm): <input type="number" step="any" value="3" class="drawer-t"></label>
-    <button type="button" class="remove-fitting-btn">✕ Remove</button>
-  `;
-  container.appendChild(div);
-  div.querySelector('.remove-fitting-btn').addEventListener('click', () => {
-    div.remove();
-    markDirty();
-  });
-}
-
-function addBin(compIndex, sub = '') {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const container = document.querySelector(`.binContainer[data-comp="${compIndex}"]${subAttr}`);
-  if (!container) return;
-  const div = document.createElement('div');
-  div.innerHTML = `
-    <label>Outer W (mm): <input type="number" step="any" value="200" class="bin-w"></label>
-    <label>Outer H (mm): <input type="number" step="any" value="100" class="bin-h"></label>
-    <label>Outer D (mm): <input type="number" step="any" value="80" class="bin-d"></label>
-    <label>Wall t (mm): <input type="number" step="any" value="2" class="bin-t"></label>
-    <button type="button" class="remove-fitting-btn">✕ Remove</button>
-  `;
-  container.appendChild(div);
-  div.querySelector('.remove-fitting-btn').addEventListener('click', () => {
-    div.remove();
-    markDirty();
-  });
-}
-
-// ---- Helpers for housing volumes --------------------------------------
-function getHousingInputs(compIndex, sub) {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
-  const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
-  return { ice: iceInput, light: lightInput };
-}
-
-function getHousingVolumes(compIndex, sub) {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const iceInput = compartmentBuilder.querySelector(`input.ice-vol[data-comp="${compIndex}"]${subAttr}`);
-  const lightInput = compartmentBuilder.querySelector(`input.light-vol[data-comp="${compIndex}"]${subAttr}`);
-  const iceVol = iceInput && iceInput.value !== '' ? parseFloat(iceInput.value) : null;
-  const lightVol = lightInput && lightInput.value !== '' ? parseFloat(lightInput.value) : null;
-  return {
-    ice: (iceVol != null && !isNaN(iceVol)) ? iceVol : null,
-    light: (lightVol != null && !isNaN(lightVol)) ? lightVol : null
-  };
-}
-
-// ---- Collect fittings from DOM ----------------------------------------
-function collectFittings(compIndex, sub, type) {
-  const subAttr = sub ? `[data-sub="${sub}"]` : ':not([data-sub])';
-  const containerClass = type === 'shelf' ? 'shelfContainer' :
-                         type === 'drawer' ? 'drawerContainer' : 'binContainer';
-  const rows = compartmentBuilder.querySelectorAll(`.${containerClass}[data-comp="${compIndex}"]${subAttr} > div`);
-  const items = [];
-  rows.forEach(row => {
-    if (type === 'shelf') {
-      const pos = parseFloat(row.querySelector('.shelf-pos').value);
-      const thick = parseFloat(row.querySelector('.shelf-thick').value);
-      const depth = parseFloat(row.querySelector('.shelf-depth').value);
-      const widthInput = row.querySelector('.shelf-width');
-      const widthVal = widthInput.value ? parseFloat(widthInput.value) : null;
-      if (!isNaN(pos) && !isNaN(thick) && !isNaN(depth)) {
-        items.push({
-          id: `${compIndex}-${sub}-shelf-${items.length}`,
-          positionFromFloor: pos,
-          thickness: thick,
-          depth: depth,
-          width: widthVal,
-        });
-      }
-    } else if (type === 'drawer') {
-      const pos   = parseFloat(row.querySelector('.drawer-pos').value);
-      const w     = parseFloat(row.querySelector('.drawer-w').value);
-      const d     = parseFloat(row.querySelector('.drawer-d').value);
-      const h     = parseFloat(row.querySelector('.drawer-h').value);
-      const t     = parseFloat(row.querySelector('.drawer-t').value);
-      if (!isNaN(w) && !isNaN(d) && !isNaN(h) && !isNaN(t) && !isNaN(pos)) {
-        items.push({
-          id: `${compIndex}-${sub}-drawer-${items.length}`,
-          positionFromFloor: pos,
-          outerWidth: w,
-          outerDepth: d,
-          outerHeight: h,
-          wallThickness: t,
-        });
-      }
-    } else if (type === 'bin') {
-      const w = parseFloat(row.querySelector('.bin-w').value);
-      const h = parseFloat(row.querySelector('.bin-h').value);
-      const d = parseFloat(row.querySelector('.bin-d').value);
-      const t = parseFloat(row.querySelector('.bin-t').value);
-      if (!isNaN(w) && !isNaN(h) && !isNaN(d) && !isNaN(t)) {
-        items.push({
-          id: `${compIndex}-${sub}-bin-${items.length}`,
-          outerWidth: w,
-          outerHeight: h,
-          outerDepth: d,
-          wallThickness: t,
-        });
-      }
-    }
-  });
-  return items;
-}
 
 // ---- Build CabinetConfig from DOM -------------------------------------
 function buildConfigFromForm() {
@@ -402,80 +199,30 @@ function buildConfigFromForm() {
     const typeSelect = compartmentBuilder.querySelector(`select[data-comp="${i}"][data-field="type"]`);
     const heightRatioInput = compartmentBuilder.querySelector(`input[data-comp="${i}"][data-field="heightRatio"]`);
     const compType = typeSelect.value;
-    const heightRatio = parseFloat(heightRatioInput.value) || 0.5;
+    const heightRatio = parseFloat(heightRatioInput.value) || (i === 0 ? 0.4 : 0.6);
 
-    const vertCheckbox = compartmentBuilder.querySelector(`input[data-action="toggleVertical"][data-comp="${i}"]`);
-    const isVertical = vertCheckbox && vertCheckbox.checked;
-    const leftWidthRatioInput = compartmentBuilder.querySelector(`input[data-comp="${i}"][data-field="leftWidthRatio"]`);
-    const leftRatio = parseFloat(leftWidthRatioInput?.value) || 0.5;
-
-    if (isVertical) {
-      const leftShelves = collectFittings(i, 'left', 'shelf');
-      const leftDrawers = collectFittings(i, 'left', 'drawer');
-      const leftBins    = collectFittings(i, 'left', 'bin');
-      const rightShelves = collectFittings(i, 'right', 'shelf');
-      const rightDrawers = collectFittings(i, 'right', 'drawer');
-      const rightBins    = collectFittings(i, 'right', 'bin');
-
-      const leftHousing  = getHousingVolumes(i, 'left');
-      const rightHousing = getHousingVolumes(i, 'right');
-
-      const divThickness = parseFloat(divVertInput.value) || 20;
-      const vertNode = {
-        nodeType: 'vertical',
-        id: `vert-${i}`,
-        dividerThickness: divThickness,
-        leftWidthRatio: leftRatio,
-        left: {
-          nodeType: 'leaf',
-          id: `comp${i}-L`,
-          type: compType,
-          fittings: {
-            shelves: leftShelves,
-            drawers: leftDrawers,
-            doorBins: leftBins,
-            iceMakerHousing: { volume: leftHousing.ice },
-            lightHousing:    { volume: leftHousing.light },
-          },
+    leaves.push({
+      heightMode: 'ratio',
+      heightValue: heightRatio,
+      node: {
+        nodeType: 'leaf',
+        id: `comp${i}`,
+        type: compType,
+        fittings: {
+          shelves: [],
+          drawers: [],
+          doorBins: [],
+          iceMakerHousing: { volume: null },
+          lightHousing:    { volume: null },
         },
-        right: {
-          nodeType: 'leaf',
-          id: `comp${i}-R`,
-          type: compType,
-          fittings: {
-            shelves: rightShelves,
-            drawers: rightDrawers,
-            doorBins: rightBins,
-            iceMakerHousing: { volume: rightHousing.ice },
-            lightHousing:    { volume: rightHousing.light },
-          },
-        },
-      };
-      leaves.push({ heightMode: 'ratio', heightValue: heightRatio, node: vertNode });
-    } else {
-      const shelves = collectFittings(i, '', 'shelf');
-      const drawers = collectFittings(i, '', 'drawer');
-      const bins    = collectFittings(i, '', 'bin');
-      const housing = getHousingVolumes(i, '');
-
-      leaves.push({
-        heightMode: 'ratio',
-        heightValue: heightRatio,
-        node: {
-          nodeType: 'leaf',
-          id: `comp${i}`,
-          type: compType,
-          fittings: {
-            shelves,
-            drawers,
-            doorBins: bins,
-            iceMakerHousing: { volume: housing.ice },
-            lightHousing:    { volume: housing.light },
-          },
-        },
-      });
-    }
+      },
+    });
   }
+
+  // Normalise ratios
+  const totalRatio = leaves.reduce((s, l) => s + l.heightValue, 0);
+  if (totalRatio > 0) leaves.forEach(l => l.heightValue /= totalRatio);
+
   const rootNode = {
     nodeType: 'horizontal',
     id: 'root',
@@ -502,7 +249,6 @@ function buildConfigFromForm() {
     layout: rootNode
   };
 }
-
 // ---- Populate from loaded config --------------------------------------
 function populateUIFromConfig(config) {
   if (!config.cabinet.geometry && config.cabinet.external) {
@@ -525,62 +271,18 @@ function populateUIFromConfig(config) {
     const heightRatioInput = document.querySelector(`input[data-comp="${compIdx}"][data-field="heightRatio"]`);
     if (heightRatioInput) heightRatioInput.value = child.heightValue;
 
-    if (child.node.nodeType === 'leaf') {
-      const vertCheckbox = document.querySelector(`input[data-action="toggleVertical"][data-comp="${compIdx}"]`);
-      if (vertCheckbox) vertCheckbox.checked = false;
-      const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
-      const vertContainer   = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
-      const ratioLabel      = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
-      if (singleContainer) singleContainer.style.display = 'block';
-      if (vertContainer)   vertContainer.style.display   = 'none';
-      if (ratioLabel)      ratioLabel.style.display      = 'none';
-
-      const leaf = child.node;
-      const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
-      if (typeSelect) typeSelect.value = leaf.type;
-
-      addFittingsToDOM(compIdx, '', leaf.fittings);
-      const housingInputs = getHousingInputs(compIdx, '');
-      if (housingInputs.ice) housingInputs.ice.value = leaf.fittings.iceMakerHousing?.volume ?? '';
-      if (housingInputs.light) housingInputs.light.value = leaf.fittings.lightHousing?.volume ?? '';
-    } else if (child.node.nodeType === 'vertical') {
-      const vertCheckbox = document.querySelector(`input[data-action="toggleVertical"][data-comp="${compIdx}"]`);
-      if (vertCheckbox) vertCheckbox.checked = true;
-      const singleContainer = document.querySelector(`.singleSubContainer[data-comp="${compIdx}"]`);
-      const vertContainer   = document.querySelector(`.verticalSubContainer[data-comp="${compIdx}"]`);
-      const ratioLabel      = document.querySelector(`label.vert-ratio-label[data-comp="${compIdx}"]`);
-      if (singleContainer) singleContainer.style.display = 'none';
-      if (vertContainer)   vertContainer.style.display   = 'block';
-      if (ratioLabel)      ratioLabel.style.display      = 'inline';
-
-      const leftRatioInput = document.querySelector(`input[data-comp="${compIdx}"][data-field="leftWidthRatio"]`);
-      if (leftRatioInput) leftRatioInput.value = child.node.leftWidthRatio;
-
-      const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
-      if (typeSelect && child.node.left && child.node.left.type) {
+    const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
+    if (typeSelect && child.node) {
+      if (child.node.nodeType === 'leaf') {
+        typeSelect.value = child.node.type;
+      } else if (child.node.nodeType === 'vertical') {
+        // Legacy support – take left side type
         typeSelect.value = child.node.left.type;
       }
-
-      addFittingsToDOM(compIdx, 'left',  child.node.left.fittings);
-      addFittingsToDOM(compIdx, 'right', child.node.right.fittings);
-
-      const leftHousingInputs = getHousingInputs(compIdx, 'left');
-      if (leftHousingInputs.ice) leftHousingInputs.ice.value = child.node.left.fittings.iceMakerHousing?.volume ?? '';
-      if (leftHousingInputs.light) leftHousingInputs.light.value = child.node.left.fittings.lightHousing?.volume ?? '';
-
-      const rightHousingInputs = getHousingInputs(compIdx, 'right');
-      if (rightHousingInputs.ice) rightHousingInputs.ice.value = child.node.right.fittings.iceMakerHousing?.volume ?? '';
-      if (rightHousingInputs.light) rightHousingInputs.light.value = child.node.right.fittings.lightHousing?.volume ?? '';
     }
   }
 }
 
-function addFittingsToDOM(compIdx, sub, fittings) {
-  if (!fittings) return;
-  for (const shelf of fittings.shelves ?? []) { addShelf(compIdx, sub); /* set values */ }
-  for (const drawer of fittings.drawers ?? []) { addDrawer(compIdx, sub); /* set values */ }
-  for (const bin of fittings.doorBins ?? []) { addBin(compIdx, sub); /* set values */ }
-}
 
 // ---- Display messages, Calculate, Save/Load/Export, etc. (unchanged from previous) ----
 // (I'll include the rest of main.js after this block to keep the file complete)
@@ -602,49 +304,62 @@ function showMessages(errors, warnings, calcErrors) {
     messagesFieldset.style.display = 'none';
   }
 }
-
-// ---- Calculate --------------------------------------------------------
 calculateBtn.addEventListener('click', () => {
   const { config, layout } = buildConfigFromForm();
   currentConfig = config;
-  if (currentConfig) {
-    storeSlotABtn.style.display = 'inline-block';
-    storeSlotBBtn.style.display = 'inline-block';
-    compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
-  }
+  // …
 
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
+    // ----- Compressor box subtraction -----
+    const internalWidth = result.leaves[0].space.width;  // all leaves share same width
+    const compressorBoxVolL = internalWidth
+                            * currentGeometry.Db2
+                            * currentGeometry.Hb
+                            * settings.mm3ToL;
+
+    if (result.leaves.length > 0) {
+      const bottomLeaf = result.leaves[result.leaves.length - 1];
+      bottomLeaf.gross -= compressorBoxVolL;
+      result.totals.gross -= compressorBoxVolL;
+    }
+
+    // ----- Display -----
     const disp = formatTotalsDisplay(result.totals);
     document.getElementById('grossVol').textContent      = disp.gross;
-    document.getElementById('egNetVol').textContent      = disp.egNet;
-    document.getElementById('iecNetVol').textContent     = disp.iecNet;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-    document.getElementById('egNetVolCuft').textContent  = disp.egNetCuft;
-    document.getElementById('iecNetVolCuft').textContent = disp.iecNetCuft;
+
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    const usableL = result.totals.gross * (usableFactor / 100);
+    const usableCuft = usableL * settings.lToCuft;
+    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
   }
 
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
+const frontCanvas = document.getElementById('schematicFront');
+const sideCanvas  = document.getElementById('schematicSide');
 
-  const canvas = document.getElementById('schematicCanvas');
-  if (canvas) {
-    canvas.width = settings.canvasWidth;
-    canvas.height = settings.canvasHeight;
-    if (result.leaves && result.leaves.length > 0) {
-          const effectiveWalls = getEffectiveThicknesses();
-          const tempConfig = {
-            cabinet: {
-              external: { height: currentGeometry.H, width: currentGeometry.W, depth: currentGeometry.D },
-              layout: config.cabinet.layout
-            }
-          };
-          drawSchematic(result.leaves, effectiveWalls, tempConfig, canvas, schematicTooltip);
-          dirtySchematic = false;
-      schematicOverlay.classList.add('hidden');
-    }
-  }
-});
+const rightPanel = document.querySelector('.right-panel');
+const panelHeight = rightPanel.clientHeight - 30;   // leave some padding
+const panelWidth  = rightPanel.clientWidth - 20;
+
+if (frontCanvas && sideCanvas) {
+  // Set both canvases to the same height, width split equally
+  frontCanvas.height = panelHeight;
+  sideCanvas.height  = panelHeight;
+  frontCanvas.width  = panelWidth / 2 - 5;
+  sideCanvas.width   = panelWidth / 2 - 5;
+
+  const effectiveWalls = getEffectiveThicknesses();
+  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves);
+  drawSideView(sideCanvas, currentGeometry, effectiveWalls);
+  dirtySchematic = false;
+  schematicOverlay.classList.add('hidden');
+}
+}
+);
 
 // ---- Save / Load / Export ---------------------------------------------
 saveBtn.addEventListener('click', () => {
@@ -670,28 +385,42 @@ loadBtn.addEventListener('click', () => {
       populateUIFromConfig(config);
 
       const result = runCalculation(config);
+      const loadedLayout = config.cabinet.layout;
       if (result.leaves && result.totals) {
         const disp = formatTotalsDisplay(result.totals);
         document.getElementById('grossVol').textContent      = disp.gross;
-        document.getElementById('egNetVol').textContent      = disp.egNet;
-        document.getElementById('iecNetVol').textContent     = disp.iecNet;
         document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-        document.getElementById('egNetVolCuft').textContent  = disp.egNetCuft;
-        document.getElementById('iecNetVolCuft').textContent = disp.iecNetCuft;
+
+        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+        const usableL = result.totals.gross * (usableFactor / 100);
+        const usableCuft = usableL * settings.lToCuft;
+        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
       }
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
-      const canvas = document.getElementById('schematicCanvas');
-      if (canvas) {
-        canvas.width = settings.canvasWidth;
-        canvas.height = settings.canvasHeight;
-        if (result.leaves && result.leaves.length > 0) {
-          const effectiveWalls = getEffectiveThicknesses(currentConfig);
-          drawSchematic(result.leaves, effectiveWalls, currentConfig, canvas, schematicTooltip);
-          dirtySchematic = false;
-          schematicOverlay.classList.add('hidden');
-        }
-      }
+const frontCanvas = document.getElementById('schematicFront');
+const sideCanvas  = document.getElementById('schematicSide');
+
+const rightPanel = document.querySelector('.right-panel');
+const panelHeight = rightPanel.clientHeight - 30;   // leave some padding
+const panelWidth  = rightPanel.clientWidth - 20;
+
+if (frontCanvas && sideCanvas) {
+  // Set both canvases to the same height, width split equally
+  frontCanvas.height = panelHeight;
+  sideCanvas.height  = panelHeight;
+  frontCanvas.width  = panelWidth / 2 - 5;
+  sideCanvas.width   = panelWidth / 2 - 5;
+
+  const effectiveWalls = getEffectiveThicknesses();
+  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, loadedLayout, result.leaves);
+  drawSideView(sideCanvas, currentGeometry, effectiveWalls);
+  dirtySchematic = false;
+  schematicOverlay.classList.add('hidden');
+}
+
+      
       alert('Configuration loaded and calculated.');
     } catch (err) {
       alert('Error: ' + err.message);
@@ -718,7 +447,6 @@ resetAllBtn.addEventListener('click', () => {
   writeGeometryToPanel(currentGeometry);
 
   divHorizInput.value = 20;
-  divVertInput.value = 20;
   numCompartmentsInput.value = 2;
   storeSlotABtn.style.display = 'none';
   storeSlotBBtn.style.display = 'none';
@@ -729,23 +457,23 @@ resetAllBtn.addEventListener('click', () => {
   buildCompartmentUI();
 
   document.getElementById('grossVol').textContent      = '--';
-  document.getElementById('egNetVol').textContent      = '--';
-  document.getElementById('iecNetVol').textContent     = '--';
   document.getElementById('grossVolCuft').textContent  = '--';
-  document.getElementById('egNetVolCuft').textContent  = '--';
-  document.getElementById('iecNetVolCuft').textContent = '--';
+  document.getElementById('usableVol').textContent      = '--';
+  document.getElementById('usableVolCuft').textContent  = '--';
 
   messagesDiv.innerHTML = '';
   messagesFieldset.style.display = 'none';
 
-  const canvas = document.getElementById('schematicCanvas');
-  if (canvas) {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
-  schematicOverlay.classList.add('hidden');
-  dirtySchematic = false;
-  currentConfig = null;
+const frontCanvas = document.getElementById('schematicFront');
+const sideCanvas  = document.getElementById('schematicSide');
+if (frontCanvas) {
+  const ctx = frontCanvas.getContext('2d');
+  ctx.clearRect(0, 0, frontCanvas.width, frontCanvas.height);
+}
+if (sideCanvas) {
+  const ctx = sideCanvas.getContext('2d');
+  ctx.clearRect(0, 0, sideCanvas.width, sideCanvas.height);
+}
 });
 // ---- Auto‑calculate & settings change handler ------------------------
 document.addEventListener('input', (e) => {
@@ -798,29 +526,41 @@ function buildComparisonTable(resultA, resultB) {
   const hasLeavesA = resultA && resultA.leaves && resultA.totals;
   const hasLeavesB = resultB && resultB.leaves && resultB.totals;
   const fmtTotals = (totals) => {
-    if (!totals) return { gross:'-', egNet:'-', iecNet:'-', grossCuft:'-', egNetCuft:'-', iecNetCuft:'-' };
-    return formatTotalsDisplay(totals);
+    if (!totals) return { gross:'-', usable:'-', grossCuft:'-', usableCuft:'-' };
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    return {
+      gross: roundForDisplay(totals.gross, 'L'),
+      usable: roundForDisplay(totals.gross * (usableFactor / 100), 'L'),
+      grossCuft: roundForDisplay(totals.gross * settings.lToCuft, 'cuft'),
+      usableCuft: roundForDisplay(totals.gross * (usableFactor / 100) * settings.lToCuft, 'cuft'),
+    };
   };
   const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
   const tB = fmtTotals(hasLeavesB ? resultB.totals : null);
   let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
       <thead><tr><th></th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
       <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
-      <tbody><tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
-      <tr><td><strong>EG Net</strong></td><td>${tA.egNet}</td><td>${tA.egNetCuft}</td><td>${tB.egNet}</td><td>${tB.egNetCuft}</td></tr>
-      <tr><td><strong>IEC Net</strong></td><td>${tA.iecNet}</td><td>${tA.iecNetCuft}</td><td>${tB.iecNet}</td><td>${tB.iecNetCuft}</td></tr>
+      <tbody>
+      <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
+      <tr><td><strong>Usable</strong></td><td>${tA.usable}</td><td>${tA.usableCuft}</td><td>${tB.usable}</td><td>${tB.usableCuft}</td></tr>
       </tbody></table>`;
   if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
     html += `<h3>Per‑Compartment Breakdown</h3>`;
     const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
     html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <tr><th>Compartment</th><th colspan="3">Slot A</th><th colspan="3">Slot B</th></tr>
-      <tr><th></th><th>Gross</th><th>EG</th><th>IEC</th><th>Gross</th><th>EG</th><th>IEC</th></tr>`;
+      <tr><th>Compartment</th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
+      <tr><th></th><th>Gross</th><th>Usable</th><th>Gross</th><th>Usable</th></tr>`;
     for (let i = 0; i < maxLeaves; i++) {
       const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
-      const fmtA = leafA ? formatLeafDisplay(leafA) : { gross:'-', egNet:'-', iecNet:'-' };
-      const fmtB = leafB ? formatLeafDisplay(leafB) : { gross:'-', egNet:'-', iecNet:'-' };
-      html += `<tr><td>Comp ${i+1}</td><td>${fmtA.gross}</td><td>${fmtA.egNet}</td><td>${fmtA.iecNet}</td><td>${fmtB.gross}</td><td>${fmtB.egNet}</td><td>${fmtB.iecNet}</td></tr>`;
+      const fmtA = leafA ? {
+        gross: roundForDisplay(leafA.gross, 'L'),
+        usable: roundForDisplay(leafA.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
+      } : { gross:'-', usable:'-' };
+      const fmtB = leafB ? {
+        gross: roundForDisplay(leafB.gross, 'L'),
+        usable: roundForDisplay(leafB.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
+      } : { gross:'-', usable:'-' };
+      html += `<tr><td>Comp ${i+1}</td><td>${fmtA.gross}</td><td>${fmtA.usable}</td><td>${fmtB.gross}</td><td>${fmtB.usable}</td></tr>`;
     }
     html += `</table>`;
   }
