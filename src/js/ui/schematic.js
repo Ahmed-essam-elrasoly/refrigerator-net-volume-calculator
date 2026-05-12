@@ -187,35 +187,4 @@ export function drawSchematic(leaves, effectiveWalls, config, canvas, tooltipDiv
   });
 
   ctx.restore();
-
-  // Tooltip hover handling
-  if (canvas._schematicMouseMove) canvas.removeEventListener('mousemove', canvas._schematicMouseMove);
-  canvas._schematicMouseMove = (e) => {
-    const canvasRect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / canvasRect.width;
-    const scaleY = canvas.height / canvasRect.height;
-    const mouseCanvasX = (e.clientX - canvasRect.left) * scaleX - PAD.left;
-    const mouseCanvasY = (e.clientY - canvasRect.top)  * scaleY - PAD.top;
-    let bestRegion = null, bestArea = Infinity;
-    for (const region of hitRegions) {
-      if (mouseCanvasX >= region.rect.x && mouseCanvasX <= region.rect.x + region.rect.w &&
-          mouseCanvasY >= region.rect.y && mouseCanvasY <= region.rect.y + region.rect.h) {
-        const area = region.rect.w * region.rect.h;
-        if (area < bestArea) { bestRegion = region; bestArea = area; }
-      }
-    }
-    if (bestRegion) {
-      tooltipDiv.classList.remove('hidden');
-      tooltipDiv.innerHTML = `<strong>${bestRegion.label}</strong><br>${bestRegion.info.replace(/\n/g, '<br>')}`;
-      const panelRect = document.querySelector('.right-panel').getBoundingClientRect();
-      let left = e.clientX - panelRect.left + 15, top = e.clientY - panelRect.top + 15;
-      const tw = tooltipDiv.offsetWidth, th = tooltipDiv.offsetHeight;
-      if (left + tw > panelRect.width) left = left - tw - 30;
-      if (top + th > panelRect.height) top = top - th - 30;
-      tooltipDiv.style.left = left + 'px'; tooltipDiv.style.top = top + 'px';
-    } else {
-      tooltipDiv.classList.add('hidden');
-    }
-  };
-  canvas.addEventListener('mousemove', canvas._schematicMouseMove);
 }
