@@ -47,7 +47,7 @@ export function deriveRootSpace(cabinet, layout) {
   return {
     width:  external.width  - effective.left - effective.right,
     height: external.height - effective.top  - effective.bottom,
-    depth:  external.depth  - effective.rear - effective.door - airGap,
+    depth:  external.depth  - effective.rear - effective.door,
   };
 }
 

@@ -1,7 +1,6 @@
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
 import { toThermalFormat } from '../engine/geometry.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
-import { PHYSICAL_CONSTANTS } from '../engine/thermo/constants.js';
 
 let getGeometryFn = null;
 let thermoSection, runBtn, resultsDiv, errorDiv;
@@ -22,7 +21,6 @@ export function initThermoUI(getGeometry) {
   getGeometryFn = getGeometry;
   runBtn.addEventListener('click', handleRun);
 
-  // Pre‑fill other thermal defaults
   document.getElementById('thermoSubcool').value  = SJ54H_COMPONENTS.subcool_K;
   document.getElementById('thermoDiscTemp').value = SJ54H_COMPONENTS.dischargeTemp_C;
   document.getElementById('thermoFanFlow').value  = SJ54H_COMPONENTS.fan.totalAirflow_m3h;
@@ -37,8 +35,15 @@ function handleRun() {
     showError('Geometry source not available.');
     return;
   }
-
   const cabinetGeom = getGeometryFn();
+
+  // Thermal guard: freezer must be top compartment
+  if (cabinetGeom._compartments && cabinetGeom._compartments.length > 1 &&
+      cabinetGeom._compartments[0].type !== 'freezer') {
+    showError('Thermal analysis currently supports only freezer‑top configurations.');
+    return;
+  }
+
   const geom = toThermalFormat(cabinetGeom);
 
   const T0 = parseFloat(document.getElementById('thermoT0')?.value);

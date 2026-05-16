@@ -6,9 +6,10 @@ import { settings } from './settings.js';
 import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries, roundForDisplay } from './engine/calc.js';
 import { initThermoUI } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
-// ---- DOM references (only those that still exist) ---------------------
+
+// ---- DOM references ---------------------------------------------------
 const divHorizInput       = document.getElementById('divHoriz');
-const usableFactorInput = document.getElementById('usableFactor'); 
+const usableFactorInput   = document.getElementById('usableFactor');
 const numCompartmentsInput= document.getElementById('numCompartments');
 const compartmentBuilder  = document.getElementById('compartmentBuilder');
 const calculateBtn        = document.getElementById('calculateBtn');
@@ -27,11 +28,17 @@ const compareSlotsBtn     = document.getElementById('compareSlotsBtn');
 const comparisonModal     = document.getElementById('comparisonModal');
 const closeComparison     = document.getElementById('closeComparison');
 const comparisonContent   = document.getElementById('comparisonContent');
-const splitter = document.getElementById('splitter');
-const leftPanel = document.querySelector('.left-panel');
+const splitter            = document.getElementById('splitter');
+const leftPanel           = document.querySelector('.left-panel');
+
+let configSlotA = null;
+let configSlotB = null;
+let currentConfig = null;
+let dirtySchematic = false;
 let isResizing = false;
 let startX, startWidth;
 
+// Splitter logic
 splitter.addEventListener('mousedown', (e) => {
   isResizing = true;
   startX = e.clientX;
@@ -39,92 +46,269 @@ splitter.addEventListener('mousedown', (e) => {
   document.body.style.cursor = 'col-resize';
   document.body.style.userSelect = 'none';
 });
-
 document.addEventListener('mousemove', (e) => {
   if (!isResizing) return;
   const delta = e.clientX - startX;
   const newWidth = Math.max(300, Math.min(800, startWidth + delta));
   leftPanel.style.flex = `0 0 ${newWidth}px`;
 });
-
 document.addEventListener('mouseup', () => {
   isResizing = false;
   document.body.style.cursor = '';
   document.body.style.userSelect = '';
 });
 
-let configSlotA = null;
-let configSlotB = null;
-let currentConfig = null;
-let dirtySchematic = false;
-
 // ---- Shared cabinet geometry ------------------------------------------
 let currentGeometry = { ...DEFAULT_CABINET };
 
+// ---- Compartment reactive state ---------------------------------------
+let compartmentsData = [];
+fillGeometryDefaults();
+initCompartments();
+function initCompartments() {
+  const count = parseInt(numCompartmentsInput.value) || 1;
+  compartmentsData = [];
+  const defaultWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
+  for (let i = 0; i < count; i++) {
+    compartmentsData.push({
+      type: i === 0 ? 'freezer' : 'fresh',
+      ...defaultWalls,
+      height: 0,
+      ratio: i === 0 ? 0.4 : 0.6
+    });
+  }
+  syncConstraints();
+  buildCompartmentUI();
+}
+
+function syncConstraints() {
+  const count = compartmentsData.length;
+  const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const totalInsulTop = compartmentsData[0].top;
+  const totalInsulBottom = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+  const internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
+
+  if (count === 1) {
+    compartmentsData[0].height = internalH;
+    compartmentsData[0].ratio = 1.0;
+    return;
+  }
+
+  // Two compartments
+  let h0 = compartmentsData[0].height;
+  let h1 = compartmentsData[1].height;
+
+  if (h0 === 0 && h1 === 0) {
+    const r0 = Math.max(0.1, Math.min(0.9, compartmentsData[0].ratio));
+    h0 = internalH * r0;
+    h1 = internalH * (1 - r0);
+  } else if (h0 !== 0 && h1 !== 0) {
+    const sum = h0 + h1;
+    if (Math.abs(sum - internalH) > 0.01) {
+      h0 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h0));
+      h1 = internalH - h0;
+    }
+  } else if (h0 !== 0) {
+    h0 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h0));
+    h1 = internalH - h0;
+  } else if (h1 !== 0) {
+    h1 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h1));
+    h0 = internalH - h1;
+  }
+
+  compartmentsData[0].height = h0;
+  compartmentsData[1].height = h1;
+  compartmentsData[0].ratio = h0 / internalH;
+  compartmentsData[1].ratio = h1 / internalH;
+}
+
+function onCompFieldChange(compIdx, field, value) {
+  if (isNaN(value)) return;
+  compartmentsData[compIdx][field] = value;
+
+  if (field === 'height' || field === 'ratio') {
+    const count = compartmentsData.length;
+    const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
+    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+    const topInsul = compartmentsData[0].top;
+    const bottomInsul = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+    const internalH = H - topInsul - bottomInsul - (count - 1) * dividerThick;
+
+    if (count === 1) {
+      compartmentsData[0].height = internalH;
+      compartmentsData[0].ratio = 1.0;
+    } else {
+      if (field === 'height') {
+        // Clamp the user-entered height
+        const minH = 0.1 * internalH;
+        const maxH = 0.9 * internalH;
+        let clamped = Math.max(minH, Math.min(maxH, value));
+        compartmentsData[compIdx].height = clamped;
+        const otherIdx = 1 - compIdx;
+        compartmentsData[otherIdx].height = internalH - clamped;
+        compartmentsData[0].ratio = compartmentsData[0].height / internalH;
+        compartmentsData[1].ratio = 1.0 - compartmentsData[0].ratio;
+      } else { // ratio changed (percentage)
+        let percent = Math.max(10, Math.min(count === 1 ? 100 : 90, value));
+        let clamped = percent / 100;
+        compartmentsData[compIdx].ratio = clamped;
+        compartmentsData[compIdx].height = internalH * clamped;
+        const otherIdx = 1 - compIdx;
+        compartmentsData[otherIdx].ratio = 1.0 - clamped;
+        compartmentsData[otherIdx].height = internalH - compartmentsData[compIdx].height;
+      }    }
+  }
+
+  if (field === 'type' && compartmentsData.length > 1) {
+    const otherIdx = 1 - compIdx;
+    compartmentsData[otherIdx].type = value === 'freezer' ? 'fresh' : 'freezer';
+  }
+
+  syncDisplay();
+}
+
+
+
+function syncDisplay() {
+  const count = compartmentsData.length;
+  for (let i = 0; i < count; i++) {
+    const d = compartmentsData[i];
+    const heightInput = document.getElementById(`comp-${i}-height`);
+    const ratioInput  = document.getElementById(`comp-${i}-ratio`);
+    const typeSelect  = document.getElementById(`comp-${i}-type`);
+    if (heightInput) heightInput.value = d.height.toFixed(1);
+    if (ratioInput) {
+      ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
+    }
+    if (typeSelect) typeSelect.value = d.type;
+  }
+}
+
+function buildCompartmentUI() {
+  const builder = document.getElementById('compartmentBuilder');
+  builder.innerHTML = '';
+
+  const count = compartmentsData.length;          // must be first!
+  const dividerLabel = document.getElementById('dividerLabel');
+  if (dividerLabel) dividerLabel.style.display = count > 1 ? '' : 'none';
+
+  for (let i = 0; i < count; i++) {
+    const d = compartmentsData[i];
+    const ratioMin = count === 1 ? 100 : 10;
+    const ratioMax = count === 1 ? 100 : 90;
+    const ratioVal = count === 1 ? 100 : Math.round(d.ratio * 100);
+
+    const fieldset = document.createElement('fieldset');
+    fieldset.innerHTML = `
+      <legend>Compartment ${i+1}</legend>
+      <label>Type:
+        <select id="comp-${i}-type">
+          <option value="freezer" ${d.type === 'freezer' ? 'selected' : ''}>Freezer</option>
+          <option value="fresh"  ${d.type === 'fresh'  ? 'selected' : ''}>Fresh</option>
+        </select>
+      </label>
+      <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
+      <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
+      <fieldset>
+        <legend>Wall Thicknesses (mm)</legend>
+        <label>Top:    <input type="number" id="comp-${i}-top"    value="${d.top}"    step="any"></label>
+        <label>Left:   <input type="number" id="comp-${i}-left"   value="${d.left}"   step="any"></label>
+        <label>Right:  <input type="number" id="comp-${i}-right"  value="${d.right}"  step="any"></label>
+        <label>Rear:   <input type="number" id="comp-${i}-rear"   value="${d.rear}"   step="any"></label>
+        <label>Door:   <input type="number" id="comp-${i}-door"   value="${d.door}"   step="any"></label>
+      </fieldset>
+    `;
+    builder.appendChild(fieldset);
+  }
+
+  // Attach listeners
+  for (let i = 0; i < count; i++) {
+    document.getElementById(`comp-${i}-type`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'type', e.target.value);
+    });
+    document.getElementById(`comp-${i}-height`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'height', parseFloat(e.target.value) || 0);
+    });
+    document.getElementById(`comp-${i}-ratio`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'ratio', parseFloat(e.target.value) || 10);
+    });
+    for (const face of ['top','left','right','rear','door']) {
+      document.getElementById(`comp-${i}-${face}`).addEventListener('input', (e) => {
+        compartmentsData[i][face] = parseFloat(e.target.value) || 0;
+        markDirty();
+      });
+    }
+  }
+}
+function fillGeometryDefaults() {
+  const def = DEFAULT_CABINET;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('geom-H', def.H);
+  set('geom-W', def.W);
+  set('geom-D', def.D);
+  set('geom-Hb', def.Hb);
+  set('geom-Db1', def.Db1);
+  set('geom-Db2', def.Db2);
+  set('geom-packingPos', def.packingPos);
+  set('geom-doorGap', def.doorGap);
+  // bottom insulation defaults (not in DEFAULT_CABINET, use standard values)
+  set('geom-bottom1', 40);
+  set('geom-bottom2', 40);
+  set('geom-bottom3', 40);
+}
+// ---- Read geometry from panel -----------------------------------------
 function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
+  const comps = compartmentsData;
+  const count = comps.length;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+
+  let freezerComp = comps.find(c => c.type === 'freezer');
+  let freshComp   = comps.find(c => c.type === 'fresh');
+
+  const defWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
+
+  const walls = {
+    freezer: {
+      top:    freezerComp ? freezerComp.top    : defWalls.top,
+      bottom: freshComp   ? dividerThick       : 0,
+      left:   freezerComp ? freezerComp.left   : defWalls.left,
+      right:  freezerComp ? freezerComp.right  : defWalls.right,
+      door:   freezerComp ? freezerComp.door   : defWalls.door,
+      rear:   freezerComp ? freezerComp.rear   : defWalls.rear,
+    },
+    refrigerator: {
+      top:    freshComp ? (freezerComp ? dividerThick : freshComp.top) : defWalls.top,
+      bottom1: g('geom-bottom1') ?? 40,
+      bottom2: g('geom-bottom2') ?? 40,
+      bottom3: g('geom-bottom3') ?? 40,
+      left:   freshComp ? freshComp.left   : defWalls.left,
+      right:  freshComp ? freshComp.right  : defWalls.right,
+      door:   freshComp ? freshComp.door   : defWalls.door,
+      rear:   freshComp ? freshComp.rear   : defWalls.rear,
+    }
+  };
+
   return {
     H: g('geom-H') ?? DEFAULT_CABINET.H,
     W: g('geom-W') ?? DEFAULT_CABINET.W,
     D: g('geom-D') ?? DEFAULT_CABINET.D,
-    Hf: g('geom-Hf') ?? DEFAULT_CABINET.Hf,
-    Hr: g('geom-Hr') ?? DEFAULT_CABINET.Hr,
     Hb: g('geom-Hb') ?? DEFAULT_CABINET.Hb,
     Db1: g('geom-Db1') ?? DEFAULT_CABINET.Db1,
     Db2: g('geom-Db2') ?? DEFAULT_CABINET.Db2,
     doorGap: g('geom-doorGap') ?? DEFAULT_CABINET.doorGap,
     packingPos: g('geom-packingPos') ?? DEFAULT_CABINET.packingPos,
-    airGap: g('geom-airGap') ?? DEFAULT_CABINET.airGap,
-    walls: {
-      freezer: {
-        top:     g('geom-walls-freezer-top') ?? DEFAULT_CABINET.walls.freezer.top,
-        bottom:  g('geom-walls-freezer-bottom') ?? DEFAULT_CABINET.walls.freezer.bottom,
-        left:    g('geom-walls-freezer-left') ?? DEFAULT_CABINET.walls.freezer.left,
-        right:   g('geom-walls-freezer-right') ?? DEFAULT_CABINET.walls.freezer.right,
-        door:    g('geom-walls-freezer-door') ?? DEFAULT_CABINET.walls.freezer.door,
-        rear:    g('geom-walls-freezer-rear') ?? DEFAULT_CABINET.walls.freezer.rear,
-      },
-      refrigerator: {
-        top:     g('geom-walls-refrigerator-top') ?? DEFAULT_CABINET.walls.refrigerator.top,
-        bottom1: g('geom-walls-refrigerator-bottom1') ?? DEFAULT_CABINET.walls.refrigerator.bottom1,
-        bottom2: g('geom-walls-refrigerator-bottom2') ?? DEFAULT_CABINET.walls.refrigerator.bottom2,
-        bottom3: g('geom-walls-refrigerator-bottom3') ?? DEFAULT_CABINET.walls.refrigerator.bottom3,
-        left:    g('geom-walls-refrigerator-left') ?? DEFAULT_CABINET.walls.refrigerator.left,
-        right:   g('geom-walls-refrigerator-right') ?? DEFAULT_CABINET.walls.refrigerator.right,
-        rear:    g('geom-walls-refrigerator-rear') ?? DEFAULT_CABINET.walls.refrigerator.rear,
-        door:    g('geom-walls-refrigerator-door') ?? DEFAULT_CABINET.walls.refrigerator.door,
-      }
-    }
+    airGap: 0,
+    Hf: freezerComp ? freezerComp.height : 0,
+    Hr: freshComp   ? freshComp.height   : 0,
+    walls,
+    _compartments: comps   // for thermal guard
   };
 }
 
 function writeGeometryToPanel(geom) {
-  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-  set('geom-H', geom.H);
-  set('geom-W', geom.W);
-  set('geom-D', geom.D);
-  set('geom-Hf', geom.Hf);
-  set('geom-Hr', geom.Hr);
-  set('geom-Hb', geom.Hb);
-  set('geom-Db1', geom.Db1);
-  set('geom-Db2', geom.Db2);
-  set('geom-doorGap', geom.doorGap);
-  set('geom-packingPos', geom.packingPos);
-  set('geom-airGap', geom.airGap);
-  set('geom-walls-freezer-top', geom.walls.freezer.top);
-  set('geom-walls-freezer-bottom', geom.walls.freezer.bottom);
-  set('geom-walls-freezer-left', geom.walls.freezer.left);
-  set('geom-walls-freezer-right', geom.walls.freezer.right);
-  set('geom-walls-freezer-door', geom.walls.freezer.door);
-  set('geom-walls-freezer-rear', geom.walls.freezer.rear);
-  set('geom-walls-refrigerator-top', geom.walls.refrigerator.top);
-  set('geom-walls-refrigerator-bottom1', geom.walls.refrigerator.bottom1);
-  set('geom-walls-refrigerator-bottom2', geom.walls.refrigerator.bottom2);
-  set('geom-walls-refrigerator-bottom3', geom.walls.refrigerator.bottom3);
-  set('geom-walls-refrigerator-left', geom.walls.refrigerator.left);
-  set('geom-walls-refrigerator-right', geom.walls.refrigerator.right);
-  set('geom-walls-refrigerator-rear', geom.walls.refrigerator.rear);
-  set('geom-walls-refrigerator-door', geom.walls.refrigerator.door);
+  // not needed in this new design, but we can set the global currentGeometry
 }
 
 function getEffectiveThicknesses() {
@@ -151,63 +335,31 @@ function markDirty() {
 
 document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
 
-// ---- Compartment builder (unchanged) ----------------------------------
+// ---- Compartment builder init -----------------------------------------
 numCompartmentsInput.addEventListener('input', () => {
   markDirty();
-  buildCompartmentUI();
+  initCompartments();
 });
 
-buildCompartmentUI();
-writeGeometryToPanel(currentGeometry);
-initThermoUI(() => {
-  // Ensure the thermo UI reads the latest geometry from the shared panel
-  return readGeometryFromPanel();
-});
-function buildCompartmentUI() {
-  const count = Math.max(1, Math.min(2, parseInt(numCompartmentsInput.value) || 1));
-  compartmentBuilder.innerHTML = '';
+initCompartments();
 
-  for (let i = 0; i < count; i++) {
-    const fieldset = document.createElement('fieldset');
-    fieldset.innerHTML = `
-      <legend>Compartment ${i + 1}</legend>
-      <label>Type:
-        <select data-comp="${i}" data-field="type">
-          <option value="freezer">Freezer</option>
-          <option value="fresh">Fresh</option>
-        </select>
-      </label>
-      <label>Height Ratio (0-1):
-        <input type="number" data-comp="${i}" data-field="heightRatio" step="0.01" min="0.01" max="1" value="${i === 0 ? 0.4 : 0.6}">
-      </label>
-    `;
-    compartmentBuilder.appendChild(fieldset);
-  }
-}
-// ---- Add fitting helpers (with remove buttons) ------------------------
-
-
-// ---- Build CabinetConfig from DOM -------------------------------------
+// ---- Volume calculation -----------------------------------------------
 function buildConfigFromForm() {
   currentGeometry = readGeometryFromPanel();
   const volumeGeom = toVolumeFormat(currentGeometry);
 
-  const count = parseInt(numCompartmentsInput.value) || 1;
+  const count = compartmentsData.length;
   const leaves = [];
 
   for (let i = 0; i < count; i++) {
-    const typeSelect = compartmentBuilder.querySelector(`select[data-comp="${i}"][data-field="type"]`);
-    const heightRatioInput = compartmentBuilder.querySelector(`input[data-comp="${i}"][data-field="heightRatio"]`);
-    const compType = typeSelect.value;
-    const heightRatio = parseFloat(heightRatioInput.value) || (i === 0 ? 0.4 : 0.6);
-
+    const comp = compartmentsData[i];
     leaves.push({
       heightMode: 'ratio',
-      heightValue: heightRatio,
+      heightValue: comp.ratio,
       node: {
         nodeType: 'leaf',
         id: `comp${i}`,
-        type: compType,
+        type: comp.type,
         fittings: {
           shelves: [],
           drawers: [],
@@ -219,25 +371,16 @@ function buildConfigFromForm() {
     });
   }
 
-  // Normalise ratios
-  const totalRatio = leaves.reduce((s, l) => s + l.heightValue, 0);
-  if (totalRatio > 0) leaves.forEach(l => l.heightValue /= totalRatio);
-
   const rootNode = {
     nodeType: 'horizontal',
     id: 'root',
     children: leaves.map(l => ({ heightMode: l.heightMode, heightValue: l.heightValue, node: l.node })),
-    dividers: Array.from({ length: leaves.length - 1 }, (_, i) => ({
-      afterChildIndex: i,
-      thickness: parseFloat(divHorizInput.value) || 20,
-    })),
+    dividers: count > 1 ? [{ afterChildIndex: 0, thickness: parseFloat(divHorizInput.value) || 20 }] : [],
   };
 
   const cabinet = {
-    external: volumeGeom.external,
-    wallThicknessesByType: volumeGeom.wallThicknessesByType,
-    airGap: currentGeometry.airGap,
-    layout: rootNode,
+    geometry: currentGeometry,   // already built by readGeometryFromPanel
+    layout: rootNode
   };
 
   return {
@@ -249,45 +392,6 @@ function buildConfigFromForm() {
     layout: rootNode
   };
 }
-// ---- Populate from loaded config --------------------------------------
-function populateUIFromConfig(config) {
-  if (!config.cabinet.geometry && config.cabinet.external) {
-    config = upgradeConfig(config);
-  }
-  currentGeometry = config.cabinet.geometry;
-  writeGeometryToPanel(currentGeometry);
-
-  const layout = config.cabinet.layout;
-  if (layout.nodeType !== 'horizontal') return;
-
-  const compartmentCount = layout.children.length;
-  numCompartmentsInput.value = compartmentCount;
-  buildCompartmentUI();
-
-  for (let i = 0; i < compartmentCount; i++) {
-    const child = layout.children[i];
-    const compIdx = i;
-
-    const heightRatioInput = document.querySelector(`input[data-comp="${compIdx}"][data-field="heightRatio"]`);
-    if (heightRatioInput) heightRatioInput.value = child.heightValue;
-
-    const typeSelect = document.querySelector(`select[data-comp="${compIdx}"][data-field="type"]`);
-    if (typeSelect && child.node) {
-      if (child.node.nodeType === 'leaf') {
-        typeSelect.value = child.node.type;
-      } else if (child.node.nodeType === 'vertical') {
-        // Legacy support – take left side type
-        typeSelect.value = child.node.left.type;
-      }
-    }
-  }
-}
-
-
-// ---- Display messages, Calculate, Save/Load/Export, etc. (unchanged from previous) ----
-// (I'll include the rest of main.js after this block to keep the file complete)
-// The code below is identical to your previous working version, with the only change being
-// that drawSchematic now takes effectiveWalls as second argument.
 
 // ---- Display messages -------------------------------------------------
 function showMessages(errors, warnings, calcErrors) {
@@ -304,20 +408,24 @@ function showMessages(errors, warnings, calcErrors) {
     messagesFieldset.style.display = 'none';
   }
 }
+
+// ---- Calculate button -------------------------------------------------
 calculateBtn.addEventListener('click', () => {
   const { config, layout } = buildConfigFromForm();
   currentConfig = config;
-  // …
+  // ... (store buttons)
+  if (currentConfig) {
+    storeSlotABtn.style.display = 'inline-block';
+    storeSlotBBtn.style.display = 'inline-block';
+    compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
+  }
 
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
-    // ----- Compressor box subtraction -----
-    const internalWidth = result.leaves[0].space.width;  // all leaves share same width
-    const compressorBoxVolL = internalWidth
-                            * currentGeometry.Db2
-                            * currentGeometry.Hb
-                            * settings.mm3ToL;
+    // Compressor box subtraction
+    const internalWidth = result.leaves[0].space.width;
+    const compressorBoxVolL = internalWidth * currentGeometry.Db2 * currentGeometry.Hb * settings.mm3ToL;
 
     if (result.leaves.length > 0) {
       const bottomLeaf = result.leaves[result.leaves.length - 1];
@@ -325,7 +433,6 @@ calculateBtn.addEventListener('click', () => {
       result.totals.gross -= compressorBoxVolL;
     }
 
-    // ----- Display -----
     const disp = formatTotalsDisplay(result.totals);
     document.getElementById('grossVol').textContent      = disp.gross;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
@@ -338,28 +445,30 @@ calculateBtn.addEventListener('click', () => {
   }
 
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
-const frontCanvas = document.getElementById('schematicFront');
-const sideCanvas  = document.getElementById('schematicSide');
 
-const rightPanel = document.querySelector('.right-panel');
-const panelHeight = rightPanel.clientHeight - 30;   // leave some padding
-const panelWidth  = rightPanel.clientWidth - 20;
+  // Schematics
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (frontCanvas && sideCanvas) {
+    const rightPanel = document.querySelector('.right-panel');
+    const panelHeight = rightPanel.clientHeight - 30;
+    const panelWidth  = rightPanel.clientWidth - 20;
+    frontCanvas.height = panelHeight;
+    sideCanvas.height  = panelHeight;
+    frontCanvas.width  = panelWidth / 2 - 5;
+    sideCanvas.width   = panelWidth / 2 - 5;
 
-if (frontCanvas && sideCanvas) {
-  // Set both canvases to the same height, width split equally
-  frontCanvas.height = panelHeight;
-  sideCanvas.height  = panelHeight;
-  frontCanvas.width  = panelWidth / 2 - 5;
-  sideCanvas.width   = panelWidth / 2 - 5;
+    const effectiveWalls = getEffectiveThicknesses();
+    const drawOptions = {
+      dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+      compHeights: compartmentsData.map(c => c.height),
+      doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+    };
 
-  const effectiveWalls = getEffectiveThicknesses();
-  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves);
-  drawSideView(sideCanvas, currentGeometry, effectiveWalls);
-  dirtySchematic = false;
-  schematicOverlay.classList.add('hidden');
-}
-}
-);
+    drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
+    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);    schematicOverlay.classList.add('hidden');
+  }
+});
 
 // ---- Save / Load / Export ---------------------------------------------
 saveBtn.addEventListener('click', () => {
@@ -385,7 +494,6 @@ loadBtn.addEventListener('click', () => {
       populateUIFromConfig(config);
 
       const result = runCalculation(config);
-      const loadedLayout = config.cabinet.layout;
       if (result.leaves && result.totals) {
         const disp = formatTotalsDisplay(result.totals);
         document.getElementById('grossVol').textContent      = disp.gross;
@@ -399,28 +507,24 @@ loadBtn.addEventListener('click', () => {
       }
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
-const frontCanvas = document.getElementById('schematicFront');
-const sideCanvas  = document.getElementById('schematicSide');
+      const frontCanvas = document.getElementById('schematicFront');
+      const sideCanvas  = document.getElementById('schematicSide');
+      if (frontCanvas && sideCanvas && result.leaves) {
+        const rightPanel = document.querySelector('.right-panel');
+        const panelHeight = rightPanel.clientHeight - 30;
+        const panelWidth  = rightPanel.clientWidth - 20;
+        frontCanvas.height = panelHeight;
+        sideCanvas.height  = panelHeight;
+        frontCanvas.width  = panelWidth / 2 - 5;
+        sideCanvas.width   = panelWidth / 2 - 5;
 
-const rightPanel = document.querySelector('.right-panel');
-const panelHeight = rightPanel.clientHeight - 30;   // leave some padding
-const panelWidth  = rightPanel.clientWidth - 20;
+        const effectiveWalls = getEffectiveThicknesses();
+        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves);
+        drawSideView(sideCanvas, currentGeometry, effectiveWalls);
+        dirtySchematic = false;
+        schematicOverlay.classList.add('hidden');
+      }
 
-if (frontCanvas && sideCanvas) {
-  // Set both canvases to the same height, width split equally
-  frontCanvas.height = panelHeight;
-  sideCanvas.height  = panelHeight;
-  frontCanvas.width  = panelWidth / 2 - 5;
-  sideCanvas.width   = panelWidth / 2 - 5;
-
-  const effectiveWalls = getEffectiveThicknesses();
-  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, loadedLayout, result.leaves);
-  drawSideView(sideCanvas, currentGeometry, effectiveWalls);
-  dirtySchematic = false;
-  schematicOverlay.classList.add('hidden');
-}
-
-      
       alert('Configuration loaded and calculated.');
     } catch (err) {
       alert('Error: ' + err.message);
@@ -444,17 +548,21 @@ resetAllBtn.addEventListener('click', () => {
   if (!confirm('Reset all fields to default values and clear results?')) return;
 
   currentGeometry = { ...DEFAULT_CABINET };
-  writeGeometryToPanel(currentGeometry);
-
+  document.getElementById('geom-H').value = DEFAULT_CABINET.H;
+  document.getElementById('geom-W').value = DEFAULT_CABINET.W;
+  document.getElementById('geom-D').value = DEFAULT_CABINET.D;
+  document.getElementById('geom-Hb').value = DEFAULT_CABINET.Hb;
+  document.getElementById('geom-Db1').value = DEFAULT_CABINET.Db1;
+  document.getElementById('geom-Db2').value = DEFAULT_CABINET.Db2;
+  document.getElementById('geom-packingPos').value = DEFAULT_CABINET.packingPos;
+  document.getElementById('geom-doorGap').value = DEFAULT_CABINET.doorGap;
+  document.getElementById('geom-bottom1').value = 40;
+  document.getElementById('geom-bottom2').value = 40;
+  document.getElementById('geom-bottom3').value = 40;
   divHorizInput.value = 20;
   numCompartmentsInput.value = 2;
-  storeSlotABtn.style.display = 'none';
-  storeSlotBBtn.style.display = 'none';
-  compareSlotsBtn.style.display = 'none';
-  configSlotA = null;
-  configSlotB = null;
 
-  buildCompartmentUI();
+  initCompartments();
 
   document.getElementById('grossVol').textContent      = '--';
   document.getElementById('grossVolCuft').textContent  = '--';
@@ -464,17 +572,16 @@ resetAllBtn.addEventListener('click', () => {
   messagesDiv.innerHTML = '';
   messagesFieldset.style.display = 'none';
 
-const frontCanvas = document.getElementById('schematicFront');
-const sideCanvas  = document.getElementById('schematicSide');
-if (frontCanvas) {
-  const ctx = frontCanvas.getContext('2d');
-  ctx.clearRect(0, 0, frontCanvas.width, frontCanvas.height);
-}
-if (sideCanvas) {
-  const ctx = sideCanvas.getContext('2d');
-  ctx.clearRect(0, 0, sideCanvas.width, sideCanvas.height);
-}
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (frontCanvas) frontCanvas.getContext('2d').clearRect(0, 0, frontCanvas.width, frontCanvas.height);
+  if (sideCanvas) sideCanvas.getContext('2d').clearRect(0, 0, sideCanvas.width, sideCanvas.height);
+
+  schematicOverlay.classList.add('hidden');
+  dirtySchematic = false;
+  currentConfig = null;
 });
+
 // ---- Auto‑calculate & settings change handler ------------------------
 document.addEventListener('input', (e) => {
   if (settings.autoCalculate && e.target.closest('.left-panel')) {
@@ -566,3 +673,6 @@ function buildComparisonTable(resultA, resultB) {
   }
   comparisonContent.innerHTML = html;
 }
+
+// Thermo UI init with geometry provider
+initThermoUI(() => readGeometryFromPanel());
