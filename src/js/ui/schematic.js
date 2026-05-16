@@ -112,8 +112,7 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
 export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, W } = geometry;
-  const w = effectiveWalls;
-  const { dividerThickness = 0, compHeights = [] } = options;
+  const { dividerThickness = 0, compHeights = [], compartments = [] } = options;
 
   const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
   const drawW = canvas.width - PAD.left - PAD.right;
@@ -128,95 +127,115 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, W * scale, H * scale);
 
-  const intLeft   = w.left;
-  const intRight  = W - w.right;
-  const intTop    = w.top;
-  const intBottom = H - w.bottom;
+  // Per‑compartment inner boundaries
+  const innerLeft  = compartments.map(c => c.left);
+  const innerRight = compartments.map(c => W - c.right);
+  const intTop     = effectiveWalls.top;
+  const intBottom  = H - effectiveWalls.bottom;
 
-  // Insulation band
+  // Build the inner cavity polygon (stepped if left/right differ)
   ctx.beginPath();
+  // outer clockwise
   ctx.rect(0, 0, W * scale, H * scale);
-  ctx.moveTo(intLeft  * scale, intTop    * scale);
-  ctx.lineTo(intRight * scale, intTop    * scale);
-  ctx.lineTo(intRight * scale, intBottom * scale);
-  ctx.lineTo(intLeft  * scale, intBottom * scale);
+  // inner cavity counter‑clockwise
+  let y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const leftX  = innerLeft[i]  * scale;
+    const rightX = innerRight[i] * scale;
+
+    if (i === 0) {
+      ctx.moveTo(leftX, y * scale);
+    } else {
+      ctx.lineTo(leftX, y * scale);   // step left if thickness changed
+    }
+    ctx.lineTo(rightX, y * scale);
+    y += h;
+    ctx.lineTo(rightX, y * scale);
+    if (i < compHeights.length - 1) {
+      // only close the bottom side after last compartment
+      // just continue to next
+    }
+  }
+  ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
   ctx.closePath();
   ctx.fillStyle = '#f0f0f0';
   ctx.fill();
 
-  // Inner cavity
-  ctx.beginPath();
-  ctx.rect(intLeft  * scale, intTop    * scale,
-           (intRight - intLeft) * scale, (intBottom - intTop) * scale);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // Draw individual compartments
+  const types = leaves ? leaves.map(l => l.leafType) : [];
+  y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const leftX  = innerLeft[i]  * scale;
+    const rightX = innerRight[i] * scale;
+    const compY = y * scale;
+    const compH = h * scale;
 
-  // Compartments
-  if (compHeights.length > 0) {
-    let yOffset = intTop;
-    const types = leaves ? leaves.map(l => l.leafType) : [];
-    compHeights.forEach((childH, idx) => {
-      const compY = yOffset * scale;
-      const compH = childH * scale;
-      ctx.fillStyle = idx === 0 ? '#e8f0e8' : '#ffffff';
-      ctx.fillRect(intLeft * scale, compY, (intRight - intLeft) * scale, compH);
-      ctx.strokeStyle = '#999';
-      ctx.strokeRect(intLeft * scale, compY, (intRight - intLeft) * scale, compH);
-      ctx.fillStyle = '#000'; ctx.font = '12px Arial';
-      if (types[idx]) ctx.fillText(types[idx], intLeft * scale + 4, compY + 16);
-      yOffset += childH;
+    ctx.fillStyle = i === 0 ? '#e8f0e8' : '#ffffff';
+    ctx.fillRect(leftX, compY, rightX - leftX, compH);
+    ctx.strokeStyle = '#999';
+    ctx.strokeRect(leftX, compY, rightX - leftX, compH);
+    ctx.fillStyle = '#000'; ctx.font = '12px Arial';
+    if (types[i]) ctx.fillText(types[i], leftX + 4, compY + 16);
 
-      // divider after this compartment if there is a next one
-      if (idx < compHeights.length - 1 && dividerThickness > 0) {
-        const dividerY = yOffset * scale;
-        const dividerH = dividerThickness * scale;
-        ctx.fillStyle = '#aaa';
-        ctx.fillRect(intLeft * scale, dividerY, (intRight - intLeft) * scale, dividerH);
-        ctx.strokeStyle = '#666';
-        ctx.strokeRect(intLeft * scale, dividerY, (intRight - intLeft) * scale, dividerH);
-        yOffset += dividerThickness;
-      }
-    });
+    y += h;
+
+    // divider after this compartment if there is a next one
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      const dividerY = y * scale;
+      const dividerH = dividerThickness * scale;
+      ctx.fillStyle = '#aaa';
+      ctx.fillRect(leftX, dividerY, rightX - leftX, dividerH);
+      ctx.strokeStyle = '#666';
+      ctx.strokeRect(leftX, dividerY, rightX - leftX, dividerH);
+      y += dividerThickness;
+    }
   }
-  
-  // Dimensions: compartment heights and divider thickness on the left side
+
+  // Dimension lines (left side – compartment heights & divider)
   const dimX = -35;
-  let yCursor = intTop;
-  if (compHeights.length > 0) {
-    compHeights.forEach((h, idx) => {
-      const bottomY = yCursor + h;
-      drawDim(ctx, dimX, yCursor * scale, dimX, bottomY * scale, 0,
-              `[h= ${h.toFixed(0)}]`);
-      yCursor = bottomY;
-      if (idx < compHeights.length - 1 && dividerThickness > 0) {
-        const dividerBottom = yCursor + dividerThickness;
-        drawDim(ctx, dimX, yCursor * scale, dimX, dividerBottom * scale, 0,
-                `[div= ${dividerThickness}]`);
-        yCursor = dividerBottom;
-      }
-    });
+  y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `[h= ${h.toFixed(0)}]`);
+    y += h;
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      const dividerBottom = y + dividerThickness;
+      drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `[div= ${dividerThickness}]`);
+      y = dividerBottom;
+    }
   }
+
+  // Horizontal dimensions at bottom
+  drawDim(ctx, 0, H * scale, W * scale, H * scale, 35, `[W= ${W.toFixed(0)}]`);
+  // Left thickness for top compartment
+  drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
+  // Right thickness for top compartment
+  drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
+  // If second compartment has different left/right, draw additional dimensions?
+  // For simplicity, we only show the top compartment's – can be improved later.
 
   ctx.restore();
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Side view
+// Side view – per‑compartment rear thicknesses
 // ──────────────────────────────────────────────────────────────────
 export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, D, Hb, Db1, Db2, walls } = geometry;
-  const w = effectiveWalls;
-  const { dividerThickness = 0, compHeights = [], doorGap = 0 } = options;
+  const { dividerThickness = 0, compHeights = [], doorGap = 0, compartments = [] } = options;
 
-  const tTop    = w.top;
-  const tDoor   = w.door;
-  const tRear   = w.rear;
+  const tTop      = effectiveWalls.top;
+  const tDoor     = effectiveWalls.door;
+  const tRear     = effectiveWalls.rear;            // single global rear (for compressor box)
   const tRbottom1 = walls.refrigerator.bottom1;
   const tRbottom2 = walls.refrigerator.bottom2;
   const tRbottom3 = walls.refrigerator.bottom3;
+
+  // Per‑compartment rear thicknesses (for stepped inner cavity)
+  const compRear = compartments.map(c => c.rear);
 
   const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
   const drawW = canvas.width - PAD.left - PAD.right;
@@ -231,28 +250,45 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
 
-  const innerRear   = tRear;
-  const innerDoor   = D - tDoor;
-  const innerTop    = tTop;
+  const innerDoor = D - tDoor;
+  const innerTop  = tTop;
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
-  const slopeStartX = innerRear + Db1;
-  const slopeEndX   = innerRear + Db2;
+  const slopeStartX = tRear + Db1;                  // global – uses effective rear
+  const slopeEndX   = tRear + Db2;
 
-  // Insulation band
+  // ---- Insulation band (outer‑inner gap) ----
   ctx.beginPath();
-  ctx.rect(0, 0, D * scale, H * scale);
-  ctx.moveTo(innerRear * scale, innerTop * scale);
-  ctx.lineTo(innerDoor * scale, innerTop * scale);
+  ctx.rect(0, 0, D * scale, H * scale);            // outer
+
+  // inner cavity (counter‑clockwise, may step at rear)
+  let y = innerTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const rearX = compRear[i] * scale;
+    const doorX = innerDoor * scale;
+
+    if (i === 0) {
+      ctx.moveTo(rearX, y * scale);
+    } else {
+      ctx.lineTo(rearX, y * scale);                 // step if rear changed
+    }
+    ctx.lineTo(doorX, y * scale);
+    y += h;
+    ctx.lineTo(doorX, y * scale);
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      y += dividerThickness;
+    }
+  }
   ctx.lineTo(innerDoor * scale, floorLowerY * scale);
   ctx.lineTo(slopeEndX   * scale, floorLowerY * scale);
   ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-  ctx.lineTo(innerRear   * scale, floorRaisedY * scale);
+  ctx.lineTo(compRear[compHeights.length - 1] * scale, floorRaisedY * scale);
   ctx.closePath();
   ctx.fillStyle = '#f0f0f0';
   ctx.fill();
 
-  // Compressor box
+  // ---- Compressor box (uses global tRear) ----
   const slopeDx = slopeEndX - slopeStartX;
   const slopeDy = floorLowerY - floorRaisedY;
   const slopeLen = Math.sqrt(slopeDx*slopeDx + slopeDy*slopeDy);
@@ -281,42 +317,54 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fillStyle = '#555'; ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTop * scale + 14);
 
-  // Inner cavity outline (white)
+  // ---- Inner cavity white fill & blue outline ----
   ctx.beginPath();
-  ctx.moveTo(innerRear * scale, innerTop * scale);
-  ctx.lineTo(innerDoor * scale, innerTop * scale);
+  y = innerTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const rearX = compRear[i] * scale;
+    const doorX = innerDoor * scale;
+    if (i === 0) ctx.moveTo(rearX, y * scale);
+    else ctx.lineTo(rearX, y * scale);
+    ctx.lineTo(doorX, y * scale);
+    y += h;
+    ctx.lineTo(doorX, y * scale);
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      y += dividerThickness;
+    }
+  }
   ctx.lineTo(innerDoor * scale, floorLowerY * scale);
   ctx.lineTo(slopeEndX   * scale, floorLowerY * scale);
   ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-  ctx.lineTo(innerRear   * scale, floorRaisedY * scale);
+  ctx.lineTo(compRear[compHeights.length - 1] * scale, floorRaisedY * scale);
   ctx.closePath();
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // If two compartments, draw divider and doors
+  // ---- Divider and doors ----
+  let drawnDoors = [];
   if (compHeights.length === 2 && dividerThickness > 0) {
-    const internalH = innerTop + compHeights[0] + dividerThickness + compHeights[1]; 
     const dividerY = innerTop + compHeights[0];
     const dividerH = dividerThickness;
 
-    // Divider as a horizontal band across the internal depth
+    // Divider band across full internal depth
     ctx.fillStyle = '#aaa';
-    ctx.fillRect(innerRear * scale, dividerY * scale,
-                 (innerDoor - innerRear) * scale, dividerH * scale);
+    ctx.fillRect(compRear[0] * scale, dividerY * scale,
+                 (innerDoor - compRear[0]) * scale, dividerH * scale);
     ctx.strokeStyle = '#666';
-    ctx.strokeRect(innerRear * scale, dividerY * scale,
-                  (innerDoor - innerRear) * scale, dividerH * scale);
+    ctx.strokeRect(compRear[0] * scale, dividerY * scale,
+                  (innerDoor - compRear[0]) * scale, dividerH * scale);
 
-    // Two doors on the right side
+    // Two doors
     const doorLeftX = innerDoor * scale;
     const doorRightX = D * scale;
     const doorWidth = (D - innerDoor) * scale;
     const topDoorTop = 0;
-    const topDoorBottom = dividerY * scale - (doorGap / 2) * scale;
-    const bottomDoorTop = (dividerY + dividerH) * scale + (doorGap / 2) * scale;
-    const bottomDoorBottom = (H) * scale;
+    const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
+    const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
+    const bottomDoorBottom = H * scale;
 
     ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
     ctx.fillRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
@@ -324,23 +372,33 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.strokeStyle = '#555';
     ctx.strokeRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
     ctx.strokeRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
+
+    drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
+    drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
+
+    // Door gap dimension
+    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45, `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
+  } else {
+    drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
   }
 
-  // Dimensions: overall H, Hb, D, Db1, Db2, insulation thicknesses
+  // ---- Dimensions ----
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-  drawDim(ctx, innerRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-  drawDim(ctx, innerRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+  drawDim(ctx, tRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
+  drawDim(ctx, tRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
 
-  const topMidX = (innerRear + innerDoor) / 2 * scale;
+  const topMidX = (tRear + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
 
-  const doorMidY = (innerTop + floorLowerY) / 2 * scale;
-  drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
+  drawnDoors.forEach(door => {
+    const doorMidY = (door.top + door.bottom) / 3;
+    drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
+  });
 
-  const rearMidY = (innerTop + floorRaisedY) / 2 * scale;
-  drawDim(ctx, 0, rearMidY, innerRear * scale, rearMidY, 0, `[tRear= ${tRear.toFixed(0)}]`);
+  const rearMidY = (innerTop + floorRaisedY) / 2.5 * scale;
+  drawDim(ctx, 0, rearMidY, tRear * scale, rearMidY, 0, `[tRear= ${tRear.toFixed(0)}]`);
 
   const botMidX = (slopeEndX + innerDoor) / 2 * scale;
   drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
@@ -353,25 +411,20 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const outerPY = innerPY + ny * (tRbottom2 * scale);
   drawDim(ctx, innerPX, innerPY, outerPX, outerPY, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
 
-  // Compartment height dimensions in side view (on right side)
+  // Compartment height dimensions (right side)
   if (compHeights.length === 2) {
     const dimX = D * scale + 20;
     let yPos = innerTop;
     compHeights.forEach((h, idx) => {
       const bottomY = yPos + h;
-      drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0,
-              `[h= ${h.toFixed(0)}]`);
+      drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
       yPos = bottomY;
       if (idx === 0 && dividerThickness > 0) {
-        const dividerBottom = yPos + dividerThickness;
-        drawDim(ctx, dimX, yPos * scale, dimX, dividerBottom * scale, 0,
-                `[div= ${dividerThickness}]`);
-        yPos = dividerBottom;
+        yPos += dividerThickness;
       }
     });
   } else if (compHeights.length === 1) {
-    drawDim(ctx, D * scale + 20, innerTop * scale, D * scale + 20, (innerTop + compHeights[0]) * scale, 0,
-            `[h= ${compHeights[0].toFixed(0)}]`);
+    drawDim(ctx, D * scale + 20, innerTop * scale, D * scale + 20, (innerTop + compHeights[0]) * scale, 0, `[h= ${compHeights[0].toFixed(0)}]`);
   }
 
   ctx.restore();
