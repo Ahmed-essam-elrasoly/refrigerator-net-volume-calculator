@@ -72,10 +72,6 @@ function validateCabinet(cabinet) {
     }
   }
 
-  // Air gap positive
-  if (airGap <= 0) {
-    errors.push({ rule: 'positiveValues', message: `airGap must be > 0, got ${airGap}` });
-  }
 
   // Internal dimensions positive
   if (errors.length === 0) {

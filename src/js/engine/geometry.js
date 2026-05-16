@@ -4,10 +4,6 @@ export const DEFAULT_CABINET = Object.freeze({
   // External dimensions (mm)
   H: 1680,  W: 800,  D: 630,
 
-  // Compartment heights (mm)
-  Hf: 550,   // freezer
-  Hr: 1130,  // refrigerator
-
   // Bottom heel / machine compartment (mm)
   Hb: 260,
   Db1: 210,
@@ -17,28 +13,12 @@ export const DEFAULT_CABINET = Object.freeze({
   doorGap: 10,
   packingPos: 15,
 
-  // Air gap for volume calculation (mm)
+  // Air gap (mm) – no longer used in calculations
   airGap: 5,
-
-  // Per‑compartment wall thicknesses (all faces, mm)
-  walls: {
-    freezer: {
-      top: 59.4, left: 59.4, right: 59.4, bottom: 70, door: 59.4,
-      rear: 60   // evaporator back
-    },
-    refrigerator: {
-      top: 70, left: 40, right: 40, rear: 60,
-      bottom1: 40, bottom2: 40, bottom3: 40, door: 40
-    }
-  }
 });
 
-/**
- * Convert CabinetGeometry to the volume calculator format.
- * Returns the shape expected by deriveRootSpace().
- */
 export function toVolumeFormat(geom) {
-  const { H, W, D, airGap, walls } = geom;
+  const { H, W, D, walls } = geom;
   const t = {
     fresh: {
       top: walls.refrigerator.top,
@@ -68,14 +48,10 @@ export function toVolumeFormat(geom) {
   return {
     external: { height: H, width: W, depth: D },
     wallThicknessesByType: t,
-    airGap
+    airGap: 0
   };
 }
 
-/**
- * Convert CabinetGeometry to the thermal model's flat format.
- * Returns the object expected by heatLoad.js (DEFAULT_GEOMETRY shape).
- */
 export function toThermalFormat(geom) {
   const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
   return {
@@ -96,7 +72,7 @@ export function toThermalFormat(geom) {
     tRbottom1:walls.refrigerator.bottom1,
     tRbottom2:walls.refrigerator.bottom2,
     tRbottom3:walls.refrigerator.bottom3,
-    tRdoor:   walls.refrigerator.door
+    tRdoor:   walls.refrigerator.door,
   };
 }
 
