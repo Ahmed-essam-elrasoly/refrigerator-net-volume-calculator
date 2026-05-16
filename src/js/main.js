@@ -463,6 +463,11 @@ calculateBtn.addEventListener('click', () => {
       dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
       compHeights: compartmentsData.map(c => c.height),
       doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+        compartments: compartmentsData.map(c => ({
+        left: c.left,
+        right: c.right,
+        rear: c.rear
+      })),
     };
 
     drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
