@@ -229,13 +229,12 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
   const tTop      = effectiveWalls.top;
   const tDoor     = effectiveWalls.door;
-  const tRear     = effectiveWalls.rear;            // single global rear (for compressor box)
+  const tRear     = effectiveWalls.rear;            // global rear for compressor box
   const tRbottom1 = walls.refrigerator.bottom1;
   const tRbottom2 = walls.refrigerator.bottom2;
   const tRbottom3 = walls.refrigerator.bottom3;
 
-  // Per‑compartment rear thicknesses (for stepped inner cavity)
-  const compRear = compartments.map(c => c.rear);
+  const compRear = compartments.map(c => c.rear);   // per‑compartment
 
   const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
   const drawW = canvas.width - PAD.left - PAD.right;
@@ -254,41 +253,49 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const innerTop  = tTop;
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
-  const slopeStartX = tRear + Db1;                  // global – uses effective rear
-  const slopeEndX   = tRear + Db2;
-
-  // ---- Insulation band (outer‑inner gap) ----
+  // Use bottom compartment’s rear (or the only compartment) for the stepped floor
+  const bottomRear = compRear.length === 2 ? compRear[1] : compRear[0];
+  const slopeStartX = bottomRear + Db1;
+  const slopeEndX   = bottomRear + Db2;  
+  // ---- 1. Insulation bands (per compartment, non‑overlapping) ----
+  // Top compartment
+  const topH = compHeights[0];
+  const topRearX = compRear[0] * scale;
+  const topY = innerTop * scale;
+  const topCompH = topH * scale;
   ctx.beginPath();
-  ctx.rect(0, 0, D * scale, H * scale);            // outer
-
-  // inner cavity (counter‑clockwise, may step at rear)
-  let y = innerTop;
-  for (let i = 0; i < compHeights.length; i++) {
-    const h = compHeights[i];
-    const rearX = compRear[i] * scale;
-    const doorX = innerDoor * scale;
-
-    if (i === 0) {
-      ctx.moveTo(rearX, y * scale);
-    } else {
-      ctx.lineTo(rearX, y * scale);                 // step if rear changed
-    }
-    ctx.lineTo(doorX, y * scale);
-    y += h;
-    ctx.lineTo(doorX, y * scale);
-    if (i < compHeights.length - 1 && dividerThickness > 0) {
-      y += dividerThickness;
-    }
-  }
-  ctx.lineTo(innerDoor * scale, floorLowerY * scale);
-  ctx.lineTo(slopeEndX   * scale, floorLowerY * scale);
-  ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-  ctx.lineTo(compRear[compHeights.length - 1] * scale, floorRaisedY * scale);
+  ctx.rect(0, topY, D * scale, topCompH);                     // outer slice
+  ctx.moveTo(topRearX, topY);
+  ctx.lineTo(innerDoor * scale, topY);
+  ctx.lineTo(innerDoor * scale, topY + topCompH);
+  ctx.lineTo(topRearX, topY + topCompH);
   ctx.closePath();
   ctx.fillStyle = '#f0f0f0';
   ctx.fill();
 
-  // ---- Compressor box (uses global tRear) ----
+  // If two compartments, bottom compartment insulation
+  if (compHeights.length === 2) {
+    const bottomH = compHeights[1];
+    const bottomRearX = compRear[1] * scale;
+    const bottomY = (innerTop + topH + dividerThickness) * scale;
+    const bottomCompH = bottomH * scale;
+    ctx.beginPath();
+    ctx.rect(0, bottomY, D * scale, bottomCompH);             // outer slice
+    // inner cutout follows the stepped floor
+    ctx.moveTo(bottomRearX, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
+    ctx.lineTo(innerDoor * scale, floorLowerY * scale);       // down to lower floor (should be same as bottom bottom)
+    ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+    ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+    ctx.lineTo(bottomRearX, floorRaisedY * scale);            // back to rear at raised floor
+    ctx.closePath();
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fill();
+  }
+
+  // ---- 2. Compressor box ----
+  // (same as before, using global tRear)
   const slopeDx = slopeEndX - slopeStartX;
   const slopeDy = floorLowerY - floorRaisedY;
   const slopeLen = Math.sqrt(slopeDx*slopeDx + slopeDy*slopeDy);
@@ -296,70 +303,69 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   let ny = -slopeDx / slopeLen;
   if (ny < 0) { nx = -nx; ny = -ny; }
 
-  const yTop = floorRaisedY + tRbottom1;
-  const sTop = slopeDy !== 0 ? (yTop - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-  const xTop = slopeStartX + sTop * slopeDx + nx * tRbottom2;
+  const yTopCB = floorRaisedY + tRbottom1;
+  const sTop = slopeDy !== 0 ? (yTopCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
+  const xTopCB = slopeStartX + sTop * slopeDx + nx * tRbottom2;
 
-  const yBottom = H;
-  const sBottom = slopeDy !== 0 ? (yBottom - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-  const xBottom = slopeStartX + sBottom * slopeDx + nx * tRbottom2;
+  const yBottomCB = H;
+  const sBottom = slopeDy !== 0 ? (yBottomCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
+  const xBottomCB = slopeStartX + sBottom * slopeDx + nx * tRbottom2;
 
   ctx.beginPath();
   ctx.moveTo(0, H * scale);
-  ctx.lineTo(0, yTop * scale);
-  ctx.lineTo(xTop * scale, yTop * scale);
-  ctx.lineTo(xBottom * scale, yBottom * scale);
+  ctx.lineTo(0, yTopCB * scale);
+  ctx.lineTo(xTopCB * scale, yTopCB * scale);
+  ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
   ctx.closePath();
   ctx.fillStyle = '#ddd';
   ctx.fill();
   ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
   ctx.stroke();
   ctx.fillStyle = '#555'; ctx.font = 'bold 11px sans-serif';
-  ctx.fillText('Comp.', 6, yTop * scale + 14);
+  ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // ---- Inner cavity white fill & blue outline ----
+  // ---- 3. White inner cavity (two separate shapes) ----
+  // Top compartment
   ctx.beginPath();
-  y = innerTop;
-  for (let i = 0; i < compHeights.length; i++) {
-    const h = compHeights[i];
-    const rearX = compRear[i] * scale;
-    const doorX = innerDoor * scale;
-    if (i === 0) ctx.moveTo(rearX, y * scale);
-    else ctx.lineTo(rearX, y * scale);
-    ctx.lineTo(doorX, y * scale);
-    y += h;
-    ctx.lineTo(doorX, y * scale);
-    if (i < compHeights.length - 1 && dividerThickness > 0) {
-      y += dividerThickness;
-    }
-  }
-  ctx.lineTo(innerDoor * scale, floorLowerY * scale);
-  ctx.lineTo(slopeEndX   * scale, floorLowerY * scale);
-  ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-  ctx.lineTo(compRear[compHeights.length - 1] * scale, floorRaisedY * scale);
-  ctx.closePath();
+  ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
   ctx.stroke();
+  // bottom compartment
+  if (compHeights.length === 2) {
+    const bottomRearX = compRear[1] * scale;
+    const bottomY = (innerTop + topH + dividerThickness) * scale;
+    const bottomCompH = compHeights[1] * scale;
+    ctx.beginPath();
+    ctx.moveTo(bottomRearX, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
+    ctx.lineTo(innerDoor * scale, floorLowerY * scale);
+    ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+    ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+    ctx.lineTo(bottomRearX, floorRaisedY * scale);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
 
-  // ---- Divider and doors ----
+  // ---- 4. Divider & doors ----
   let drawnDoors = [];
   if (compHeights.length === 2 && dividerThickness > 0) {
-    const dividerY = innerTop + compHeights[0];
+    const dividerY = innerTop + topH;
     const dividerH = dividerThickness;
 
-    // Divider band across full internal depth
     ctx.fillStyle = '#aaa';
-    ctx.fillRect(compRear[0] * scale, dividerY * scale,
-                 (innerDoor - compRear[0]) * scale, dividerH * scale);
+    ctx.fillRect(0, dividerY * scale,
+                 (innerDoor) * scale, dividerH * scale);
     ctx.strokeStyle = '#666';
-    ctx.strokeRect(compRear[0] * scale, dividerY * scale,
-                  (innerDoor - compRear[0]) * scale, dividerH * scale);
+    ctx.strokeRect(0, dividerY * scale,
+                  (innerDoor) * scale, dividerH * scale);
 
-    // Two doors
     const doorLeftX = innerDoor * scale;
-    const doorRightX = D * scale;
     const doorWidth = (D - innerDoor) * scale;
     const topDoorTop = 0;
     const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
@@ -376,8 +382,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
     drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
 
-    // Door gap dimension
-    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45, `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
+    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
+            `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
   } else {
     drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
   }
@@ -386,21 +392,28 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-  drawDim(ctx, tRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-  drawDim(ctx, tRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
-
+  drawDim(ctx, bottomRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
+  drawDim(ctx, bottomRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
   const topMidX = (tRear + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
 
   drawnDoors.forEach(door => {
-    const doorMidY = (door.top + door.bottom) / 3;
+    const doorMidY = (door.top + door.bottom) / 2.5;
     drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
   });
 
-  const rearMidY = (innerTop + floorRaisedY) / 2.5 * scale;
-  drawDim(ctx, 0, rearMidY, tRear * scale, rearMidY, 0, `[tRear= ${tRear.toFixed(0)}]`);
+  // Rear dimensions – per compartment
+  for (let i = 0; i < compHeights.length; i++) {
+    if (i === 0 || compRear[i] !== compRear[i-1]) {
+      let compY = innerTop;
+      for (let j = 0; j < i; j++) compY += compHeights[j];
+      if (i > 0) compY += dividerThickness;
+      const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
+      drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `[tRear= ${compartments[i].rear.toFixed(0)}]`);
+    }
+  }
 
-  const botMidX = (slopeEndX + innerDoor) / 2 * scale;
+  const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
   drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
 
   const midSlopeX = (slopeStartX + slopeEndX) / 2;
@@ -419,12 +432,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       const bottomY = yPos + h;
       drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
       yPos = bottomY;
-      if (idx === 0 && dividerThickness > 0) {
-        yPos += dividerThickness;
-      }
+      if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
     });
   } else if (compHeights.length === 1) {
-    drawDim(ctx, D * scale + 20, innerTop * scale, D * scale + 20, (innerTop + compHeights[0]) * scale, 0, `[h= ${compHeights[0].toFixed(0)}]`);
+    drawDim(ctx, D * scale + 20, innerTop * scale, D * scale + 20, (innerTop + compHeights[0]) * scale, 0,
+            `[h= ${compHeights[0].toFixed(0)}]`);
   }
 
   ctx.restore();
