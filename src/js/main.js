@@ -312,14 +312,20 @@ function writeGeometryToPanel(geom) {
 }
 
 function getEffectiveThicknesses() {
-  const g = currentGeometry;
+  const comps = compartmentsData;
+  const topComp = comps[0];                        // always the top compartment
+  const bottomComp = comps.length > 1 ? comps[1] : comps[0];
+  const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
+  const bottom2 = parseFloat(document.getElementById('geom-bottom2')?.value) || 40;
+  const bottom3 = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+
   return {
-    top: Math.max(g.walls.freezer.top, g.walls.refrigerator.top),
-    bottom: Math.max(g.walls.freezer.bottom, g.walls.refrigerator.bottom1, g.walls.refrigerator.bottom2, g.walls.refrigerator.bottom3),
-    left: Math.max(g.walls.freezer.left, g.walls.refrigerator.left),
-    right: Math.max(g.walls.freezer.right, g.walls.refrigerator.right),
-    rear: Math.max(g.walls.freezer.rear, g.walls.refrigerator.rear),
-    door: Math.max(g.walls.freezer.door, g.walls.refrigerator.door),
+    top:    topComp.top,
+    bottom: Math.max(bottom1, bottom2, bottom3),   // only the stepped floor
+    left:   Math.max(topComp.left, bottomComp.left),
+    right:  Math.max(topComp.right, bottomComp.right),
+    rear:   Math.max(topComp.rear, bottomComp.rear),
+    door:   Math.max(topComp.door, bottomComp.door),
   };
 }
 
