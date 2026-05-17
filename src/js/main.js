@@ -63,8 +63,27 @@ let currentGeometry = { ...DEFAULT_CABINET };
 
 // ---- Compartment reactive state ---------------------------------------
 let compartmentsData = [];
+
 fillGeometryDefaults();
+
+// Dedicated listeners for geometry fields that affect internal height
+['geom-H', 'geom-bottom3'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    syncConstraints();
+    syncDisplay();
+    markDirty();
+  });
+});
+
+// Divider thickness changes also affect compartment heights
+divHorizInput.addEventListener('input', () => {
+  syncConstraints();
+  syncDisplay();
+  markDirty();
+});
+
 initCompartments();
+
 function initCompartments() {
   const count = parseInt(numCompartmentsInput.value) || 1;
   compartmentsData = [];
@@ -87,8 +106,15 @@ function syncConstraints() {
   const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
   const totalInsulTop = compartmentsData[0].top;
   const totalInsulBottom = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
-  const internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
-
+  let internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
+  if (internalH < 0) internalH = 0;
+  if (internalH === 0) {
+    compartmentsData[0].height = 0;
+    compartmentsData[1].height = 0;
+    compartmentsData[0].ratio = 0.5;
+    compartmentsData[1].ratio = 0.5;
+    return;
+  }
   if (count === 1) {
     compartmentsData[0].height = internalH;
     compartmentsData[0].ratio = 1.0;
@@ -140,7 +166,6 @@ function onCompFieldChange(compIdx, field, value) {
       compartmentsData[0].ratio = 1.0;
     } else {
       if (field === 'height') {
-        // Clamp the user-entered height
         const minH = 0.1 * internalH;
         const maxH = 0.9 * internalH;
         let clamped = Math.max(minH, Math.min(maxH, value));
@@ -157,7 +182,8 @@ function onCompFieldChange(compIdx, field, value) {
         const otherIdx = 1 - compIdx;
         compartmentsData[otherIdx].ratio = 1.0 - clamped;
         compartmentsData[otherIdx].height = internalH - compartmentsData[compIdx].height;
-      }    }
+      }
+    }
   }
 
   if (field === 'type' && compartmentsData.length > 1) {
@@ -166,9 +192,11 @@ function onCompFieldChange(compIdx, field, value) {
   }
 
   syncDisplay();
+
+  if (settings.autoCalculate) {
+    calculateBtn.click();
+  }
 }
-
-
 
 function syncDisplay() {
   const count = compartmentsData.length;
@@ -189,7 +217,7 @@ function buildCompartmentUI() {
   const builder = document.getElementById('compartmentBuilder');
   builder.innerHTML = '';
 
-  const count = compartmentsData.length;          // must be first!
+  const count = compartmentsData.length;
   const dividerLabel = document.getElementById('dividerLabel');
   if (dividerLabel) dividerLabel.style.display = count > 1 ? '' : 'none';
 
@@ -236,11 +264,14 @@ function buildCompartmentUI() {
     for (const face of ['top','left','right','rear','door']) {
       document.getElementById(`comp-${i}-${face}`).addEventListener('input', (e) => {
         compartmentsData[i][face] = parseFloat(e.target.value) || 0;
+        syncConstraints();
+        syncDisplay();
         markDirty();
       });
     }
   }
 }
+
 function fillGeometryDefaults() {
   const def = DEFAULT_CABINET;
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
@@ -252,11 +283,11 @@ function fillGeometryDefaults() {
   set('geom-Db2', def.Db2);
   set('geom-packingPos', def.packingPos);
   set('geom-doorGap', def.doorGap);
-  // bottom insulation defaults (not in DEFAULT_CABINET, use standard values)
   set('geom-bottom1', 40);
   set('geom-bottom2', 40);
   set('geom-bottom3', 40);
 }
+
 // ---- Read geometry from panel -----------------------------------------
 function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
@@ -303,17 +334,13 @@ function readGeometryFromPanel() {
     Hf: freezerComp ? freezerComp.height : 0,
     Hr: freshComp   ? freshComp.height   : 0,
     walls,
-    _compartments: comps   // for thermal guard
+    _compartments: comps
   };
-}
-
-function writeGeometryToPanel(geom) {
-  // not needed in this new design, but we can set the global currentGeometry
 }
 
 function getEffectiveThicknesses() {
   const comps = compartmentsData;
-  const topComp = comps[0];                        // always the top compartment
+  const topComp = comps[0];
   const bottomComp = comps.length > 1 ? comps[1] : comps[0];
   const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
   const bottom2 = parseFloat(document.getElementById('geom-bottom2')?.value) || 40;
@@ -321,7 +348,7 @@ function getEffectiveThicknesses() {
 
   return {
     top:    topComp.top,
-    bottom: Math.max(bottom1, bottom2, bottom3),   // only the stepped floor
+    bottom: Math.max(bottom1, bottom2, bottom3),
     left:   Math.max(topComp.left, bottomComp.left),
     right:  Math.max(topComp.right, bottomComp.right),
     rear:   Math.max(topComp.rear, bottomComp.rear),
@@ -346,8 +373,6 @@ numCompartmentsInput.addEventListener('input', () => {
   markDirty();
   initCompartments();
 });
-
-initCompartments();
 
 // ---- Volume calculation -----------------------------------------------
 function buildConfigFromForm() {
@@ -385,7 +410,7 @@ function buildConfigFromForm() {
   };
 
   const cabinet = {
-    geometry: currentGeometry,   // already built by readGeometryFromPanel
+    geometry: currentGeometry,
     layout: rootNode
   };
 
@@ -414,12 +439,47 @@ function showMessages(errors, warnings, calcErrors) {
     messagesFieldset.style.display = 'none';
   }
 }
+function computeAccurateBottomVolume(geom, eff, bottomCompHeight_mm) {
+  const { H, D, Hb, Db1, Db2, walls } = geom;
+  const rearX = eff.rear;
+  const doorX = D - eff.door;
+  const innerTop = eff.top;
 
+  // y‑position of the top of the bottom compartment
+  const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
+  const divider  = compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const yTopBottom = innerTop + topCompH + divider;
+
+  const yBottomRear = H - Hb - walls.refrigerator.bottom1;   // raised floor (inner surface)
+  const yBottomDoor = H - walls.refrigerator.bottom3;        // lower floor (inner surface)
+
+  const slopeStartX = rearX + Db1;                           // top of slope
+  const slopeEndX   = rearX + Db2;                           // foot of slope
+
+  // Shoelace formula for the cavity cross‑section (mm²)
+  const points = [
+    [rearX,        yTopBottom],
+    [doorX,        yTopBottom],
+    [doorX,        yBottomDoor],
+    [slopeEndX,    yBottomDoor],
+    [slopeStartX,  yBottomRear],
+    [rearX,        yBottomRear]
+  ];
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  area = Math.abs(area) / 2;
+
+  const width = geom.W - eff.left - eff.right;
+  return area * width * settings.mm3ToL;   // litres
+}
 // ---- Calculate button -------------------------------------------------
 calculateBtn.addEventListener('click', () => {
   const { config, layout } = buildConfigFromForm();
   currentConfig = config;
-  // ... (store buttons)
   if (currentConfig) {
     storeSlotABtn.style.display = 'inline-block';
     storeSlotBBtn.style.display = 'inline-block';
@@ -429,16 +489,18 @@ calculateBtn.addEventListener('click', () => {
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
-    // Compressor box subtraction
-    const internalWidth = result.leaves[0].space.width;
-    const compressorBoxVolL = internalWidth * currentGeometry.Db2 * currentGeometry.Hb * settings.mm3ToL;
+    // Replace the bottom leaf with the accurate stepped‑floor cavity volume
+    const eff = getEffectiveThicknesses();
+    const bottomIdx = result.leaves.length - 1;
+    const bottomCompHeight = compartmentsData[bottomIdx].height;
+    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff, bottomCompHeight);
 
-    if (result.leaves.length > 0) {
-      const bottomLeaf = result.leaves[result.leaves.length - 1];
-      bottomLeaf.gross -= compressorBoxVolL;
-      result.totals.gross -= compressorBoxVolL;
-    }
+    const bottomLeaf = result.leaves[bottomIdx];
+    const oldBottomVol = bottomLeaf.gross;
+    bottomLeaf.gross = accurateBottomVol;
+    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
 
+    // Display
     const disp = formatTotalsDisplay(result.totals);
     document.getElementById('grossVol').textContent      = disp.gross;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
@@ -449,10 +511,8 @@ calculateBtn.addEventListener('click', () => {
     document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
     document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
   }
+    showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
-  showMessages(result.validationErrors, result.warnings, result.calcErrors);
-
-  // Schematics
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   if (frontCanvas && sideCanvas) {
@@ -469,7 +529,7 @@ calculateBtn.addEventListener('click', () => {
       dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
       compHeights: compartmentsData.map(c => c.height),
       doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-        compartments: compartmentsData.map(c => ({
+      compartments: compartmentsData.map(c => ({
         left: c.left,
         right: c.right,
         rear: c.rear
@@ -477,7 +537,9 @@ calculateBtn.addEventListener('click', () => {
     };
 
     drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
-    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);    schematicOverlay.classList.add('hidden');
+    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+    dirtySchematic = false;
+    schematicOverlay.classList.add('hidden');
   }
 });
 
@@ -505,18 +567,30 @@ loadBtn.addEventListener('click', () => {
       populateUIFromConfig(config);
 
       const result = runCalculation(config);
-      if (result.leaves && result.totals) {
-        const disp = formatTotalsDisplay(result.totals);
-        document.getElementById('grossVol').textContent      = disp.gross;
-        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+  if (result.leaves && result.totals) {
+    // Replace the bottom leaf with the accurate stepped‑floor cavity volume
+    const eff = getEffectiveThicknesses();
+    const bottomIdx = result.leaves.length - 1;
+    const bottomCompHeight = compartmentsData[bottomIdx].height;
+    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff, bottomCompHeight);
 
-        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-        const usableL = result.totals.gross * (usableFactor / 100);
-        const usableCuft = usableL * settings.lToCuft;
-        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-      }
-      showMessages(result.validationErrors, result.warnings, result.calcErrors);
+    const bottomLeaf = result.leaves[bottomIdx];
+    const oldBottomVol = bottomLeaf.gross;
+    bottomLeaf.gross = accurateBottomVol;
+    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+
+    // Display
+    const disp = formatTotalsDisplay(result.totals);
+    document.getElementById('grossVol').textContent      = disp.gross;
+    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    const usableL = result.totals.gross * (usableFactor / 100);
+    const usableCuft = usableL * settings.lToCuft;
+    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+  }
+        showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
       const frontCanvas = document.getElementById('schematicFront');
       const sideCanvas  = document.getElementById('schematicSide');
@@ -530,8 +604,18 @@ loadBtn.addEventListener('click', () => {
         sideCanvas.width   = panelWidth / 2 - 5;
 
         const effectiveWalls = getEffectiveThicknesses();
-        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves);
-        drawSideView(sideCanvas, currentGeometry, effectiveWalls);
+        const drawOptions = {
+          dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+          compHeights: compartmentsData.map(c => c.height),
+          doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+          compartments: compartmentsData.map(c => ({
+            left: c.left,
+            right: c.right,
+            rear: c.rear
+          })),
+        };
+        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
+        drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
         dirtySchematic = false;
         schematicOverlay.classList.add('hidden');
       }
