@@ -264,8 +264,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const topY = innerTop * scale;
   const topCompH = topH * scale;
   ctx.beginPath();
-  ctx.rect(0, topY, D * scale, topCompH);                     // outer slice
-  ctx.moveTo(topRearX, topY);
+  ctx.rect(0, 0, D * scale, topY + topCompH);                     // outer slice
+  ctx.moveTo(topRearX, topCompH);
   ctx.lineTo(innerDoor * scale, topY);
   ctx.lineTo(innerDoor * scale, topY + topCompH);
   ctx.lineTo(topRearX, topY + topCompH);
