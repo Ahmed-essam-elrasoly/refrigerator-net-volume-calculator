@@ -111,7 +111,7 @@ describe('Full Thermal Solver', () => {
   it('condenser balance (F3) is small', () => {
     const { TC, T2 } = result;
     const areas = computeCondenserAreas(defaultConfig.geom, defaultConfig.condenserConfig);
-    const QCout = calcQCout(TC, defaultConfig.fixedTemps.T0, defaultConfig.fixedTemps.TF, areas);
+    const QCout = calcQCout(TC, defaultConfig.fixedTemps.T0, defaultConfig.fixedTemps.TF, defaultConfig.fixedTemps.TR, areas);
 
     const comp = compressorState(TC, defaultConfig.fixedTemps.TE, 'R-600a', defaultConfig.compParams, defaultConfig.subcool);
     const p_cond = satPressureR600a(TC);
