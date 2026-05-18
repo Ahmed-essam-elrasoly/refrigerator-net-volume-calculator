@@ -174,6 +174,7 @@ export function buildDefaultConfig(overrides = {}) {
     },
     fan: {
       totalAirflow: SJ54H_COMPONENTS.fan.totalAirflow_m3h,
+      inputPower_W: SJ54H_COMPONENTS.fan.inputPower_W,   // add this
     },
     electrical: { ...SJ54H_COMPONENTS.electrical },
     solverOptions: {

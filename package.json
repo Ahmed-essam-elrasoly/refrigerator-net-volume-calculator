@@ -7,9 +7,11 @@
   "start": "npx serve src",
   "build": "node build.mjs",
   "test": "node tests/thermal.test.mjs",
-  "test:engine": "node tests/engine.test.mjs"
+  "test:engine": "node tests/engine.test.mjs",
+  "compare:excel": "node tests/excel_compare_detailed.mjs"
 },
   "devDependencies": {
-    "esbuild": "^0.21.0"
+    "esbuild": "^0.21.0",
+    "xlsx": "^0.18.5"
   }
 }

@@ -46,7 +46,7 @@ console.log(`comp.etaV: ${comp.etaV.toFixed(4)}`);
 
 // Condenser check
 const areas = computeCondenserAreas(geom, condenserConfig);
-const QCout = calcQCout(TC, T0, TF, areas);
+const QCout = calcQCout(TC, T0, TF, TR, areas);
 // QCin = mdot * (h_dis - h_liq)
 const { satPressureR600a, vaporEnthalpyR600a } = await import('../src/js/engine/thermo/refrigerant.js');
 const p_cond = satPressureR600a(TC);

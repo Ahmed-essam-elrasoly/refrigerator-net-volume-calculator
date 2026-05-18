@@ -1,21 +1,22 @@
 import { getRefrigerantFunctions } from './refrigerant.js';
 import { compressorState } from './compressor.js';
 
-export function calcQCout(TC, T0, TF, areas) {
+export function calcQCout(TC, T0, TF, TR, areas) {
   const dT_TC_T0 = TC - T0;
   const dT_TC_TF = TC - TF;
-  return (areas.k_RFront1 * dT_TC_T0 + areas.k_RFront2 * dT_TC_TF) * areas.RFrontLength
+  const dT_TC_TR = TC - TR;   // ← add
+  return (areas.k_RFront1      * dT_TC_T0 + areas.k_RFront2      * dT_TC_TF) * areas.RFrontLength
        + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TF) * areas.FRPartitionLength
-       + (areas.k_FFront1 * dT_TC_T0 + areas.k_FFront2 * dT_TC_TF) * areas.FFrontLength
+       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TR) * areas.FFrontLength  // ← fix
        + areas.sideKA * dT_TC_T0
        + areas.backKA * dT_TC_T0;
 }
-
 export function calcQCin(TC, TE, refrigerantName, compParams, subcool, dischargeTemp) {
   const rf = getRefrigerantFunctions(refrigerantName);
   const comp = compressorState(TC, TE, refrigerantName, compParams, subcool);
   const h_dis = rf.vaporEnthalpy(dischargeTemp, rf.satPressure(TC));
-  return comp.massFlow * (h_dis - comp.h_liquid);
+  const h_liq_sat = rf.liquidEnthalpy(TC);   // saturated at TC, not sub-cooled
+  return comp.massFlow * (h_dis - h_liq_sat);
 }
 
 export function computeCondenserAreas(geom, condenserConfig) {
