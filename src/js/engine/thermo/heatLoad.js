@@ -1,11 +1,6 @@
-// heatLoad.js – exact replica of Excel SIZE sheet, including full evaporator air‑side heat transfer
+// heatLoad.js – exact replica of Excel SIZE sheet (SJ-54H)
 import { PHYSICAL_CONSTANTS as PC } from './constants.js';
-import { airSpeed, evaporatorAlpha, computeEvaporatorArea, lmtd, evaporatorCapacity } from './evaporator.js';
 
-// Enable/disable detailed logging
-const DEBUG = true;
-
-// Default geometry (overridden by caller)
 export const DEFAULT_GEOMETRY = {
   H: 1680, W: 800, D: 630,
   Hf: 550, Hr: 1130,
@@ -15,10 +10,6 @@ export const DEFAULT_GEOMETRY = {
   tEvaBack: 60,
   tRtop: 70, tRleft: 40, tRright: 40, tRback: 60,
   tRbottom1: 40, tRbottom2: 40, tRbottom3: 40, tRdoor: 40,
-  evap: {
-    width_mm: 460, depth_mm: 60, rows: 7, tubeOD_mm: 8,
-    finPitch_mm: 30, finHeight_mm: 60, finLength_mm: 28, numFins: 504,
-  },
 };
 
 function calcK(thickness_mm, lambda) {
@@ -41,40 +32,27 @@ export function calcHeatLoads(geom, temps, electrical, condenserRises, fanAirflo
   } = { ...DEFAULT_GEOMETRY, ...geom };
 
   const { T0, TF, TR, T2, TC, PR, TE } = temps;
-  const evap = { ...DEFAULT_GEOMETRY.evap, ...evapParams };
-
   const T_side = T0 + condenserRises.side * PR;
   const T_back = T0 + condenserRises.back * PR;
 
-  if (DEBUG) {
-    console.log('\n[heatLoad] Input temps:', { T0, TF, TR, T2, TC, PR, TE });
-    console.log('[heatLoad] T_side=', T_side, 'T_back=', T_back);
-  }
-
-  // ----- Freezer areas (Excel SIZE rows 7-11) -----
-  const AFtop    = (W - (tFleft + tFright)/2) * (D - tEvaBack/2) / 1e6;
-  const AFleft   = (D - tEvaBack/2) * (Hf - (tFtop + tFbottom)/2) / 1e6;
-  const AFright  = AFleft;
+  // ----- Freezer areas (Excel SIZE rows 7-12) -----
+  // F TOP:    (W - (tFleft + tFright)/2) * (D - tEvaBack/2) / 1e6
+  const AFtop = (W - (tFleft + tFright)/2) * (D - tEvaBack/2) / 1e6;
+  // F LEFT:   (D - tEvaBack/2) * (Hf - (tFtop + tFbottom)/2) / 1e6
+  const AFleft = (D - tEvaBack/2) * (Hf - (tFtop + tFbottom)/2) / 1e6;
+  const AFright = AFleft;
+  // F BOTTOM: (D - tEvaBack/2) * (W - (tFleft + tFright)/2) / 1e6
   const AFbottom = (D - tEvaBack/2) * (W - (tFleft + tFright)/2) / 1e6;
-  const AFdoor   = ((Hf - tFbottom - packingPos*2) * (W - packingPos*2)) / 1e6;
-  const AFpackin = ((Hf - packingPos*2) + (W - packingPos*2)) * 2 / 1000;
+  // F DOOR:   (Hf - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6
+  const AFdoor = (Hf - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6;
+  // F PACKIN: ((Hf - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000
+  const AFpackin = ((Hf - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000;
 
-  if (DEBUG) {
-    console.log('[heatLoad] Freezer areas (m²):', {
-      AFtop: AFtop.toFixed(6),
-      AFleft: AFleft.toFixed(6),
-      AFright: AFright.toFixed(6),
-      AFbottom: AFbottom.toFixed(6),
-      AFdoor: AFdoor.toFixed(6),
-      AFpackin: AFpackin.toFixed(6)
-    });
-  }
-
-  // Freezer base heat transfers
+  // Freezer base heat transfers (Excel F7-F11)
   let QF = kUrethane(tFtop)    * AFtop    * (T0 - TF)
          + kUrethane(tFleft)   * AFleft   * (T_side - TF)
          + kUrethane(tFright)  * AFright  * (T_side - TF)
-         + kUrethane(tFbottom) * AFbottom * (T0 - TF)
+         + kUrethane(tFbottom) * AFbottom * (TR - TF)
          + kUrethane(tFdoor)   * AFdoor   * (T0 - TF)
          + PC.insulation.packing * AFpackin * (T0 - TF);
 
@@ -84,52 +62,32 @@ export function calcHeatLoads(geom, temps, electrical, condenserRises, fanAirflo
   const DPCON2 = (0.0791 * (TC - TF) - 0.072 * (T0 - TF)) * PR * (Hf * 2 + W) / 1000;
   QF += DPCON1 + DPCON2;
 
-  if (DEBUG) {
-    console.log('[heatLoad] Freezer conduction (kcal/h):', {
-      top: (kUrethane(tFtop) * AFtop * (T0 - TF)).toFixed(3),
-      left: (kUrethane(tFleft) * AFleft * (T_side - TF)).toFixed(3),
-      right: (kUrethane(tFright) * AFright * (T_side - TF)).toFixed(3),
-      bottom: (kUrethane(tFbottom) * AFbottom * (T0 - TF)).toFixed(3),
-      door: (kUrethane(tFdoor) * AFdoor * (T0 - TF)).toFixed(3),
-      packing: (PC.insulation.packing * AFpackin * (T0 - TF)).toFixed(3),
-      DPCON1: DPCON1.toFixed(3),
-      DPCON2: DPCON2.toFixed(3),
-      QF_base: QF.toFixed(3)
-    });
-  }
-
   // ----- Refrigerator areas (Excel SIZE rows 15-23) -----
-  const ARtop      = (W - (tRleft + tRright)/2) * (D - tRback/2) / 1e6;
+  // R TOP: (W - (tRleft + tRright)/2) * (D - tRback/2) / 1e6
+  const ARtop = (W - (tRleft + tRright)/2) * (D - tRback/2) / 1e6;
+  // R LEFT: ((Hr - (tRtop + tRbottom1)/2) * (D - tRback/2) - (Db1 + Db2) * Hb / 2) / 1e6
   const ARleftBase = (Hr - (tRtop + tRbottom1)/2) * (D - tRback/2) - (Db1 + Db2) * Hb / 2;
-  const ARleft     = ARleftBase / 1e6;
-  const ARright    = ARleft;
-  const ARback     = (Hr - (tRtop + tRbottom1)/2 - Hb) * (W - (tRleft + tRright)/2) / 1e6;
-  const ARbottom1  = (W - (tRleft + tRright)/2) * Db1 / 1e6;
-  const ARbottom2  = (W - (tRleft + tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
-  const ARbottom3  = (W - (tRleft + tRright)/2) * Db2 / 1e6;
-  const ARdoor     = ((Hr - tRbottom3 - packingPos*2) * (W - packingPos*2)) / 1e6;
-  const ARpackin   = ((Hr - packingPos*2) + (W - packingPos*2)) * 2 / 1000;
+  const ARleft = ARleftBase / 1e6;
+  const ARright = ARleft;
+  // R BACK: (Hr - (tRtop + tRbottom1)/2 - Hb) * (W - (tRleft + tRright)/2) / 1e6
+  const ARback = (Hr - (tRtop + tRbottom1)/2 - Hb) * (W - (tRleft + tRright)/2) / 1e6;
+  // R BOTTOM1: (W - (tRleft + tRright)/2) * Db1 / 1e6
+  const ARbottom1 = (W - (tRleft + tRright)/2) * Db1 / 1e6;
+  // R BOTTOM2: (W - (tRleft + tRright)/2) * sqrt(Hb^2 + (Db2-Db1)^2) / 1e6
+  const ARbottom2 = (W - (tRleft + tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
+  // R BOTTOM3: (W - (tRleft + tRright)/2) * Db2 / 1e6
+  const ARbottom3 = (W - (tRleft + tRright)/2) * Db2 / 1e6;
+  // R DOOR: (Hr - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6
+  const ARdoor = (Hr - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6;
+  // R PACKIN: ((Hr - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000
+  const ARpackin = ((Hr - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000;
 
-  if (DEBUG) {
-    console.log('[heatLoad] Refrigerator areas (m²):', {
-      ARtop: ARtop.toFixed(6),
-      ARleft: ARleft.toFixed(6),
-      ARright: ARright.toFixed(6),
-      ARback: ARback.toFixed(6),
-      ARbottom1: ARbottom1.toFixed(6),
-      ARbottom2: ARbottom2.toFixed(6),
-      ARbottom3: ARbottom3.toFixed(6),
-      ARdoor: ARdoor.toFixed(6),
-      ARpackin: ARpackin.toFixed(6)
-    });
-  }
-
-  let QR = kUrethane(tRtop)      * ARtop      * (T0 - TR)
+  let QR = kUrethane(tRtop)      * ARtop      * (TF - TR)
          + kUrethane(tRleft)     * ARleft     * (T_side - TR)
          + kUrethane(tRright)    * ARright    * (T_side - TR)
          + kUrethane(tRback)     * ARback     * (T_back - TR)
-         + kUrethane(tRbottom1)  * ARbottom1  * (T0 - TR)
-         + kUrethane(tRbottom2)  * ARbottom2  * (T0 - TR)
+         + kUrethane(tRbottom1)  * ARbottom1  * (T_back  - TR)
+         + kUrethane(tRbottom2)  * ARbottom2  * (T_back  - TR)
          + kUrethane(tRbottom3)  * ARbottom3  * (T0 - TR)
          + kUrethane(tRdoor)     * ARdoor     * (T0 - TR)
          + PC.insulation.packing * ARpackin   * (T0 - TR);
@@ -137,61 +95,14 @@ export function calcHeatLoads(geom, temps, electrical, condenserRises, fanAirflo
   const DPCON_R = (0.0546 * (TC - TF) - 0.0491 * (T0 - TF)) * PR * (Hr * 2 + W) / 1000;
   QR += DPCON_R;
 
-  if (DEBUG) {
-    console.log('[heatLoad] Refrigerator conduction (kcal/h):', {
-      top: (kUrethane(tRtop) * ARtop * (T0 - TR)).toFixed(3),
-      left: (kUrethane(tRleft) * ARleft * (T_side - TR)).toFixed(3),
-      right: (kUrethane(tRright) * ARright * (T_side - TR)).toFixed(3),
-      back: (kUrethane(tRback) * ARback * (T_back - TR)).toFixed(3),
-      bottom1: (kUrethane(tRbottom1) * ARbottom1 * (T0 - TR)).toFixed(3),
-      bottom2: (kUrethane(tRbottom2) * ARbottom2 * (T0 - TR)).toFixed(3),
-      bottom3: (kUrethane(tRbottom3) * ARbottom3 * (T0 - TR)).toFixed(3),
-      door: (kUrethane(tRdoor) * ARdoor * (T0 - TR)).toFixed(3),
-      packing: (PC.insulation.packing * ARpackin * (T0 - TR)).toFixed(3),
-      DPCON_R: DPCON_R.toFixed(3),
-      QR_base: QR.toFixed(3)
-    });
-  }
-
-  // ----- Evaporator air‑side calculation -----
-  const rho = PC.air.density;
-  const cp = PC.air.cp;
-
-  // Compute air speed and alpha
-  const v_air = airSpeed(fanAirflow_m3h, evap);
-  const alpha = evaporatorAlpha(v_air);
-  const area = computeEvaporatorArea(evap);
-
-  // Mixed air temperature entering evaporator (T1) – approximate without iteration
-  // Use simple average for first pass
-  let T1 = (TF + TR) / 2; // placeholder
-  const LMTD_evap = lmtd(T1, T2, TE);
-  let QEV_air = evaporatorCapacity(alpha, area, LMTD_evap);
-
-  if (DEBUG) {
-    console.log('[heatLoad] Evaporator air-side:', {
-      fanAirflow_m3h,
-      v_air: v_air.toFixed(3),
-      alpha: alpha.toFixed(3),
-      area: area.toFixed(6),
-      T1: T1.toFixed(3),
-      LMTD: LMTD_evap.toFixed(3),
-      QEV_air: QEV_air.toFixed(3)
-    });
-  }
-
-  // For now, QEV is the evaporator capacity (Excel uses this as the heat load)
-  let QEV = QEV_air;
-
-  // Fan and defrost loads added to QF (Excel does this)
+  // ----- Evaporator: conduction only (fan/defrost added to QF in Excel? Actually they are separate) -----
+  const A_evaBack = (W - (tFleft + tFright)/2) * (Hf - (tFtop + tFbottom)/2) / 1e6;
+  const QEV_conduction = kUrethane(tEvaBack) * A_evaBack * (T_back - T2);
   const fanLoad = (fanInputPower_W ?? electrical.pwbOn_W) * PC.conversion.wattToKcalPerH * PR;
   const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60 / 24) * PC.conversion.wattToKcalPerH;
-  QF += fanLoad + defrostLoad;
-
-  if (DEBUG) {
-    console.log('[heatLoad] Fan/defrost added to QF:', { fanLoad: fanLoad.toFixed(3), defrostLoad: defrostLoad.toFixed(3) });
-    console.log('[heatLoad] Final QF=', QF.toFixed(3), 'QR=', QR.toFixed(3), 'QEV=', QEV.toFixed(3));
-  }
+  // In Excel, QEV = conduction + fanLoad + defrostLoad
+  const QEV = QEV_conduction + fanLoad + defrostLoad;
+  // Fan and defrost are also added to QF? No, in Excel they are part of QEV, not QF.
 
   return { QF, QR, QEV, fanLoad, defrostLoad };
 }
