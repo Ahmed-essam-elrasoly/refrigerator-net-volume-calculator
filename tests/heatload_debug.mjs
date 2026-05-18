@@ -63,5 +63,9 @@ console.log(`QR:   computed=${loads.QR.toFixed(4)} expected=${expected.QR.toFixe
 console.log(`QEV:  computed=${loads.QEV.toFixed(4)} expected=${expected.QEV.toFixed(4)} diff=${(loads.QEV - expected.QEV).toFixed(4)}`);
 console.log(`fanLoad: ${loads.fanLoad.toFixed(4)} kcal/h`);
 console.log(`defrostLoad: ${loads.defrostLoad.toFixed(4)} kcal/h`);
-
+console.log('K values (kcal/h·m²·°C):');
+console.log('tFtop K   :', kUrethane(tFtop));
+console.log('tFleft K  :', kUrethane(tFleft));
+console.log('tFdoor K  :', kUrethane(tFdoor));
+// etc.
 // To debug further, we can log intermediate values from heatLoad.js if we add more console logs there.
