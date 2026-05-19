@@ -52,4 +52,10 @@ export const SJ54H_COMPONENTS = Object.freeze({
 
   subcool_K: 10,
   dischargeTemp_C: 60,
+  // Evaporator geometry (used by dynamic TE calculation)
+  evapGeom: {
+    evapWidth_mm: 460,    // E26 (EV WIDTH)
+    evapDepth_mm: 60,     // E27 (EV DEPTH)
+    evapArea_m2: 1.754,   // E33 (SURFACE OF EVAPORATOR)
+  },
 });

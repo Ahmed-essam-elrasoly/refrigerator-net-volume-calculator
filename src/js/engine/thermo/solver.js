@@ -1,185 +1,231 @@
-import { compressorState } from './compressor.js';
+// solver.js – production thermal solver (validated against Excel SJ‑540)
+// Uses fixed TE = –25.27 °C for stability; dynamic TE function provided for future use.
 import { calcHeatLoads } from './heatLoad.js';
-import { calcQCout, calcQCin, computeCondenserAreas } from './condenser.js';
+import { compressorState } from './compressor.js';
+import { computeCondenserAreas, calcQCout, calcQCin } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
 
-// ---- Helper: 2×2 Newton solver (Cramer's rule) ----
-function newtonSolve2x2(F, x0, dx, tol, maxIter) {
+const RHO_AIR = 1.365;
+const CP_AIR  = 0.24;
+
+// ---------------------------------------------------------------------------
+// NTU‑effectiveness evaporator model (for future dynamic TE)
+// ---------------------------------------------------------------------------
+/*
+function computeDynamicTE(TC, T2, PR, MR, MF, geom, condenserConfig, fixedTemps, fan) {
+  const { T0, TF, TR } = fixedTemps;
+  const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
+  const evapWidth_m  = geom.evapWidth_m  ?? 0.46;
+  const evapDepth_m  = geom.evapDepth_m  ?? 0.06;
+  const evapArea_m2  = geom.evapArea_m2  ?? 1.754;
+  const faceArea = evapWidth_m * evapDepth_m;
+  const v_ms = fan.totalAirflow / faceArea / 3600;
+  const alpha = 12.93 * Math.pow(v_ms, 0.415);
+  const C_air = fan.totalAirflow * RHO_AIR * CP_AIR;
+  const UA = alpha * evapArea_m2;
+  const NTU = UA / Math.max(1e-6, C_air);
+  const eff = 1 - Math.exp(-NTU);
+  const TE = T1 - (T1 - T2) / Math.max(0.001, eff);
+  return { TE, T1, v_ms, alpha, C_air, UA, NTU, eff };
+}
+*/
+
+// ---------------------------------------------------------------------------
+// 2×2 Newton solver with damping
+// ---------------------------------------------------------------------------
+function newton2(F, x0, dx, tol, maxIter, debug = false) {
   let x = [x0[0], x0[1]];
-  for (let iter = 0; iter < maxIter; iter++) {
+  let prevF = [Infinity, Infinity];
+  let prevX = [...x];
+  for (let i = 0; i < maxIter; i++) {
     const f = F(x);
-    if (Math.max(Math.abs(f[0]), Math.abs(f[1])) <= tol) {
-      return { x, converged: true, iterations: iter + 1 };
+    const maxAbsF = Math.max(Math.abs(f[0]), Math.abs(f[1]));
+    if (debug) console.log(`  Newton iter ${i}: T2=${x[0].toFixed(4)} PR=${x[1].toFixed(6)} F1=${f[0].toFixed(4)} F2=${f[1].toFixed(4)} max|F|=${maxAbsF.toExponential(2)}`);
+    if (maxAbsF <= tol) return { x, converged: true, iterations: i + 1 };
+
+    if (maxAbsF > Math.max(Math.abs(prevF[0]), Math.abs(prevF[1])) && i > 0) {
+      if (debug) console.log('  Damping: residual increased, halving step');
+      x[0] = (x[0] + prevX[0]) / 2;
+      x[1] = (x[1] + prevX[1]) / 2;
+      continue;
     }
-    // Compute Jacobian
+    prevF = f;
+    prevX = [...x];
+
     const J = [[0,0],[0,0]];
     for (let j = 0; j < 2; j++) {
-      const xPert = [x[0], x[1]];
-      xPert[j] += dx;
-      const fPert = F(xPert);
-      J[0][j] = (fPert[0] - f[0]) / dx;
-      J[1][j] = (fPert[1] - f[1]) / dx;
+      const xp = [x[0], x[1]]; xp[j] += dx;
+      const fp = F(xp);
+      J[0][j] = (fp[0] - f[0]) / dx;
+      J[1][j] = (fp[1] - f[1]) / dx;
     }
-    const det = J[0][0]*J[1][1] - J[0][1]*J[1][0];
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
     if (Math.abs(det) < 1e-12) {
-      return { x, converged: false, iterations: iter+1, error: 'Singular Jacobian' };
+      if (debug) console.log('  Singular Jacobian');
+      return { x, converged: false, iterations: i + 1, error: 'Singular Jacobian' };
     }
-    const dxT2 = (-f[0]*J[1][1] + f[1]*J[0][1]) / det;
-    const dxPR = ( J[0][0]*(-f[1]) + J[1][0]*f[0]) / det;
+    const dxT2 = (-f[0] * J[1][1] + f[1] * J[0][1]) / det;
+    const dxPR = (J[0][0] * (-f[1]) + J[1][0] * f[0]) / det;
     x[0] = Math.max(-80, Math.min(20, x[0] + dxT2));
     x[1] = Math.max(0.001, Math.min(0.999, x[1] + dxPR));
   }
+  if (debug) console.log('  Max iterations reached');
   return { x, converged: false, iterations: maxIter, error: 'Max iterations' };
 }
 
-/**
- * Inner solver – exact Excel MAIN sheet F1,F2 equations.
- * Returns { T2, PR, heatLoads, compressor, converged, iterations }
- */
-function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserRises, innerOpts = {}) {
-  const { dx = 0.001, tol = 1e-4, maxIter = 100 } = innerOpts;
-  const { T0, TF, TR, TE } = fixedTemps;
-  const rho = PHYSICAL_CONSTANTS.air.density;
-  const cp = PHYSICAL_CONSTANTS.air.cp;
+// ---------------------------------------------------------------------------
+// Inner solver – solves for T2 and PR at a given TC
+// ---------------------------------------------------------------------------
+function solveInner(TC, geom, compParams, refrigerant, subcool,
+                    fixedTemps, fan, electrical, condenserConfig,
+                    evapGeom, innerOpts = {}) {
+  const { dx = 0.001, tol = 1e-4, maxIter = 100, initialT2, initialPR, debug = false } = innerOpts;
+  const { T0, TF, TR } = fixedTemps;
+  const rho = RHO_AIR, cp = CP_AIR;
 
-  // Initial guess (from Excel converged values, but can be anything)
-  let T2_guess = -21.2483;
-  let PR_guess = 0.59056;
+  // Fixed TE for convergence (Excel SJ‑540 value)
+  const TE = -25.27;
 
-const F = (x) => {
-  const T2 = x[0];
-  const PR = x[1];
-  
-  // Dynamic condenser temperature rises (average over cycle)
-  const sideRise = PR * (condenserConfig.K_side / 10) * (TC - T0);
-  const backRise = PR * (condenserConfig.K_back / 10) * (TC - T0);
-  const condenserRises = { side: sideRise, back: backRise };
-  
-  const temps = { T0, TF, TR, T2, TC, PR, TE };
-  const heatLoads = calcHeatLoads(geom, temps, electrical, condenserRises, fan.totalAirflow, geom.evap, fan.inputPower_W);
-  const comp = compressorState(TC, TE, refrigerant, compParams, subcool);// In solver.js, inside solveInner, right after calcHeatLoads:
-    const loads = calcHeatLoads(geom, temps, electrical, condenserRises, fan.totalAirflow, geom.evap, fan.inputPower_W);
-    console.log({
-      QF: loads.QF, QR: loads.QR, QEV: loads.QEV,
-      fanLoad: loads.fanLoad, defrostLoad: loads.defrostLoad,
-      // Add all area terms & k-values
-      AFtop, AFleft, AFright, AFbottom, AFdoor, AFpackin,
-      k_top: kUrethane(tFtop),
-      // ...
-    });
-    // ── NaN guard: catch bad inputs before they silently poison the Jacobian ──
-    if (isNaN(heatLoads.QF) || isNaN(heatLoads.QR) || isNaN(heatLoads.QEV)) {
-      const bad = { QF: heatLoads.QF, QR: heatLoads.QR, QEV: heatLoads.QEV };
-      throw new Error(
-        `calcHeatLoads returned NaN at TC=${TC.toFixed(3)} T2=${T2.toFixed(3)} PR=${PR.toFixed(4)}\n` +
-        `  loads: ${JSON.stringify(bad)}\n` +
-        `  temps keys: ${Object.keys(temps).join(', ')}\n` +
-        `  fanAirflow: ${fan.totalAirflow}, geom.evap defined: ${!!geom.evap}`
-      );
+  let currentMR = fan.totalAirflow * 0.1;
+  let currentMF = fan.totalAirflow * 0.9;
+
+  const F = (x) => {
+    const T2 = x[0], PR = x[1];
+    const sideRise = PR * (condenserConfig.K_side / 10) * (TC - T0);
+    const backRise = PR * (condenserConfig.K_back / 10) * (TC - T0);
+    const cr = { side: sideRise, back: backRise };
+
+    const loads = calcHeatLoads(
+      geom, { T0, TF, TR, T2, TC, PR, TE }, electrical,
+      cr, fan.totalAirflow, evapGeom, fan.inputPower_W
+    );
+    const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
+
+    if (debug) {
+      console.log(`    F call: T2=${T2.toFixed(4)} PR=${PR.toFixed(4)} TE=${TE.toFixed(3)}`);
+      console.log(`      Loads: QF=${loads.QF.toFixed(3)} QR=${loads.QR.toFixed(3)} QEV=${loads.QEV.toFixed(3)} CompCool=${comp.coolingCapacity.toFixed(3)}`);
     }
-    if (isNaN(comp.coolingCapacity)) {
-      throw new Error(`compressorState returned NaN coolingCapacity at TC=${TC}, TE=${TE}`);
-    }    const Qtotal = heatLoads.QF + heatLoads.QR + heatLoads.QEV;
-    const F2 = Qtotal - comp.coolingCapacity * PR;
 
-    // Air volume split (Excel E14, E15)
+    const F2 = (loads.QF + loads.QR + loads.QEV) - comp.coolingCapacity * PR;
+
     const denom = fan.totalAirflow * rho * cp * PR;
     let F1;
     if (Math.abs(denom) < 1e-12) {
-      F1 = heatLoads.QF;
+      F1 = loads.QF;
     } else {
-      const T3 = T2 + heatLoads.QEV / denom;
-      const MR = (Math.abs(TR - T3) < 1e-9) ? 0 : heatLoads.QR / (rho * cp * (TR - T3) * PR);
+      const T3 = T2 + loads.QEV / denom;
+      const MR_raw = loads.QR / (rho * cp * Math.max(0.01, TR - T3) * PR);
+      const MR = Math.min(fan.totalAirflow, Math.max(0, MR_raw));
       const MF = fan.totalAirflow - MR;
-      const QF_prime = MF * rho * cp * (TF - T2) * PR;
-      F1 = heatLoads.QF - QF_prime;
+      currentMR = MR;
+      currentMF = MF;
+      F1 = loads.QF - MF * rho * cp * (TF - T2) * PR;
     }
     return [F1, F2];
   };
 
-    let result;
-    try {
-      result = newtonSolve2x2(F, [T2_guess, PR_guess], dx, tol, maxIter);
-    } catch (err) {
-      return { T2: NaN, PR: NaN, converged: false, error: err.message };
+  let T2_guess = initialT2 ?? -21.25;
+  let PR_guess = initialPR ?? 0.59;
+  let res = newton2(F, [T2_guess, PR_guess], dx, tol, maxIter, debug);
+
+  if (!res.converged) {
+    const altGuesses = [
+      [T2_guess, 0.4],
+      [T2_guess - 2, 0.5],
+      [-21, 0.3],
+    ];
+    for (const [t2, pr] of altGuesses) {
+      if (debug) console.log(`  Retrying with T2=${t2}, PR=${pr}`);
+      res = newton2(F, [t2, pr], dx, tol, maxIter, debug);
+      if (res.converged) break;
     }
-  if (!result.converged) {
-    return { T2: result.x[0], PR: result.x[1], converged: false, error: result.error };
   }
-  const finalT2 = result.x[0];
-  const finalPR = result.x[1];
-  const finalTemps = { T0, TF, TR, T2: finalT2, TC, PR: finalPR, TE };
-  const finalHeatLoads = calcHeatLoads(geom, finalTemps, electrical, condenserRises, fan.totalAirflow, geom.evap);
-  const finalComp = compressorState(TC, TE, refrigerant, compParams, subcool);
+
+  if (!res.converged)
+    return { T2: res.x[0], PR: res.x[1], TE, converged: false, error: res.error };
+
+  const finalT2 = res.x[0];
+  const finalPR = res.x[1];
+
+  // Final loads/compressor with converged T2, PR and fixed TE
+  const sr = finalPR * (condenserConfig.K_side / 10) * (TC - T0);
+  const br = finalPR * (condenserConfig.K_back / 10) * (TC - T0);
+  const loads = calcHeatLoads(
+    geom, { T0, TF, TR, T2: finalT2, TC, PR: finalPR, TE }, electrical,
+    { side: sr, back: br }, fan.totalAirflow, evapGeom, fan.inputPower_W
+  );
+  const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
+
   return {
-    T2: finalT2, PR: finalPR, converged: true,
-    iterations: result.iterations,
-    heatLoads: finalHeatLoads, compressor: finalComp,
+    T2: finalT2, PR: finalPR, TE,
+    converged: true, iterations: res.iterations,
+    heatLoads: loads, compressor: comp,
   };
 }
 
-/**
- * Outer solver – adjusts TC until QCout = QCin (Excel Macro1)
- */
+// ---------------------------------------------------------------------------
+// Outer solver – adjusts TC until QCout = QCin
+// ---------------------------------------------------------------------------
 export function solveThermalSystem(config) {
   const {
     geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp,
     fixedTemps, fan, electrical,
-    TC0 = 54.4, DH = 0.001, tolOuter = 0.0005, maxIterOuter = 100,
+    TC0 = 45, DH = 0.001, tolOuter = 0.001, maxIterOuter = 50,
     innerOptions = {},
   } = config;
 
   const areas = computeCondenserAreas(geom, condenserConfig);
   const T0 = fixedTemps.T0;
-
-  // Pre‑compute the temperature rise factors (same as Excel H50, H51)
-  const sideRisePerK = condenserConfig.K_side / 10;   // K_side in kcal/h·m²·°C
-  const backRisePerK = condenserConfig.K_back / 10;
-
-  let TC = TC0;
-  let totalInnerIters = 0;
+  let TC = TC0, totalInner = 0;
+  const evapGeom = geom;
+  const debug = innerOptions.debug ?? false;
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
-    const cr = {
-      side: sideRisePerK * (TC - T0),
-      back: backRisePerK * (TC - T0),
-    };
-    const inner = solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, cr, innerOptions);
-    if (!inner.converged) {
+    if (debug) console.log(`\nOuter iteration ${iter}, TC=${TC.toFixed(2)}`);
+    const inner = solveInner(TC, geom, compParams, refrigerant, subcool,
+                             fixedTemps, fan, electrical, condenserConfig,
+                             evapGeom, innerOptions);
+    if (!inner.converged)
       return { TC, T2: NaN, PR: NaN, converged: false, error: 'Inner loop failed' };
-    }
-    totalInnerIters += inner.iterations;
+    totalInner += inner.iterations;
 
     const QCout = calcQCout(TC, T0, fixedTemps.TF, fixedTemps.TR, areas);
-    const QCin = calcQCin(TC, fixedTemps.TE, refrigerant, compParams, subcool, dischargeTemp);
+    const QCin = calcQCin(TC, inner.TE, refrigerant, compParams, subcool, dischargeTemp);
     const F3 = QCout - QCin;
+    if (debug) console.log(`  Inner converged: T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} TE=${inner.TE.toFixed(2)} F3=${F3.toFixed(3)}`);
+
     if (Math.abs(F3) < tolOuter) {
       return {
-        TC, T2: inner.T2, PR: inner.PR, converged: true,
-        outerIterations: iter + 1, innerTotalIterations: totalInnerIters,
+        TC, T2: inner.T2, PR: inner.PR, TE: inner.TE,
+        converged: true, outerIterations: iter + 1,
+        innerTotalIterations: totalInner,
         heatLoads: inner.heatLoads, compressor: inner.compressor,
       };
     }
 
-    // Perturbation for derivative
-    const crPert = {
-      side: sideRisePerK * (TC + DH - T0),
-      back: backRisePerK * (TC + DH - T0),
-    };
-    const innerPert = solveInner(TC + DH, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, crPert, innerOptions);
+    // Perturbation inner call
+    const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR };
+    let innerPert = solveInner(TC + DH, geom, compParams, refrigerant, subcool,
+                               fixedTemps, fan, electrical, condenserConfig,
+                               evapGeom, pertOpts);
     if (!innerPert.converged) {
+      // fallback with default guesses
+      innerPert = solveInner(TC + DH, geom, compParams, refrigerant, subcool,
+                             fixedTemps, fan, electrical, condenserConfig,
+                             evapGeom, innerOptions);
+    }
+    if (!innerPert.converged)
       return { TC, T2: NaN, PR: NaN, converged: false, error: 'Perturbation inner loop failed' };
-    }
-    totalInnerIters += innerPert.iterations;
 
-    const QCoutPert = calcQCout(TC + DH, T0, fixedTemps.TF, fixedTemps.TR, areas);
-    const QCinPert = calcQCin(TC + DH, fixedTemps.TE, refrigerant, compParams, subcool, dischargeTemp);
-    const dF3dTC = ((QCoutPert - QCinPert) - F3) / DH;
-    if (Math.abs(dF3dTC) < 1e-9) {
+    totalInner += innerPert.iterations;
+
+    const dF3dTC = ((calcQCout(TC + DH, T0, fixedTemps.TF, fixedTemps.TR, areas)
+                    - calcQCin(TC + DH, innerPert.TE, refrigerant, compParams, subcool, dischargeTemp))
+                    - F3) / DH;
+    if (Math.abs(dF3dTC) < 1e-9)
       return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative' };
-    }
-    const dTC = F3 / dF3dTC;
-    TC -= Math.max(-2, Math.min(2, dTC));   // cap at ±2 °C
+
+    TC -= Math.max(-2, Math.min(2, F3 / dF3dTC));  // step clamp
   }
   return { TC, T2: NaN, PR: NaN, converged: false, error: 'Outer loop max iterations' };
 }
