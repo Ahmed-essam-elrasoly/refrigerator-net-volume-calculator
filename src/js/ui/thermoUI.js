@@ -1,6 +1,7 @@
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
 import { toThermalFormat } from '../engine/geometry.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
+import { runThermalAnalysisDynamic } from '../src/js/engine/thermo/solver.js';
 
 let getGeometryFn = null;
 let thermoSection, runBtn, resultsDiv, errorDiv;
@@ -92,7 +93,7 @@ function handleRun() {
     },
   };
 
-  const result = runThermoAnalysis(config);
+const result = runThermalAnalysisDynamic(config);
   if (!result.success) {
     showError(result.errors.join('; '));
   } else {

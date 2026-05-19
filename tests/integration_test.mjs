@@ -1,5 +1,5 @@
 // tests/integration_test.mjs
-import { solveThermalSystem } from '../src/js/engine/thermo/solver.js';
+import { runThermalAnalysisDynamic } from '../src/js/engine/thermo/solver.js';
 import { DEFAULT_GEOMETRY } from '../src/js/engine/thermo/heatLoad.js';
 import { SJ54H_COMPONENTS } from '../src/js/engine/thermo/defaultComponents.js';
 
@@ -35,7 +35,7 @@ const config = {
 };
 
 console.log('=== Integration test (SJ‑540) with debug ===');
-const res = solveThermalSystem(config);
+const res = runThermalAnalysisDynamic(config);
 if (res.converged) {
   console.log('✅ Converged:');
   console.log(`TC = ${res.TC.toFixed(2)} °C`);
