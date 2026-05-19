@@ -46,13 +46,18 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
   let T2_guess = -21.2483;
   let PR_guess = 0.59056;
 
-  const F = (x) => {
-    const T2 = x[0];
-    const PR = x[1];
-    const temps = { T0, TF, TR, T2, TC, PR, TE };   // ← fix applied here
-    const heatLoads = calcHeatLoads(geom, temps, electrical, condenserRises, fan.totalAirflow, geom.evap, fan.inputPower_W);
-    const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
-// In solver.js, inside solveInner, right after calcHeatLoads:
+const F = (x) => {
+  const T2 = x[0];
+  const PR = x[1];
+  
+  // Dynamic condenser temperature rises (average over cycle)
+  const sideRise = PR * (condenserConfig.K_side / 10) * (TC - T0);
+  const backRise = PR * (condenserConfig.K_back / 10) * (TC - T0);
+  const condenserRises = { side: sideRise, back: backRise };
+  
+  const temps = { T0, TF, TR, T2, TC, PR, TE };
+  const heatLoads = calcHeatLoads(geom, temps, electrical, condenserRises, fan.totalAirflow, geom.evap, fan.inputPower_W);
+  const comp = compressorState(TC, TE, refrigerant, compParams, subcool);// In solver.js, inside solveInner, right after calcHeatLoads:
     const loads = calcHeatLoads(geom, temps, electrical, condenserRises, fan.totalAirflow, geom.evap, fan.inputPower_W);
     console.log({
       QF: loads.QF, QR: loads.QR, QEV: loads.QEV,
