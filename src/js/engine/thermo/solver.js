@@ -1,5 +1,4 @@
-// solver.js – production thermal solver (validated against Excel SJ‑540)
-// Supports both fixed‑TE and dynamic‑TE modes.
+// solver.js – universal thermal solver (dynamic wall temperatures, top/bottom freezer)
 import { calcHeatLoads } from './heatLoad.js';
 import { compressorState } from './compressor.js';
 import { computeCondenserAreas, calcQCout, calcQCin } from './condenser.js';
@@ -8,34 +7,7 @@ import { PHYSICAL_CONSTANTS } from './constants.js';
 const RHO_AIR = 1.365;
 const CP_AIR  = 0.24;
 
-// ---------------------------------------------------------------------------
-// NTU‑effectiveness evaporator model (dynamic TE)
-// ---------------------------------------------------------------------------
-function computeDynamicTE(T2, PR, MR, MF, geom, fan) {
-  const { T0, TF, TR } = {}; // not needed for T1 if we already have MR/MF
-  const rho = RHO_AIR, cp = CP_AIR;
-
-  // Mixed air temperature entering evaporator
-  const T1 = (MF * (-18) + MR * 3) / fan.totalAirflow;   // assumes TF=-18, TR=3 – use actual fixedTemps if available
-  // better: pass fixedTemps or compute from the known compartment temperatures
-  // We'll fix this below – we'll pass the actual TF, TR from the config.
-  const evapWidth_m  = geom.evapWidth_m  ?? 0.46;
-  const evapDepth_m  = geom.evapDepth_m  ?? 0.06;
-  const evapArea_m2  = geom.evapArea_m2  ?? 1.754;
-  const faceArea = evapWidth_m * evapDepth_m;
-  const v_ms = fan.totalAirflow / faceArea / 3600;
-  const alpha = 12.93 * Math.pow(v_ms, 0.415);
-  const C_air = fan.totalAirflow * rho * cp;
-  const UA = alpha * evapArea_m2;
-  const NTU = UA / Math.max(1e-6, C_air);
-  const eff = 1 - Math.exp(-NTU);
-  const TE = T1 - (T1 - T2) / Math.max(0.001, eff);
-  return TE;
-}
-
-// ---------------------------------------------------------------------------
-// 2×2 Newton solver with damping
-// ---------------------------------------------------------------------------
+// 2×2 Newton with damping
 function newton2(F, x0, dx, tol, maxIter, debug = false) {
   let x = [x0[0], x0[1]];
   let prevF = [Infinity, Infinity];
@@ -76,12 +48,10 @@ function newton2(F, x0, dx, tol, maxIter, debug = false) {
   return { x, converged: false, iterations: maxIter, error: 'Max iterations' };
 }
 
-// ---------------------------------------------------------------------------
-// Inner solver – solves for T2 and PR at a given TC, with fixed TE
-// ---------------------------------------------------------------------------
+// Inner solver – uses dynamic wall temperatures from pipe pitches
 function solveInner(TC, geom, compParams, refrigerant, subcool,
                     fixedTemps, fan, electrical, condenserConfig,
-                    evapGeom, TE, innerOpts = {}) {
+                    evapGeom, TE, pipePitch, backEff, freezerPos, innerOpts = {}) {
   const { dx = 0.001, tol = 1e-4, maxIter = 100, initialT2, initialPR, debug = false } = innerOpts;
   const { T0, TF, TR } = fixedTemps;
   const rho = RHO_AIR, cp = CP_AIR;
@@ -91,13 +61,11 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
 
   const F = (x) => {
     const T2 = x[0], PR = x[1];
-    const sideRise = PR * (condenserConfig.K_side / 10) * (TC - T0);
-    const backRise = PR * (condenserConfig.K_back / 10) * (TC - T0);
-    const cr = { side: sideRise, back: backRise };
 
+    // Dynamic wall temperatures are computed inside calcHeatLoads via pipe pitches
     const loads = calcHeatLoads(
       geom, { T0, TF, TR, T2, TC, PR, TE }, electrical,
-      cr, fan.totalAirflow, evapGeom, fan.inputPower_W
+      pipePitch, backEff, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
     );
     const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
 
@@ -107,7 +75,6 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
     }
 
     const F2 = (loads.QF + loads.QR + loads.QEV) - comp.coolingCapacity * PR;
-
     const denom = fan.totalAirflow * rho * cp * PR;
     let F1;
     if (Math.abs(denom) < 1e-12) {
@@ -146,13 +113,9 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
 
   const finalT2 = res.x[0];
   const finalPR = res.x[1];
-
-  // Final loads/compressor with converged T2, PR and fixed TE
-  const sr = finalPR * (condenserConfig.K_side / 10) * (TC - T0);
-  const br = finalPR * (condenserConfig.K_back / 10) * (TC - T0);
   const loads = calcHeatLoads(
     geom, { T0, TF, TR, T2: finalT2, TC, PR: finalPR, TE }, electrical,
-    { side: sr, back: br }, fan.totalAirflow, evapGeom, fan.inputPower_W
+    pipePitch, backEff, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
   );
   const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
 
@@ -164,13 +127,14 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Outer solver – adjusts TC until QCout = QCin, with fixed TE
-// ---------------------------------------------------------------------------
+// Outer solver – adjusts TC until QCout = QCin, dynamic wall temps, supports top/bottom freezer
 export function solveThermalSystem(config, TE_override = null) {
   const {
     geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp,
     fixedTemps, fan, electrical,
+    pipePitch = { side: 150, back: 200 },    // default pipe pitches (SJ‑540)
+    backEff = 0.7,
+    freezerPosition = 'top',                 // 'top' or 'bottom'
     TC0 = 45, DH = 0.001, tolOuter = 0.001, maxIterOuter = 50,
     innerOptions = {},
   } = config;
@@ -181,19 +145,19 @@ export function solveThermalSystem(config, TE_override = null) {
   const evapGeom = geom;
   const debug = innerOptions.debug ?? false;
 
-  // Use provided TE or default to -25.27
+  // Initial TE guess (will be updated dynamically if dynamic TE wrapper is used)
   const TE = TE_override ?? -25.27;
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
     if (debug) console.log(`\nOuter iteration ${iter}, TC=${TC.toFixed(2)}`);
     const inner = solveInner(TC, geom, compParams, refrigerant, subcool,
                              fixedTemps, fan, electrical, condenserConfig,
-                             evapGeom, TE, innerOptions);
+                             evapGeom, TE, pipePitch, backEff, freezerPosition, innerOptions);
     if (!inner.converged)
       return { TC, T2: NaN, PR: NaN, TE, converged: false, error: 'Inner loop failed' };
     totalInner += inner.iterations;
 
-    const QCout = calcQCout(TC, T0, fixedTemps.TF, fixedTemps.TR, areas);
+    const QCout = calcQCout(TC, T0, fixedTemps.TF, fixedTemps.TR, inner.PR, areas);
     const QCin = calcQCin(TC, TE, refrigerant, compParams, subcool, dischargeTemp);
     const F3 = QCout - QCin;
     if (debug) console.log(`  Inner converged: T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} TE=${TE.toFixed(2)} F3=${F3.toFixed(3)}`);
@@ -212,11 +176,11 @@ export function solveThermalSystem(config, TE_override = null) {
     const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR };
     let innerPert = solveInner(TC + DH, geom, compParams, refrigerant, subcool,
                                fixedTemps, fan, electrical, condenserConfig,
-                               evapGeom, TE, pertOpts);
+                               evapGeom, TE, pipePitch, backEff, freezerPosition, pertOpts);
     if (!innerPert.converged) {
       innerPert = solveInner(TC + DH, geom, compParams, refrigerant, subcool,
                              fixedTemps, fan, electrical, condenserConfig,
-                             evapGeom, TE, innerOptions);
+                             evapGeom, TE, pipePitch, backEff, freezerPosition, innerOptions);
     }
     if (!innerPert.converged)
       return { TC, T2: NaN, PR: NaN, TE, converged: false, error: 'Perturbation inner loop failed' };
@@ -234,34 +198,17 @@ export function solveThermalSystem(config, TE_override = null) {
   return { TC, T2: NaN, PR: NaN, TE, converged: false, error: 'Outer loop max iterations' };
 }
 
-// ---------------------------------------------------------------------------
-// Dynamic TE wrapper – iterates TE using NTU model until convergence
-// ---------------------------------------------------------------------------
+// Dynamic TE wrapper – iterates TE using NTU model
 export function runThermalAnalysisDynamic(config) {
-  const { fixedTemps, fan, geom } = config;
+  const { fixedTemps, fan, geom, pipePitch, backEff, freezerPosition } = config;
   const { TF, TR } = fixedTemps;
-
-  // Initial TE guess
   let TE = -25.27;
   let result;
-  const maxTEIter = 5;
-  const teTol = 0.1;
-
-  for (let i = 0; i < maxTEIter; i++) {
+  for (let i = 0; i < 5; i++) {
     result = solveThermalSystem(config, TE);
-    if (!result.converged) return result;   // propagate error
-
-    // Compute new TE from the converged air split (MR, MF) and T2
-    const MR = result.MR;
-    const MF = result.MF;
-    const T2 = result.T2;
-    const PR = result.PR;
-    const TC = result.TC;
-
-    // Mixed air temperature
+    if (!result.converged) return result;
+    const { MR, MF, T2, TC, PR } = result;
     const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
-
-    // Evaporator geometry
     const evapWidth_m  = geom.evapWidth_m  ?? 0.46;
     const evapDepth_m  = geom.evapDepth_m  ?? 0.06;
     const evapArea_m2  = geom.evapArea_m2  ?? 1.754;
@@ -273,16 +220,12 @@ export function runThermalAnalysisDynamic(config) {
     const NTU = UA / Math.max(1e-6, C_air);
     const eff = 1 - Math.exp(-NTU);
     const newTE = T1 - (T1 - T2) / Math.max(0.001, eff);
-
-    if (Math.abs(newTE - TE) < teTol) {
-      // Update final result with the consistent TE
+    if (Math.abs(newTE - TE) < 0.1) {
       result.TE = newTE;
       return result;
     }
     TE = newTE;
   }
-
-  // If max iterations reached, return last result with a warning
   result.TE = TE;
   result.warning = 'TE iteration did not fully converge';
   return result;
