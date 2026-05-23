@@ -1,8 +1,9 @@
-// tests/debug_pv73k_final.mjs – PV73K with exact Excel wall rises
+// tests/debug_pv73k_dynamicWall.mjs – test if dynamic wall formula works for bottom-freezer
 import { calcHeatLoads } from '../src/js/engine/thermo/heatLoad.js';
 import { compressorState } from '../src/js/engine/thermo/compressor.js';
 import { computeCondenserAreas, calcQCout, calcQCin } from '../src/js/engine/thermo/condenser.js';
 
+// PV73K geometry
 const geom = {
   H: 1794, W: 795, D: 687, Hf: 1048, Hr: 746,
   Hb: 248, Db1: 195, Db2: 261, doorGap: 10, packingPos: 15,
@@ -27,9 +28,7 @@ const condenserConfig = {
   k_FFront1: 0.3395, k_FFront2: 0.0344,
 };
 
-// Exact Excel wall temperature rises for PV73K
-const wallRises = { side: 2.22, back: 1.71 };
-
+// Newton
 function newton2(F, x0, dx, tol, maxI) {
   let x = [x0[0], x0[1]];
   for (let i = 0; i < maxI; i++) {
@@ -50,21 +49,29 @@ function newton2(F, x0, dx, tol, maxI) {
   return { x, converged: false, iterations: maxI, error: 'Max iter' };
 }
 
-function solve() {
+// Outer solver using the SJ-540 dynamic wall formula: sideRise = PR * (K_side/10) * (TC - T0)
+function solveWithDynamicFormula() {
   const areas = computeCondenserAreas(geom, condenserConfig);
   const T0 = 25, TF = -18, TR = 3;
-  const TE = -23.02;
+  const TE = -23.02;   // Excel TE
   let TC = 48.0;
-  const DH = 0.001, tolOuter = 0.001;
+  const DH = 0.001, tolOuter = 0.001, maxOuter = 50;
 
-  for (let iter = 0; iter < 50; iter++) {
-    const cr = { side: wallRises.side, back: wallRises.back };
+  for (let iter = 0; iter < maxOuter; iter++) {
+    // Compute wall rises using the same dynamic formula as SJ-540
+    const sideRise = 0.78 * (condenserConfig.K_side/10) * (TC - T0); // initial guess with PR=0.78
+    const backRise = 0.78 * (condenserConfig.K_back/10) * (TC - T0);
+    const cr = { side: sideRise, back: backRise };
+
     let MR = 146.4 * 0.02, MF = 146.4 * 0.98;
 
     const F = (x) => {
       const T2 = x[0], PR = x[1];
+      const sr = PR * (condenserConfig.K_side/10) * (TC - T0);
+      const br = PR * (condenserConfig.K_back/10) * (TC - T0);
+      const cr2 = { side: sr, back: br };
       const loads = calcHeatLoads(geom, { T0, TF, TR, T2, TC, PR, TE },
-        { defrostHeater_W: 112, defrostOn_min: 0 }, cr, 146.4, geom, 2.4);
+        { defrostHeater_W: 112, defrostOn_min: 0 }, cr2, 146.4, geom, 2.4);
       const comp = compressorState(TC, TE, 'R-600a', compParams, 10);
       const F2 = (loads.QF + loads.QR + loads.QEV) - comp.coolingCapacity * PR;
       const denomF = 146.4 * 1.365 * 0.24 * PR;
@@ -90,43 +97,38 @@ function solve() {
     if (!res.converged) { console.log('Inner loop failed'); return; }
 
     const T2_f = res.x[0], PR_f = res.x[1];
-    const loads_f = calcHeatLoads(geom, { T0, TF, TR, T2: T2_f, TC, PR: PR_f, TE },
-      { defrostHeater_W: 112, defrostOn_min: 0 }, cr, 146.4, geom, 2.4);
-    const comp_f = compressorState(TC, TE, 'R-600a', compParams, 10);
+    const sr = PR_f * (condenserConfig.K_side/10) * (TC - T0);
+    const br = PR_f * (condenserConfig.K_back/10) * (TC - T0);
+    console.log(`\nTC=${TC.toFixed(2)}  T2=${T2_f.toFixed(2)}  PR=${(PR_f*100).toFixed(1)}%`);
+    console.log(`Dynamic wall rises: side=${sr.toFixed(2)} °C (Excel 2.22), back=${br.toFixed(2)} °C (Excel 1.71)`);
+    console.log(`Expected T_side = ${(T0+sr).toFixed(2)} °C (Excel 27.22), T_back = ${(T0+br).toFixed(2)} °C (Excel 26.71)`);
 
-    // Dynamic TE (NTU)
-    const T1 = (MF * TF + MR * TR) / 146.4;
-    const faceArea = 0.441 * 0.058, v_ms = 146.4 / faceArea / 3600;
-    const alpha = 12.93 * Math.pow(v_ms, 0.415), C_air = 146.4 * 1.365 * 0.24;
-    const UA = alpha * 1.298, NTU = UA / Math.max(1e-6, C_air);
-    const eff = 1 - Math.exp(-NTU);
-    const TE_new = T1 - (T1 - T2_f) / Math.max(0.001, eff);
+    // Now check the heat loads that result from these wall rises
+    const loads_check = calcHeatLoads(geom, { T0, TF, TR, T2: T2_f, TC, PR: PR_f, TE },
+      { defrostHeater_W: 112, defrostOn_min: 0 }, { side: sr, back: br }, 146.4, geom, 2.4);
+    console.log(`QF=${loads_check.QF.toFixed(2)} (Excel 45.44)  QR=${loads_check.QR.toFixed(2)} (Excel 14.39)`);
 
+    // Condenser balance with these wall temperatures
     const QCout = calcQCout(TC, T0, TF, TR, PR_f, areas);
     const QCin = calcQCin(TC, TE, 'R-600a', compParams, 10, 60);
     const F3 = QCout - QCin;
+    console.log(`F3 = ${F3.toFixed(2)}`);
 
-    console.log(`TC=${TC.toFixed(2)} T2=${T2_f.toFixed(2)} PR=${(PR_f*100).toFixed(1)}% TE=${TE_new.toFixed(2)} F3=${F3.toFixed(2)}`);
-
+    // Update TC
     if (Math.abs(F3) < tolOuter) {
-      console.log(`✅ Converged!`);
-      console.log(`TC = ${TC.toFixed(2)} °C (Excel 48.00)`);
-      console.log(`T2 = ${T2_f.toFixed(2)} °C (Excel -19.50)`);
-      console.log(`TE = ${TE_new.toFixed(2)} °C (Excel -23.02)`);
-      console.log(`PR = ${(PR_f*100).toFixed(1)} % (Excel 78.0%)`);
-      console.log(`QF = ${loads_f.QF.toFixed(2)} (Excel 45.44)`);
-      console.log(`QR = ${loads_f.QR.toFixed(2)} (Excel 14.39)`);
-      console.log(`QEV = ${loads_f.QEV.toFixed(2)} (Excel 9.86)`);
-      console.log(`Comp cooling = ${comp_f.coolingCapacity.toFixed(2)} (Excel 89.36)`);
-      console.log(`Input power = ${comp_f.inputPower.toFixed(2)} (Excel 104.27)`);
+      console.log(`\n✅ Converged with dynamic wall formula.`);
+      console.log(`Final TC = ${TC.toFixed(2)} °C (Excel 48.00)`);
       return;
     }
 
+    // Perturbation...
     const resPert = newton2((x) => {
       const T2 = x[0], PR = x[1];
-      const loads = calcHeatLoads(geom, { T0, TF, TR, T2, TC: TC + DH, PR, TE },
-        { defrostHeater_W: 112, defrostOn_min: 0 }, cr, 146.4, geom, 2.4);
-      const comp = compressorState(TC + DH, TE, 'R-600a', compParams, 10);
+      const sr = PR * (condenserConfig.K_side/10) * (TC+DH - T0);
+      const br = PR * (condenserConfig.K_back/10) * (TC+DH - T0);
+      const loads = calcHeatLoads(geom, { T0, TF, TR, T2, TC: TC+DH, PR, TE },
+        { defrostHeater_W: 112, defrostOn_min: 0 }, { side: sr, back: br }, 146.4, geom, 2.4);
+      const comp = compressorState(TC+DH, TE, 'R-600a', compParams, 10);
       const F2 = (loads.QF + loads.QR + loads.QEV) - comp.coolingCapacity * PR;
       const denomF = 146.4 * 1.365 * 0.24 * PR;
       let F1;
@@ -139,13 +141,13 @@ function solve() {
     }, [T2_f, PR_f], 0.001, 1e-4, 100);
     if (!resPert.converged) { console.log('Perturbation failed'); return; }
     const PR_p = resPert.x[1];
-    const comp_p = compressorState(TC + DH, TE, 'R-600a', compParams, 10);
-    const QCout_p = calcQCout(TC + DH, T0, TF, TR, PR_p, areas);
-    const QCin_p = calcQCin(TC + DH, TE, 'R-600a', compParams, 10, 60);
+    const comp_p = compressorState(TC+DH, TE, 'R-600a', compParams, 10);
+    const QCout_p = calcQCout(TC+DH, T0, TF, TR, PR_p, areas);
+    const QCin_p = calcQCin(TC+DH, TE, 'R-600a', compParams, 10, 60);
     const dF3 = ((QCout_p - QCin_p) - F3) / DH;
     if (Math.abs(dF3) < 1e-9) break;
     TC -= Math.max(-2, Math.min(2, F3 / dF3));
   }
 }
 
-solve();
+solveWithDynamicFormula();
