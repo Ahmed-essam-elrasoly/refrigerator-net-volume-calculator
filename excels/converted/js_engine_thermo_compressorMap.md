@@ -1,3 +1,19 @@
+# compressorMap.js
+
+**Original file:** `compressorMap.js`
+
+**File type:** .JS
+
+**Size:** 4,512 bytes
+
+**Last modified:** 2026-05-21 15:30:19
+
+
+---
+
+## Content
+
+```javascript
 // compressorMap.js – bilinear interpolation on compressor performance maps
 // Supports both cooling capacity (kcal/h) and input power (W).
 
@@ -77,7 +93,7 @@ const SQ47LAEG_W = [
 export function compressorStateMap(TC, TE, mapConfig, rf, subcool) {
   const { TC_grid, TE_grid, Q_table, W_table, Vc, rpm, T_suction } = mapConfig;
 
-  const cooling = bilinear(TE, TC, TE_grid, TC_grid, Q_table);
+  const cooling = bilinear(TC, TE, TC_grid, TE_grid, Q_table);   // kcal/h
   const inputPower = bilinear(TC, TE, TC_grid, TE_grid, W_table); // W
 
   // Mass flow from cooling capacity (for completeness)
@@ -111,3 +127,9 @@ export const SQ47LAEG_MAP = {
   rpm: 2220,
   T_suction: 32.2,
 };
+```
+
+
+---
+
+*Converted from `compressorMap.js` on 2026-05-23 11:54:21*

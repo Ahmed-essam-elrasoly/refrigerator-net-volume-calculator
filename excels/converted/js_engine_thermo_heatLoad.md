@@ -1,3 +1,19 @@
+# heatLoad.js
+
+**Original file:** `heatLoad.js`
+
+**File type:** .JS
+
+**Size:** 10,262 bytes
+
+**Last modified:** 2026-05-23 11:07:30
+
+
+---
+
+## Content
+
+```javascript
 // heatLoad.js – universal top- / bottom-freezer heat load model (physically correct)
 import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
@@ -37,8 +53,8 @@ export function calcHeatLoads(
     tFfloor1, tFfloor2, tFfloor3, tRfloor
   } = geom;
   const { T0, TF, TR, T2, TC, PR, TE } = temps;
-  const K_side = 10.57-0.042*PIPEPITCH.side+0.00005*PIPEPITCH.side**2;
-  const K_back = 10.57-0.042*PIPEPITCH.back+0.00005*PIPEPITCH.back**2;
+  const K_side = 10.57-0.042*PIPEPITCH.side+0.00005*PIPEPITCH.side^2;
+  const K_back = 10.57-0.042*PIPEPITCH.back+0.00005*PIPEPITCH.back^2;
   const S_side = (H*(D-30)-(Db2+Db1)*Hb/2)*2/1e6;
   const S_back =W*(H-Hb)/1e6*BackcondenserEfficiency;
   const T_comp = 50 * PR + T0;
@@ -237,3 +253,9 @@ export function computeWallConductances(geom, T0, TF, TR, freezerPosition = 'top
 
   return { UA_side_total, T_comp_side, UA_back_total, T_comp_back };
 }
+```
+
+
+---
+
+*Converted from `heatLoad.js` on 2026-05-23 11:54:21*

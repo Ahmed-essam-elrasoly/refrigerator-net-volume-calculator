@@ -1,0 +1,76 @@
+# compressor.js
+
+**Original file:** `compressor.js`
+
+**File type:** .JS
+
+**Size:** 2,026 bytes
+
+**Last modified:** 2026-05-21 15:30:16
+
+
+---
+
+## Content
+
+```javascript
+// compressor.js – cooling capacity based on evaporator outlet enthalpy (Excel replica)
+import { getRefrigerantFunctions } from './refrigerant.js';
+
+export function calcVolumetricEfficiency(TC, TE, compParams, satPressure) {
+  const Pc = satPressure(TC);
+  const Pe = satPressure(TE);
+  const { A, B, C } = compParams.volEffCoeffs;
+  const etaBase = A + B * (Pc / Pe) + C * Pc;
+  const kEtaV = compParams.kEtaV;
+  const Kw = kEtaV.a + kEtaV.b * compParams.rpm + kEtaV.c * compParams.rpm * compParams.rpm;
+  return etaBase * Kw;
+}
+
+export function calcMassFlow(etaV, rpm, Vc, v) {
+  return etaV * rpm * Vc * 1e-6 * 60 / v;
+}
+
+/**
+ * Compressor state – uses EVAPORATOR OUTLET enthalpy (saturated vapour at TE)
+ * to calculate cooling capacity, matching Excel MAIN H21.
+ */
+export function compressorState(TC, TE, refrigerantName, compParams, subcool) {
+  const rf = getRefrigerantFunctions(refrigerantName);
+  const Pe = rf.satPressure(TE);
+  const Pc = rf.satPressure(TC);
+
+  const T_suc = compParams.T_suction;  // 32.2 °C
+  const v_suc = rf.specificVolume(T_suc, Pe);
+  const etaV = calcVolumetricEfficiency(TC, TE, compParams, rf.satPressure);
+  const mdot = calcMassFlow(etaV, compParams.rpm, compParams.Vc, v_suc);
+
+  // Use evaporator outlet (saturated vapour) enthalpy, not suction line
+  const h_evap_out = rf.vaporEnthalpy(TE, Pe);
+  const Tsub = TC - subcool;
+  const h_liquid = rf.liquidEnthalpy(Tsub);
+  const cooling = mdot * (h_evap_out - h_liquid);
+
+  // Input power (existing polynomial)
+  const { AW, BW, CW, DW, EW } = compParams.powerCoeffs;
+  const base = AW + BW * TE + CW * TC + DW * TC * TE + EW * TE * TE;
+  const { a, b, c } = compParams.powerKw;
+  const Kw = a + b * compParams.rpm + c * compParams.rpm * compParams.rpm;
+  const rpmRatio = compParams.rpm / compParams.rpm0;
+  const power = base * Kw * rpmRatio;
+
+  return {
+    etaV,
+    massFlow: mdot,
+    coolingCapacity: cooling,
+    inputPower: power,
+    h_evap_out,
+    h_liquid,
+  };
+}
+```
+
+
+---
+
+*Converted from `compressor.js` on 2026-05-23 11:54:21*
