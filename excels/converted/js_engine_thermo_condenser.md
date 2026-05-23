@@ -1,3 +1,19 @@
+# condenser.js
+
+**Original file:** `condenser.js`
+
+**File type:** .JS
+
+**Size:** 2,025 bytes
+
+**Last modified:** 2026-05-21 15:30:22
+
+
+---
+
+## Content
+
+```javascript
 import { getRefrigerantFunctions } from './refrigerant.js';
 import { compressorState } from './compressor.js';
 
@@ -15,9 +31,8 @@ export function calcQCin(TC, TE, refrigerantName, compParams, subcool, discharge
   const rf = getRefrigerantFunctions(refrigerantName);
   const comp = compressorState(TC, TE, refrigerantName, compParams, subcool);
   const h_dis = rf.vaporEnthalpy(dischargeTemp, rf.satPressure(TC));
-  const Tsub = TC - subcool;
-  const h_liq_sub = rf.liquidEnthalpy(Tsub);
-  return comp.massFlow * (h_dis - h_liq_sub);
+  const h_liq_sat = rf.liquidEnthalpy(TC);   // saturated at TC, not sub-cooled
+  return comp.massFlow * (h_dis - h_liq_sat);
 }
 
 export function computeCondenserAreas(geom, condenserConfig) {
@@ -34,7 +49,7 @@ export function computeCondenserAreas(geom, condenserConfig) {
   const backAreaRaw = (W * (H - Hb)) / 1e6;
   const backArea = backAreaRaw * backCondenserEfficiency;
 
-  const RFrontLength = (Hr * 2 ) / 1000;
+  const RFrontLength = (Hr * 2 + D) / 1000;
   const FRPartitionLength = (W - tRtop - tRleft) / 1000;
   const FFrontLength = (Hf * 2) / 1000;
 
@@ -49,3 +64,9 @@ export function computeCondenserAreas(geom, condenserConfig) {
     k_FFront1, k_FFront2,
   };
 }
+```
+
+
+---
+
+*Converted from `condenser.js` on 2026-05-23 11:54:21*

@@ -1,3 +1,19 @@
+# solver.js
+
+**Original file:** `solver.js`
+
+**File type:** .JS
+
+**Size:** 9,463 bytes
+
+**Last modified:** 2026-05-23 11:09:09
+
+
+---
+
+## Content
+
+```javascript
 // solver.js – universal thermal solver (dynamic wall temperatures + dynamic TE wrapper)
 import { calcHeatLoads, computeWallConductances } from './heatLoad.js';
 import { compressorState } from './compressor.js';
@@ -195,3 +211,9 @@ export function runThermalAnalysisDynamic(config) {
   result.warning = 'TE iteration did not fully converge';
   return result;
 }
+```
+
+
+---
+
+*Converted from `solver.js` on 2026-05-23 11:54:21*
