@@ -3,7 +3,7 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
 function lambdaUrethane(T_in, T_out) {
   const T_avg = (T_in + T_out) / 2;
-  return 0.0165 + 0.00011 * T_avg;
+  return 0.0165 + 0.00011 * (T_avg-25);   // Excel formula, shifted to be 0.0165 at 25°C
 }
 function kExterior(thk, T_in, T_out) {
   const lam = lambdaUrethane(T_in, T_out);
@@ -42,6 +42,7 @@ export function calcHeatLoads(
   const S_side = (H*(D-30)-(Db2+Db1)*Hb/2)*2/1e6;
   const S_back =W*(H-Hb)/1e6*BackcondenserEfficiency;
   const T_comp = 50 * PR + T0;
+  const T_CompWall = T0 + (TC - T0) * PR;  // Excel formula for condenser wall temp rise
   const TRise_side = (TC - T0) / 10 * K_side;
   const TRise_back = (TC - T0) / 10 * K_back;
   const T_wallSide = T0 + TRise_side * PR;
@@ -86,8 +87,8 @@ export function calcHeatLoads(
     const AFbottom1 = (W - (tFleft + tFright)/2) * Db1 / 1e6;
     const AFbottom2 = (W - (tFleft + tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
     const AFbottom3 = (W - (tFleft + tFright)/2) * (D-Db2) / 1e6;
-    QF += kExterior(tFfloor1, TF, T_comp) * AFbottom1 * (T_comp - TF)
-        + kExterior(tFfloor2, TF, T_comp) * AFbottom2 * (T_comp - TF)
+    QF += kExterior(tFfloor1, TF, T_CompWall) * AFbottom1 * (T_CompWall - TF)
+        + kExterior(tFfloor2, TF, T_CompWall) * AFbottom2 * (T_CompWall - TF)
         + kExterior(tFfloor3, TF, T0)       * AFbottom3 * (T0 - TF);
   }
 
@@ -137,8 +138,8 @@ export function calcHeatLoads(
     const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
     const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
     const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
-    QR += kExterior(tRbottom1, TR, T_wallBack) * ARb1 * (T_wallBack - TR)
-        + kExterior(tRbottom2, TR, T_wallBack) * ARb2 * (T_wallBack - TR)
+    QR += kExterior(tRbottom1, TR, T_CompWall) * ARb1 * (T_CompWall - TR)
+        + kExterior(tRbottom2, TR, T_CompWall) * ARb2 * (T_CompWall - TR)
         + kExterior(tRbottom3, TR, T0)       * ARb3 * (T0 - TR);
   } else {
     const ARbottom = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
