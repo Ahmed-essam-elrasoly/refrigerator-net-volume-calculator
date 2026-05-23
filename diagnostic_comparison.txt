@@ -1,0 +1,57 @@
+============ SJ‑540 Top‑Freezer ============
+--- Freezer ---
+F TOP       S=0.4444  B=0.1012  K=0.2279  Ti=-18 To=30  Q=4.8599  (Excel 4.86)
+F LEFT      S=0.2912  B=0.0672  K=0.2307  Ti=-18 To=33.47  Q=3.4573  (Excel 3.46)
+F RIGHT     S=0.2912  B=0.0672  K=0.2307  Ti=-18 To=33.47  Q=3.4573  (Excel 3.46)
+F BOTTOM    S=0.4444  B=0.0791  K=0.1781  Ti=-18 To=3  Q=1.6616  (Excel 1.66)
+F DOOR      S=0.3966  B=0.0904  K=0.2279  Ti=-18 To=30  Q=4.3370  (Excel 4.34)
+F PACKIN    S=2.5800  B=0.0903  K=0.0350  Ti=-18 To=30  Q=4.3344  (Excel 4.33)
+F DPCON1    Q=3.9008  (Excel 3.9)
+F DPCON2    Q=1.3517  (Excel 1.35)
+TOTAL QF = 27.3601  (Excel 27.3600)
+
+--- Refrigerator ---
+R TOP       S=0.4560  B=0.0812  K=0.1781  Ti=3 To=-18  Q=-1.7052  (Excel -1.66)
+R LEFT      S=0.5878  B=0.2095  K=0.3565  Ti=3 To=33.47  Q=6.3842  (Excel 6.39)
+R RIGHT     S=0.5878  B=0.2095  K=0.3565  Ti=3 To=33.47  Q=6.3842  (Excel 6.39)
+R BACK      S=0.6194  B=0.1535  K=0.2478  Ti=3 To=36.44  Q=5.1324  (Excel 7.06)
+R BOTTOM1   S=0.1596  B=0.0574  K=0.3598  Ti=3 To=36.44  Q=1.9202  (Excel 2.64)
+R BOTTOM2   S=0.1982  B=0.0713  K=0.3598  Ti=3 To=36.44  Q=2.3845  (Excel 3.28)
+R BOTTOM3   S=0.1748  B=0.0616  K=0.3525  Ti=3 To=30  Q=1.6639  (Excel 1.66)
+R DOOR      S=0.8431  B=0.2972  K=0.3525  Ti=3 To=30  Q=8.0257  (Excel 8.57)
+R PACKIN    S=3.7400  B=0.1309  K=0.0350  Ti=3 To=30  Q=3.5343  (Excel 3.53)
+R DPCON     Q=1.5547  (Excel 1.55)
+TOTAL QR = 35.2788  (Excel 39.4100)
+
+--- Evaporator ---
+EVA BACK    S=0.3594  B=0.0810  K=0.2253  Ti=-21.25 To=32.69  Q=4.3670  (Excel 4.37)
+FAN LOAD    Q=1.0673  (Excel 1.07)
+
+============ PV73K Bottom‑Freezer ============
+--- Refrigerator (top) ---
+R TOP       S=0.4775  B=0.1236  K=0.2588  Ti=3 To=25  Q=2.7188  (Excel 2.7188)
+R LEFT      S=0.6499  B=0.1639  K=0.2522  Ti=3 To=27.22  Q=3.9699  (Excel 3.9693)
+R RIGHT     S=0.6499  B=0.1639  K=0.2522  Ti=3 To=27.22  Q=3.9699  (Excel 3.9693)
+R BOTTOM    S=0.4775  B=0.1784  K=0.3737  Ti=3 To=-18  Q=-3.7473  (Excel -3.7473)
+R BACK      S=0.7413  B=0.1356  K=0.1829  Ti=3 To=26.71  Q=3.2151  (Excel 3.2156)
+R DOOR      S=0.7749  B=0.1909  K=0.2463  Ti=3 To=25  Q=4.1992  (Excel 4.1992)
+R PACKIN    S=3.5660  B=0.1248  K=0.0350  Ti=3 To=25  Q=2.7458  (Excel 2.7458)
+R DPCON1    Q=4.7592  (Excel 4.7592)
+R DPCON2    Q=4.7895  (Excel 4.7895)
+TOTAL QR = 26.6201  (Excel 26.6194)
+
+--- Freezer (bottom) ---
+F TOP       S=0.4702  B=0.1757  K=0.3737  Ti=-18 To=3  Q=3.6903  (Excel 3.6903)
+F LEFT      S=0.3998  B=0.0664  K=0.1662  Ti=-18 To=27.22  Q=3.0043  (Excel 3.004)
+F RIGHT     S=0.3998  B=0.0664  K=0.1662  Ti=-18 To=27.22  Q=3.0043  (Excel 3.004)
+F BOTTOM1   S=0.1390  B=0.0263  K=0.1889  Ti=-18 To=42.93  Q=1.6006  (Excel 1.6007)
+F BOTTOM2   S=0.1830  B=0.0329  K=0.1799  Ti=-18 To=42.93  Q=2.0062  (Excel 2.0064)
+F BOTTOM3   S=0.3037  B=0.0501  K=0.1648  Ti=-18 To=25  Q=2.1524  (Excel 2.1524)
+F DOOR      S=0.5439  B=0.0918  K=0.1687  Ti=-18 To=25  Q=3.9465  (Excel 3.9465)
+F PACKIN    S=2.9620  B=0.1037  K=0.0350  Ti=-18 To=25  Q=4.4578  (Excel 4.4578)
+F DPCON     Q=2.6613  (Excel 2.6613)
+TOTAL QF = 26.5237  (Excel 26.5234)
+
+--- Evaporator ---
+EVA BACK    S=0.3166  B=0.0762  K=0.2407  Ti=-19.5 To=26.71  Q=3.5212  (Excel 3.5214)
+FAN LOAD    Q=1.6094  (Excel 1.6095)
