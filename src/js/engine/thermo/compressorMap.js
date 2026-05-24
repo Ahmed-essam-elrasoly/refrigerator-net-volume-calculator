@@ -78,7 +78,7 @@ export function compressorStateMap(TC, TE, mapConfig, rf, subcool) {
   const { TC_grid, TE_grid, Q_table, W_table, Vc, rpm, T_suction } = mapConfig;
 
   const cooling = bilinear(TE, TC, TE_grid, TC_grid, Q_table);
-  const inputPower = bilinear(TC, TE, TC_grid, TE_grid, W_table); // W
+  const inputPower = bilinear(TE, TC, TE_grid, TC_grid, W_table); // W
 
   // Mass flow from cooling capacity (for completeness)
   const Pe = rf.satPressure(TE);
