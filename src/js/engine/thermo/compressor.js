@@ -1,5 +1,6 @@
 // compressor.js – cooling capacity based on evaporator outlet enthalpy (Excel replica)
 import { getRefrigerantFunctions } from './refrigerant.js';
+import { compressorStateMap, SQ47LAEG_MAP } from './compressorMap.js';
 
 export function calcVolumetricEfficiency(TC, TE, compParams, satPressure) {
   const Pc = satPressure(TC);
@@ -19,15 +20,16 @@ export function calcMassFlow(etaV, rpm, Vc, v) {
  * Compressor state – uses EVAPORATOR OUTLET enthalpy (saturated vapour at TE)
  * to calculate cooling capacity, matching Excel MAIN H21.
  */
-export function compressorState(TC, TE, refrigerantName, compParams, subcool) {
+export function compressorState(TC, TE, refrigerantName, compParams, subcool, T0) {
   const rf = getRefrigerantFunctions(refrigerantName);
   const Pe = rf.satPressure(TE);
   const Pc = rf.satPressure(TC);
 
-  const T_suc = compParams.T_suction;  // 32.2 °C
-  const v_suc = rf.specificVolume(T_suc, Pe);
+  // Excel uses T0 (ambient) for specific volume in the refrigerator condition
+  const T_vol = T0 ?? compParams.T_suction;   // fall back to 32.2 if T0 not passed
+  const v = rf.specificVolume(T_vol, Pe);
   const etaV = calcVolumetricEfficiency(TC, TE, compParams, rf.satPressure);
-  const mdot = calcMassFlow(etaV, compParams.rpm, compParams.Vc, v_suc);
+  const mdot = calcMassFlow(etaV, compParams.rpm, compParams.Vc, v);
 
   // Use evaporator outlet (saturated vapour) enthalpy, not suction line
   const h_evap_out = rf.vaporEnthalpy(TE, Pe);
@@ -51,4 +53,13 @@ export function compressorState(TC, TE, refrigerantName, compParams, subcool) {
     h_evap_out,
     h_liquid,
   };
+}
+// compressor.js or solver.js dispatch
+export function resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0) {
+  if (compParams.useMap) {
+    const rf = getRefrigerantFunctions(refrigerant);
+    const map = compParams.map ?? SQ47LAEG_MAP;  // allow custom map per model
+    return compressorStateMap(TC, TE, map, rf, subcool);
+  }
+  return compressorState(TC, TE, refrigerant, compParams, subcool, T0);
 }

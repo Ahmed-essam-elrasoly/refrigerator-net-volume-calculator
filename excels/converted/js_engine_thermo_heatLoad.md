@@ -53,8 +53,8 @@ export function calcHeatLoads(
     tFfloor1, tFfloor2, tFfloor3, tRfloor
   } = geom;
   const { T0, TF, TR, T2, TC, PR, TE } = temps;
-  const K_side = 10.57-0.042*PIPEPITCH.side+0.00005*PIPEPITCH.side^2;
-  const K_back = 10.57-0.042*PIPEPITCH.back+0.00005*PIPEPITCH.back^2;
+  const K_side = 10.57-0.042*PIPEPITCH.side+0.00005*PIPEPITCH.side**2;
+  const K_back = 10.57-0.042*PIPEPITCH.back+0.00005*PIPEPITCH.back**2;
   const S_side = (H*(D-30)-(Db2+Db1)*Hb/2)*2/1e6;
   const S_back =W*(H-Hb)/1e6*BackcondenserEfficiency;
   const T_comp = 50 * PR + T0;

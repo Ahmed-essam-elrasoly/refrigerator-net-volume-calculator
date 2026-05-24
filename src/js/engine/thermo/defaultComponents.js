@@ -58,4 +58,52 @@ export const SJ54H_COMPONENTS = Object.freeze({
     evapDepth_mm: 60,     // E27 (EV DEPTH)
     evapArea_m2: 1.754,   // E33 (SURFACE OF EVAPORATOR)
   },
+  initialTE: -25.7,
+});
+// needs to be created in defaultComponents.js
+export const SJ_PV73K_COMPONENTS = Object.freeze({
+  compressor: {
+    name: 'SQ47LAEG 220V 50Hz',
+    rpm: 2220,
+    rpm0: 2220,
+    Vc: 10.17,
+    T_suction: 32.2,
+    // use compressorMap instead of polynomial coefficients
+    useMap: true,
+  },
+  fan: {
+    diameter_mm: 100,
+    speed_rpm: 2850,
+    inputPower_W: 2.4,
+    totalAirflow_m3h: 146.4,
+  },
+  electrical: {
+    pwbOn_W: 2,
+    pwbOff_W: 1,
+    defrostHeater_W: 112,
+    timerPeriod_h: 10.5,
+    defrostOn_min: 0,
+  },
+  condenser: {
+    sidePipePitch_mm: 150,
+    backPipePitch_mm: 200,
+    K_side_kcalhm2C: 5.395,
+    K_back_kcalhm2C: 4.17,
+    backCondenserEfficiency: 0.7,
+    k_RFront1: 0.3405,
+    k_RFront2: 0.03322,
+    k_FRPartition1: 0.1984,
+    k_FRPartition2: 0.1219,
+    k_FFront1: 0.3395,
+    k_FFront2: 0.0344,
+  },
+  subcool_K: 10,
+  dischargeTemp_C: 60,
+  evapGeom: {
+    evapWidth_mm: 440.5,
+    evapDepth_mm: 58,
+    evapArea_m2: 1.2985,
+  },
+  freezerPosition: 'bottom',
+  initialTE: -22.7,
 });

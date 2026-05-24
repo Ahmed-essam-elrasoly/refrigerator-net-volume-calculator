@@ -1,8 +1,8 @@
 // solver.js – universal thermal solver (dynamic wall temperatures + dynamic TE wrapper)
-import { calcHeatLoads, computeWallConductances } from './heatLoad.js';
-import { compressorState } from './compressor.js';
-import { computeCondenserAreas, calcQCout, calcQCin } from './condenser.js';
+import { calcHeatLoads } from './heatLoad.js';
+import { computeCondenserAreas, calcQCout } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
+import { resolveCompressorState } from './compressor.js';
 
 const RHO_AIR = 1.365;
 const CP_AIR  = 0.24;
@@ -42,35 +42,25 @@ function newton2(F, x0, dx, tol, maxIter, debug = false) {
 // Inner solver – uses dynamic wall temperatures from cabinet heat balance
 function solveInner(TC, geom, compParams, refrigerant, subcool,
                     fixedTemps, fan, electrical, condenserConfig,
-                    evapGeom, TE, wallConductances, condAreas, freezerPos, innerOpts = {}) {
+                    evapGeom, TE, freezerPos, innerOpts = {}) {
   const { dx = 0.001, tol = 1e-4, maxIter = 100, initialT2, initialPR, debug = false } = innerOpts;
   const { T0, TF, TR } = fixedTemps;
   const rho = RHO_AIR, cp = CP_AIR;
-  const { UA_side_total, T_comp_side, UA_back_total, T_comp_back } = wallConductances;
-  const KA_side = condAreas.sideKA;
-  const KA_back = condAreas.backKA;
+    const PIPEPITCH = {
+    side: condenserConfig.sidePipePitch_mm,
+    back: condenserConfig.backPipePitch_mm,
+  };
+
   let currentMR = fan.totalAirflow * 0.1, currentMF = fan.totalAirflow * 0.9;
 
   const F = (x) => {
     const T2 = x[0], PR = x[1];
 
-    // Dynamic wall temperatures from heat balance
-    const denom_side = KA_side * PR + UA_side_total;
-    const T_side = (denom_side > 1e-9)
-      ? (KA_side * TC * PR + UA_side_total * T_comp_side) / denom_side
-      : T_comp_side;
-    const denom_back = KA_back * PR + UA_back_total;
-    const T_back = (denom_back > 1e-9)
-      ? (KA_back * TC * PR + UA_back_total * T_comp_back) / denom_back
-      : T_comp_back;
-
-    const condenserRises = { side: T_side - T0, back: T_back - T0 };
-
     const loads = calcHeatLoads(
       geom, { T0, TF, TR, T2, TC, PR, TE }, electrical,
-      condenserRises, 0.7, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
+      PIPEPITCH, 0.7, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
     );
-    const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
+    const comp = resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
     const F2 = (loads.QF + loads.QR + loads.QEV) - comp.coolingCapacity * PR;
     const denom = fan.totalAirflow * rho * cp * PR;
     let F1;
@@ -81,7 +71,7 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
       const MR = Math.min(fan.totalAirflow, Math.max(0, MR_raw));
       const MF = fan.totalAirflow - MR;
       currentMR = MR; currentMF = MF;
-      F1 = loads.QF - MF * rho * cp * (TF - T2) * PR;
+      F1 = loads.QF - MF * rho * cp * (TF - T3) * PR;
     }
     return [F1, F2];
   };
@@ -97,20 +87,22 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
   if (!res.converged) return { T2: res.x[0], PR: res.x[1], converged: false };
 
   const fT2 = res.x[0], fPR = res.x[1];
-  const denom_f = KA_side * fPR + UA_side_total;
-  const T_side_f = (denom_f > 1e-9) ? (KA_side * TC * fPR + UA_side_total * T_comp_side) / denom_f : T_comp_side;
-  const denom_b = KA_back * fPR + UA_back_total;
-  const T_back_f = (denom_b > 1e-9) ? (KA_back * TC * fPR + UA_back_total * T_comp_back) / denom_b : T_comp_back;
-  const condenserRises_f = { side: T_side_f - T0, back: T_back_f - T0 };
-
   const loads = calcHeatLoads(
     geom, { T0, TF, TR, T2: fT2, TC, PR: fPR, TE }, electrical,
-    condenserRises_f, 0.7, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
+    PIPEPITCH, 0.7, fan.totalAirflow, evapGeom, fan.inputPower_W, freezerPos
   );
-  const comp = compressorState(TC, TE, refrigerant, compParams, subcool);
+  const comp = resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
   return { T2: fT2, PR: fPR, TE, converged: true, heatLoads: loads, compressor: comp, MR: currentMR, MF: currentMF };
 }
+// compressor.js or solver.js dispatch
+function resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0) {
+  if (compParams.useMap) {
+    const rf = getRefrigerantFunctions(refrigerant);
+    return compressorStateMap(TC, TE, SQ47LAEG_MAP, rf, subcool);
+  }
+  return resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
 
+}
 // Outer solver – adjusts TC until QCout = QCin, uses dynamic wall temperatures
 export function solveThermalSystem(config, TE_override = null) {
   const {
@@ -121,26 +113,30 @@ export function solveThermalSystem(config, TE_override = null) {
     innerOptions = {},
   } = config;
 
-  const areas = computeCondenserAreas(geom, condenserConfig);
+  const areas = computeCondenserAreas(geom, condenserConfig, freezerPosition);
   const T0 = fixedTemps.T0;
   let TC = TC0, totalInner = 0;
   const evapGeom = geom;
   const debug = innerOptions.debug ?? false;
-  const TE = TE_override ?? -25.27;
+  const TE = TE_override ?? config.initialTE ?? -25.27;
 
-  const wallConductances = computeWallConductances(geom, T0, fixedTemps.TF, fixedTemps.TR, freezerPosition);
-  const condAreas = { sideKA: areas.sideKA, backKA: areas.backKA };
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
     if (debug) console.log(`\nOuter ${iter}, TC=${TC.toFixed(2)}`);
     const inner = solveInner(TC, geom, compParams, refrigerant, subcool,
-                             fixedTemps, fan, electrical, condenserConfig,
-                             evapGeom, TE, wallConductances, condAreas, freezerPosition, innerOptions);
+                         fixedTemps, fan, electrical, condenserConfig,
+                         evapGeom, TE, freezerPosition, innerOptions);
     if (!inner.converged) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Inner loop failed' };
     totalInner += inner.iterations;
 
-    const QCout = calcQCout(TC, T0, fixedTemps.TF, fixedTemps.TR, inner.PR, areas);
-    const QCin = calcQCin(TC, TE, refrigerant, compParams, subcool, dischargeTemp);
+    const QCout = calcQCout(TC, T0, fixedTemps.TF, fixedTemps.TR, areas);
+    const compOuter = resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
+    const rf = getRefrigerantFunctions(refrigerant);
+    const h_dis = rf.vaporEnthalpy(dischargeTemp, rf.satPressure(TC));
+    const Tsub = TC - subcool;
+    const h_liq = rf.liquidEnthalpy(Tsub);
+    const QCin = compOuter.massFlow * (h_dis - h_liq);
+
     const F3 = QCout - QCin;
     if (debug) console.log(`  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`);
 
@@ -151,12 +147,12 @@ export function solveThermalSystem(config, TE_override = null) {
     const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR };
     let innerPert = solveInner(TC+DH, geom, compParams, refrigerant, subcool,
                                fixedTemps, fan, electrical, condenserConfig,
-                               evapGeom, TE, wallConductances, condAreas, freezerPosition, pertOpts);
-    if (!innerPert.converged) innerPert = solveInner(TC+DH, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, evapGeom, TE, wallConductances, condAreas, freezerPosition, innerOptions);
+                               evapGeom, TE, freezerPosition, pertOpts);
+    if (!innerPert.converged) innerPert = solveInner(TC+DH, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, evapGeom, TE, freezerPosition, innerOptions);
     if (!innerPert.converged) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Perturbation inner loop failed' };
     totalInner += innerPert.iterations;
 
-    const dF3dTC = ((calcQCout(TC+DH, T0, fixedTemps.TF, fixedTemps.TR, areas) - calcQCin(TC+DH, TE, refrigerant, compParams, subcool, dischargeTemp)) - F3) / DH;
+    const dF3dTC = ((calcQCout(TC+DH, T0, fixedTemps.TF, fixedTemps.TR, areas) - QCin) - F3) / DH;
     if (Math.abs(dF3dTC) < 1e-9) return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative' };
     TC -= Math.max(-2, Math.min(2, F3 / dF3dTC));
   }
@@ -174,15 +170,15 @@ export function runThermalAnalysisDynamic(config) {
     if (!result.converged) return result;
     const { MR, MF, T2, TC, PR } = result;
     const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
-    const evapWidth_m  = geom.evapWidth_m  ?? 0.46;
-    const evapDepth_m  = geom.evapDepth_m  ?? 0.06;
-    const evapArea_m2  = geom.evapArea_m2  ?? 1.754;
+    const evapWidth_m  = (config.evapGeom?.evapWidth_mm  ?? 460) / 1000;
+    const evapDepth_m  = (config.evapGeom?.evapDepth_mm  ?? 60)  / 1000;
+    const evapArea_m2  =  config.evapGeom?.evapArea_m2   ?? 1.754;
     const faceArea = evapWidth_m * evapDepth_m;
     const v_ms = fan.totalAirflow / faceArea / 3600;
     const alpha = 12.93 * Math.pow(v_ms, 0.415);
     const C_air = fan.totalAirflow * RHO_AIR * CP_AIR;
-    const UA = alpha * evapArea_m2;
-    const NTU = UA / Math.max(1e-6, C_air);
+    const UA_eff = alpha * evapArea_m2 / Math.max(0.01, PR);
+    const NTU = UA_eff / C_air;
     const eff = 1 - Math.exp(-NTU);
     const newTE = T1 - (T1 - T2) / Math.max(0.001, eff);
     if (Math.abs(newTE - TE) < 0.1) {

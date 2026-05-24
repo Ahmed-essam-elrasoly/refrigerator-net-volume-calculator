@@ -93,7 +93,7 @@ const SQ47LAEG_W = [
 export function compressorStateMap(TC, TE, mapConfig, rf, subcool) {
   const { TC_grid, TE_grid, Q_table, W_table, Vc, rpm, T_suction } = mapConfig;
 
-  const cooling = bilinear(TC, TE, TC_grid, TE_grid, Q_table);   // kcal/h
+  const cooling = bilinear(TE, TC, TE_grid, TC_grid, Q_table);
   const inputPower = bilinear(TC, TE, TC_grid, TE_grid, W_table); // W
 
   // Mass flow from cooling capacity (for completeness)

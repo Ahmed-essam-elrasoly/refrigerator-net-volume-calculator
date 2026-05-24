@@ -31,8 +31,9 @@ export function calcQCin(TC, TE, refrigerantName, compParams, subcool, discharge
   const rf = getRefrigerantFunctions(refrigerantName);
   const comp = compressorState(TC, TE, refrigerantName, compParams, subcool);
   const h_dis = rf.vaporEnthalpy(dischargeTemp, rf.satPressure(TC));
-  const h_liq_sat = rf.liquidEnthalpy(TC);   // saturated at TC, not sub-cooled
-  return comp.massFlow * (h_dis - h_liq_sat);
+  const Tsub = TC - subcool;
+  const h_liq_sub = rf.liquidEnthalpy(Tsub);
+  return comp.massFlow * (h_dis - h_liq_sub);
 }
 
 export function computeCondenserAreas(geom, condenserConfig) {
@@ -49,7 +50,7 @@ export function computeCondenserAreas(geom, condenserConfig) {
   const backAreaRaw = (W * (H - Hb)) / 1e6;
   const backArea = backAreaRaw * backCondenserEfficiency;
 
-  const RFrontLength = (Hr * 2 + D) / 1000;
+  const RFrontLength = (Hr * 2 ) / 1000;
   const FRPartitionLength = (W - tRtop - tRleft) / 1000;
   const FFrontLength = (Hf * 2) / 1000;
 
