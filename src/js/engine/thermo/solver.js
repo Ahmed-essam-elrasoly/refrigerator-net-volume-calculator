@@ -2,7 +2,9 @@
 import { calcHeatLoads } from './heatLoad.js';
 import { computeCondenserAreas, calcQCout } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
-import { resolveCompressorState } from './compressor.js';
+import { compressorState, resolveCompressorState } from './compressor.js';
+import { getRefrigerantFunctions } from './refrigerant.js';
+import { compressorStateMap, SQ47LAEG_MAP } from './compressorMap.js';
 
 const RHO_AIR = 1.365;
 const CP_AIR  = 0.24;
@@ -93,15 +95,6 @@ function solveInner(TC, geom, compParams, refrigerant, subcool,
   );
   const comp = resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
   return { T2: fT2, PR: fPR, TE, converged: true, heatLoads: loads, compressor: comp, MR: currentMR, MF: currentMF };
-}
-// compressor.js or solver.js dispatch
-function resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0) {
-  if (compParams.useMap) {
-    const rf = getRefrigerantFunctions(refrigerant);
-    return compressorStateMap(TC, TE, SQ47LAEG_MAP, rf, subcool);
-  }
-  return resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0);
-
 }
 // Outer solver – adjusts TC until QCout = QCin, uses dynamic wall temperatures
 export function solveThermalSystem(config, TE_override = null) {
