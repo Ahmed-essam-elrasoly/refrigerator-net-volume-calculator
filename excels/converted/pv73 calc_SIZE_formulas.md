@@ -10,7 +10,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `=MAIN!A2` |  | CP | 70mm |  |  | TR= | `=MAIN!B6` | Cab Side | `=MAIN!I50` |  |  |  |  |  |  |  |
 |  |  |  |  | Comp temp | `=50*F1+H4` | TC= | `=MAIN!B7` | Back cab | `=MAIN!I51` |  |  |  |  |  |  |  |
-| ◇  Ｓ  Ｉ  Ｚ  Ｅ  ◇ | (mm) |  |  |  |  | T0= | `=MAIN!B8` | Cab Bottom | `=(H3-H4)*F1+H4` |  |  |  |  |  |  |  |
+| ◇  Ｓ  Ｉ  Ｚ  Ｅ  ◇ | (mm) |  |  |  |  | T0= | `=MAIN!B8` | Cab Bottom | `=(F3-H4)*F1+H4` |  |  |  |  |  |  |  |
 | ◇  BASIC  SIZE  ◇ |  |  | ◇  Heat Load  ◇ |  |  |  | B=K*S |  |  |  |  |  |  |  |  |  |
 | TOTAL HIGHT         H | 1794 |  | POSITION | Q(kcal/h) | S(m2) or L(m) | K | B | INSIDE TEMP | OUTSIDE TEMP |  |  |  |  |  |  |  |
 | R HIGHT             HR | 1048 |  | R TOP | `=H7*(J7-I7)` | `=(B$9-(B$18+B$19)/2)*(B10-B20/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B17/1000/(B$34+0.00011*(I7+J7)/2))` | `=G7*F7` | `=H2` | `=H4` |  |  |  |  |  |  |  |

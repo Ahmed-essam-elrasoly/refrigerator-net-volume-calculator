@@ -43,9 +43,9 @@
 |  |  |  |  |  |  | ◇  Condenser Heat Exchange   ◇ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | ◇ quantity of Evaporator fin  ◇ |  |  | ◇  ＶＡＲＩＡＢＬＥ  ◇ |  |  | Ｒ Front | `=(0.3405*(B7-B8)+0.03322*(B7-B6))*(SIZE!B8*2+MAIN!B9)/1000` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | Evaporator Fin quantity | 枚数 |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ＦＲ Partition | `=(0.1984*(B7-B8)+0.1219*(B7-B5))*(SIZE!B9-SIZE!B23-SIZE!B24)/1000` |  | 熱通過率 | 面積 |  | サイドコン・バックコンの熱通過率 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 段 | 93 |  | X1 =EV OUT  Temp.          T2     (℃) | -21.2483006297973 |  | Ｆ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B6))*(SIZE!B7*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 段 | 93 |  | X2 =RUNNING RATIO          PR     (％) | 0.5905646101665666 |  | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 段 | 93 |  | X3 = ⊿T ( TC-T0) | 10.905514697039447 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 1 段 | 93 |  | X1 =EV OUT  Temp.          T2     (℃) | -21.34296095493092 |  | Ｆ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B6))*(SIZE!B7*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 2 段 | 93 |  | X2 =RUNNING RATIO          PR     (％) | 0.5674402613435491 |  | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 3 段 | 93 |  | X3 = ⊿T ( TC-T0) | 10.865155823364885 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 4 段 | 92 |  |  |  |  | TOTAL  QC0ut | `=SUM(H35:H39)` | バックコン放熱効率 |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 5 段 | 62 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 6 段 | 47 |  | ◇  ＣＯＮＤＩＴＩＯＮ  ◇ |  |  | ◇ Radiate Heat ◇ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |

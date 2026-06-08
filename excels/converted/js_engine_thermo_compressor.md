@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 2,026 bytes
+**Size:** 2,638 bytes
 
-**Last modified:** 2026-05-21 15:30:16
+**Last modified:** 2026-05-26 12:30:05
 
 
 ---
@@ -16,6 +16,7 @@
 ```javascript
 // compressor.js – cooling capacity based on evaporator outlet enthalpy (Excel replica)
 import { getRefrigerantFunctions } from './refrigerant.js';
+import { compressorStateMap, SQ47LAEG_MAP } from './compressorMap.js';
 
 export function calcVolumetricEfficiency(TC, TE, compParams, satPressure) {
   const Pc = satPressure(TC);
@@ -70,16 +71,18 @@ export function compressorState(TC, TE, refrigerantName, compParams, subcool, T0
   };
 }
 // compressor.js or solver.js dispatch
-function resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0) {
+export function resolveCompressorState(TC, TE, refrigerant, compParams, subcool, T0) {
   if (compParams.useMap) {
     const rf = getRefrigerantFunctions(refrigerant);
-    return compressorStateMap(TC, TE, SQ47LAEG_MAP, rf, subcool);
+    const map = compParams.map ?? SQ47LAEG_MAP;  // allow custom map per model
+    return compressorStateMap(TC, TE, map, rf, subcool);
   }
   return compressorState(TC, TE, refrigerant, compParams, subcool, T0);
 }
+
 ```
 
 
 ---
 
-*Converted from `compressor.js` on 2026-05-24*
+*Converted from `compressor.js` on 2026-05-27 14:13:10*

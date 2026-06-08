@@ -462,4 +462,4 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
 ---
 
-*Converted from `schematic.js` on 2026-05-23 11:54:21*
+*Converted from `schematic.js` on 2026-05-27 14:13:10*

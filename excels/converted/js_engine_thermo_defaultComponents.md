@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 1,442 bytes
+**Size:** 2,538 bytes
 
-**Last modified:** 2026-05-19 17:20:52
+**Last modified:** 2026-05-24 16:40:46
 
 
 ---
@@ -74,6 +74,7 @@ export const SJ54H_COMPONENTS = Object.freeze({
     evapDepth_mm: 60,     // E27 (EV DEPTH)
     evapArea_m2: 1.754,   // E33 (SURFACE OF EVAPORATOR)
   },
+  initialTE: -25.7,
 });
 // needs to be created in defaultComponents.js
 export const SJ_PV73K_COMPONENTS = Object.freeze({
@@ -120,10 +121,11 @@ export const SJ_PV73K_COMPONENTS = Object.freeze({
     evapArea_m2: 1.2985,
   },
   freezerPosition: 'bottom',
+  initialTE: -22.7,
 });
 ```
 
 
 ---
 
-*Converted from `defaultComponents.js` on 2026-05-24*
+*Converted from `defaultComponents.js` on 2026-05-27 14:13:10*

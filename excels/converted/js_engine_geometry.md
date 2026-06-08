@@ -157,4 +157,4 @@ export function upgradeConfig(oldConfig) {
 
 ---
 
-*Converted from `geometry.js` on 2026-05-23 11:54:20*
+*Converted from `geometry.js` on 2026-05-27 14:13:09*

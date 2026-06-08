@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 4,512 bytes
+**Size:** 4,500 bytes
 
-**Last modified:** 2026-05-21 15:30:19
+**Last modified:** 2026-05-24 17:03:39
 
 
 ---
@@ -94,7 +94,7 @@ export function compressorStateMap(TC, TE, mapConfig, rf, subcool) {
   const { TC_grid, TE_grid, Q_table, W_table, Vc, rpm, T_suction } = mapConfig;
 
   const cooling = bilinear(TE, TC, TE_grid, TC_grid, Q_table);
-  const inputPower = bilinear(TC, TE, TC_grid, TE_grid, W_table); // W
+  const inputPower = bilinear(TE, TC, TE_grid, TC_grid, W_table); // W
 
   // Mass flow from cooling capacity (for completeness)
   const Pe = rf.satPressure(TE);
@@ -132,4 +132,4 @@ export const SQ47LAEG_MAP = {
 
 ---
 
-*Converted from `compressorMap.js` on 2026-05-23 11:54:21*
+*Converted from `compressorMap.js` on 2026-05-27 14:13:10*
