@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 10,262 bytes
+**Size:** 10,377 bytes
 
-**Last modified:** 2026-05-23 11:07:30
+**Last modified:** 2026-05-26 04:41:26
 
 
 ---
@@ -57,8 +57,9 @@ export function calcHeatLoads(
   const K_back = 10.57-0.042*PIPEPITCH.back+0.00005*PIPEPITCH.back**2;
   const S_side = (H*(D-30)-(Db2+Db1)*Hb/2)*2/1e6;
   const S_back =W*(H-Hb)/1e6*BackcondenserEfficiency;
-  const T_comp = 50 * PR + T0;
-  const T_CompWall = T0 + (TC - T0) * PR;  // Excel formula for condenser wall temp rise
+  const T_comp = 50 * PR + T0;            // already exists, unused
+  const T_compZone = T0 + (T_comp - T0) * PR;  // ADD THIS = 50×PR²+T0
+  //const T_CompWall = T0 + (TC - T0) * PR;  // Excel formula for condenser wall temp rise
   const TRise_side = (TC - T0) / 10 * K_side;
   const TRise_back = (TC - T0) / 10 * K_back;
   const T_wallSide = T0 + TRise_side * PR;
@@ -103,8 +104,8 @@ export function calcHeatLoads(
     const AFbottom1 = (W - (tFleft + tFright)/2) * Db1 / 1e6;
     const AFbottom2 = (W - (tFleft + tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
     const AFbottom3 = (W - (tFleft + tFright)/2) * (D-Db2) / 1e6;
-    QF += kExterior(tFfloor1, TF, T_CompWall) * AFbottom1 * (T_CompWall - TF)
-        + kExterior(tFfloor2, TF, T_CompWall) * AFbottom2 * (T_CompWall - TF)
+    QF += kExterior(tFfloor1, TF, T_compZone) * AFbottom1 * (T_compZone - TF)
+        + kExterior(tFfloor2, TF, T_compZone) * AFbottom2 * (T_compZone - TF)
         + kExterior(tFfloor3, TF, T0)       * AFbottom3 * (T0 - TF);
   }
 
@@ -154,8 +155,8 @@ export function calcHeatLoads(
     const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
     const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
     const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
-    QR += kExterior(tRbottom1, TR, T_CompWall) * ARb1 * (T_CompWall - TR)
-        + kExterior(tRbottom2, TR, T_CompWall) * ARb2 * (T_CompWall - TR)
+    QR += kExterior(tRbottom1, TR, T_compZone) * ARb1 * (T_compZone - TR)
+        + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
         + kExterior(tRbottom3, TR, T0)       * ARb3 * (T0 - TR);
   } else {
     const ARbottom = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
@@ -258,4 +259,4 @@ export function computeWallConductances(geom, T0, TF, TR, freezerPosition = 'top
 
 ---
 
-*Converted from `heatLoad.js` on 2026-05-23 11:54:21*
+*Converted from `heatLoad.js` on 2026-05-27 14:13:10*

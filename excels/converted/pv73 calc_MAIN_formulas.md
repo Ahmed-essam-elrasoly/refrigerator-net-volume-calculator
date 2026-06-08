@@ -13,7 +13,7 @@
 | ◇  ＴＥＭＰＡＲＡＴＵＲＥ  ◇ | (℃) |  | ◇HEAT LOAD ◇ |  |  | ◇  Compressor Data  ◇ |  |  |  |  |  | COMP NAME | EGX80CLC 100V 50Hz |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | F ROOM   TF      (℃) | -18 |  | QF     TOTAL(kcal/h)  (inlet) | `=SIZE!E32` |  | COMPRESSOR NAME | `=N4` | R-600a |  |  |  | Capacity | `=[1]DATA!$K$5` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | R ROOM   TR      (℃) | 3 |  | QR     TOTAL(kcal/h)  (inlet) | `=SIZE!E33+E8` |  | 220/240V 50Hz |  |  |  |  |  | COP | `=[1]DATA!$I$7` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DP CON.  TC      (℃) | 48 | Trial | QEV    TOTAL (kcal/h)  (inlet) | `=SIZE!E34` |  | 定格ｺｰﾅｰ |  |  |  |  |  | Rpm0= | `=[1]DATA!$D$5` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| DP CON.  TC      (℃) | `=B8+E39` | Trial | QEV    TOTAL (kcal/h)  (inlet) | `=SIZE!E34` |  | 定格ｺｰﾅｰ |  |  |  |  |  | Rpm0= | `=[1]DATA!$D$5` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | OUTSIDE  T0      (℃) | 25 |  | heater          (kcal/h) | 0 |  | N(rpm) | `=N7` |  | Volume Efficiency |  |  | Vc= | `=[1]DATA!$D$4` | Rotational Speed ​​Correction |  |  |  |  |  |  |  |  |  |  |  |  |  |
 |  |  |  | heater          (W) | `=E8/0.86` |  | Vc(cc) | `=N8` |  | ηv=(A+B*PC/PE+C*PC)*Kηv |  |  | A= | `=[1]DATA!O4` | a= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
 | ◇  Ｏ Ｔ Ｈ Ｅ Ｒ Ｓ  ◇ |  |  | Qtotal  (=QF+QR+QEV) | `=SUM(E5:E7)` |  | ηv | `=(N9+N10*H14/H15+N11*H14)*K10` |  | Kηv= | `=P9+P10*H8+P11*H8^2` |  | B= | `=[1]DATA!O5` | b= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
@@ -41,11 +41,11 @@
 | Side Plate surface | `=0.07*0.235` |  | Defrosting cycle   Hr | `=B18/E38` |  |  |  |  | COMP INPUT | `=K23*(N13+N14*E24+N15*B7+N16*B7*E24+N17*E24*E24)*H8/N7` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | SURFACE OF EVAPORATOR    (m2) | `=B30+B31+B32` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 |  |  |  |  |  |  | ◇  Condenser Heat Exchange   ◇ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| ◇ quantity of Evaporator fin  ◇ |  |  | ◇  ＶＡＲＩＡＢＬＥ  ◇ |  |  | Ｒ Front | `=(0.3405*(B7-B8)+0.03322*(B7-B6))*(SIZE!B8*2+MAIN!B9)/1000` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Evaporator Fin quantity | 枚数 |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ＦＲ Partition | `=(0.1984*(B7-B8)+0.1219*(B7-B5))*(SIZE!B9-SIZE!B23-SIZE!B24)/1000` |  | 熱通過率 | 面積 |  | サイドコン・バックコンの熱通過率 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 part | 67 |  | X1 =EV OUT  Temp.          T2     (℃) | -19.081555190241485 | Trial | Ｆ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B6))*(SIZE!B7*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 part | 73 |  | X2 =RUNNING RATIO          PR     (％) | 0.60364304538063 | Trial | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 part | 73 |  | X3 = ⊿T ( TC-T0) | 5.412104392639187 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| ◇ quantity of Evaporator fin  ◇ |  |  | ◇  ＶＡＲＩＡＢＬＥ  ◇ |  |  | Ｒ Front | `=(0.3405*(B7-B8)+0.03322*(B7-B6))*(SIZE!B7*2+SIZE!B9)/1000` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| Evaporator Fin quantity | 枚数 |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ＦＲ Partition | `=(0.1984*(B7-B8)+0.1219*(B7-B5))*(SIZE!B9-SIZE!B25-SIZE!B24)/1000` |  | 熱通過率 | 面積 |  | サイドコン・バックコンの熱通過率 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 1 part | 67 |  | X1 =EV OUT  Temp.          T2     (℃) | -19.325223898279788 | Trial | Ｆ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B5))*(SIZE!B8*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 2 part | 73 |  | X2 =RUNNING RATIO          PR     (％) | 0.46552849936977625 | Trial | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
+| 3 part | 73 |  | X3 = ⊿T ( TC-T0) | 7.959973536317755 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 4 part | 47 |  |  |  |  | TOTAL  QC0ut | `=SUM(H35:H39)` | バックコン放熱効率 |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 5 part | 36 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
 | 6 part | 0 |  | ◇  ＣＯＮＤＩＴＩＯＮ  ◇ |  |  | ◇ Radiate Heat ◇ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
@@ -64,7 +64,7 @@
 
 **Rows with data:** 49
 **Columns:** 28
-**Cells containing formulas:** 124
+**Cells containing formulas:** 125
 
 ## Formula Legend
 

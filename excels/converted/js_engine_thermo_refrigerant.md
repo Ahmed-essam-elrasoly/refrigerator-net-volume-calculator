@@ -203,4 +203,4 @@ export function getRefrigerantFunctions(name) {
 
 ---
 
-*Converted from `refrigerant.js` on 2026-05-23 11:54:21*
+*Converted from `refrigerant.js` on 2026-05-27 14:13:10*

@@ -6,8 +6,8 @@ export function calcQCout(TC, T0, TF, TR, areas) {
   const dT_TC_TF = TC - TF;
   const dT_TC_TR = TC - TR;   // ← add
   return (areas.k_RFront1 * dT_TC_T0 + areas.k_RFront2 * dT_TC_TR) * areas.RFrontLength
-       + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TF) * areas.FRPartitionLength
-       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TR) * areas.FFrontLength  // ← fix
+       + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TR) * areas.FRPartitionLength
+       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TF) * areas.FFrontLength  // ← fix
        + areas.sideKA * dT_TC_T0
        + areas.backKA * dT_TC_T0;
 }
@@ -35,7 +35,7 @@ export function computeCondenserAreas(geom, condenserConfig, freezerPosition = '
   const t_lower_left = isTop ? tRleft : tFleft;
 
   const RFrontLength      = H_lower * 2 / 1000;
-  const FFrontLength      = H_upper * 2 / 1000;
+  const FFrontLength      = (H_upper + W) * 2 / 1000;
   const FRPartitionLength = (W - t_lower_left - t_lower_top) / 1000;
 
   return {
