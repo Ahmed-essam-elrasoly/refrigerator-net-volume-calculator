@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 5,080 bytes
+**Size:** 5,081 bytes
 
-**Last modified:** 2026-05-08 15:11:59
+**Last modified:** 2026-06-08 23:10:29
 
 
 ---
@@ -89,10 +89,10 @@ export function specificVolumeR600a(t, p) {
 export function specificVolumeR134a(t, p) {
   const Tk = t + 273.16;
   return (
-    0.01248
-    + (0.0008207 * Tk) / p
-    - 4.663 / Tk
-    - 0.0002297 * p
+     0.01077
+    + (0.0008278 * Tk) / p
+    - 4.511 / Tk
+    - 0.0001180 * p
   );
 }
 
@@ -147,10 +147,10 @@ export function vaporEnthalpyR134a(t, p) {
  */
 export function liquidEnthalpyR600a(t_sub) {
   return (
-    75.545
-    + 0.55731 * t_sub
-    + 0.0007088 * t_sub * t_sub
-    + 0.0000029408 * t_sub * t_sub * t_sub
+    75.544
+    + 0.55712 * t_sub
+    + 0.0007082 * t_sub * t_sub
+    + 0.0000031108 * t_sub * t_sub * t_sub
   );
 }
 
@@ -203,4 +203,4 @@ export function getRefrigerantFunctions(name) {
 
 ---
 
-*Converted from `refrigerant.js` on 2026-05-27 14:13:10*
+*Converted from `refrigerant.js` on 2026-06-22 22:25:35*

@@ -320,4 +320,4 @@ function checkDoorBinDepth(fittings, space, nodeId) {
 
 ---
 
-*Converted from `traversal.js` on 2026-05-27 14:13:10*
+*Converted from `traversal.js` on 2026-06-22 22:25:35*

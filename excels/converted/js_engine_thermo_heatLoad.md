@@ -4,9 +4,9 @@
 
 **File type:** .JS
 
-**Size:** 10,377 bytes
+**Size:** 10,388 bytes
 
-**Last modified:** 2026-05-26 04:41:26
+**Last modified:** 2026-06-08 23:15:51
 
 
 ---
@@ -116,7 +116,7 @@ export function calcHeatLoads(
   // Partition losses
   QF += (0.1219*(TC-TF)*PR + 0.1219*((0.1984*T0+0.1219*TF)/(0.1984+0.1219)-TF)*(1-PR))
         * (W - tFleft - tFright) / 1000;
-  QF += (0.0791*(TC-TF) - 0.072*(T0-TF)) * PR * (Hf*2 + W) / 1000;
+  QF += (0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000;
 
   // ── Refrigerator ───────────────────────────────────────────────
   let ARtop, ARleft, ARback;
@@ -166,7 +166,7 @@ export function calcHeatLoads(
   // Refrigerator door + packing
   QR += kExterior(tRdoor, TR, T0) * ARdoor * (T0 - TR)
       + PC.insulation.packing * ARpackin * (T0 - TR);
-    QR += (0.0546*(TC-TF) - 0.0491*(T0-TF)) * PR * (Hr*2 + W) / 1000;
+    QR += (0.0546*(TC-TR)* PR + 0.0491*(T0-TR)* (1-PR )) * (Hr*2 + W) / 1000;
 // ── Evaporator back (always on freezer back) ─────────────────
   let A_evaBack;
   if (isTopFreezer) {
@@ -259,4 +259,4 @@ export function computeWallConductances(geom, T0, TF, TR, freezerPosition = 'top
 
 ---
 
-*Converted from `heatLoad.js` on 2026-05-27 14:13:10*
+*Converted from `heatLoad.js` on 2026-06-22 22:25:35*
