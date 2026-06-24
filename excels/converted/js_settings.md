@@ -68,4 +68,4 @@ export function getSettings() {
 
 ---
 
-*Converted from `settings.js` on 2026-05-27 14:13:09*
+*Converted from `settings.js` on 2026-06-22 22:25:35*

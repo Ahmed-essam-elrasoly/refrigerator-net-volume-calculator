@@ -1,0 +1,14 @@
+XLSM Conversion Summary
+==================================================
+
+Original file: 54H calc.xlsm
+File size: 56.77 KB
+Number of sheets: 3
+Output directory: D:\refrigerator-volume-calculator\excels\54c
+
+Generated files:
+  - Values files: 2
+  - Formulas files: 2
+  - Macro documentation: 1
+
+Conversion completed: 2026-06-22 22:29:36

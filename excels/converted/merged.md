@@ -1,1032 +1,5 @@
 ﻿
 ---
-## 54H calc_MACROS.md
-
-# VBA Macros
-
-
-
-
-Sub Macro2()
-
-Dim AA(10, 10), X(10), FX0(10), FX1(10), FDX(10)
-
-' Æ’nÆ’â€œÆ’`Æ’â€œÆ’O Macro
-' Æ’}Æ’NÆ’Ââ€¹LËœ^â€œÃº : 2002/4/13  Æ’â€ Â[Æ’UÂ[â€“Â¼ : takatori
-'
-    Cells(3, 5) = ""
-    DD1 = 0.0005
-    DX = 0.001
-    DY = 0.00001
-    DZ = 0.001
-    DH = 0.001
-    NN = 0
-    NNC = 0
-    NM = 0
-    KF = 2
-    KTC = Cells(36, 5)
-
-A0:
-    For I = 1 To KF
-    X(I) = Cells(36 + I, 5)
-    Next I
-   
-A1:
-    For I = 1 To KF
-    FX0(I) = Cells(42 + I, 5)
-    Next I
-    
-    For I = 1 To KF
-    If Abs(FX0(I)) > DD1 Then GoTo A2
-    Next I
-    
-    NN = 0
-    If KTC = 1 Then GoTo BB
-    GoTo ZZ
-
-A2:
-    NN = NN + 1
-    If NN > 100 Then GoTo CC
-    
-    For I = 1 To KF
-    Cells(36 + I, 5) = X(I) + DX
-    
-    For J = 1 To KF
-    FX1(J) = Cells(42 + J, 5)
-    AA(J, I) = (FX1(J) - FX0(J)) / DX
-
-    Next J
-    
-    Cells(36 + I, 5) = X(I)
-    Next I
-    
-    For I = 1 To KF
-    AA(I, KF + 1) = -1 * FX0(I)
-    Next I
-    
-    N = KF
-    
-    For K = 1 To N
-    AK = AA(K, K)
-    For J = 1 To N + 1
-    AA(K, J) = AA(K, J) / AK
-    Next J
-    For I = 1 To N
-    AIK = AA(I, K)
-    For J = 1 To N + 1
-    If I = K Then GoTo DD
-    AA(I, J) = AA(I, J) - AIK * AA(K, J)
-    Next J
-DD:
-    Next I
-    Next K
-        
-    For I = 1 To KF
-    X(I) = X(I) + AA(I, KF + 1)
-    Cells(36 + I, 5) = X(I)
-    Next I
-    
-    GoTo A1
-BB:
-    If KTC = 0 Then GoTo ZZ
-    If NNC = 1 Then GoTo EE
-    NM = NM + 1
-    If NM > 100 Then GoTo CC
-    X3 = Cells(39, 5)
-    FH0 = Cells(45, 5)
-    If Abs(FH0) < DD1 Then GoTo ZZ
-    Cells(39, 5) = X3 + DH
-    NNC = 1
-    GoTo A0
-EE:
-
-    FH1 = Cells(45, 5)
-    FDH = (FH1 - FH0) / DH
-    X3 = X3 - FH0 / FDH
-    Cells(39, 5) = X3
-    NNC = 0
-    GoTo A0
-    
-    
-CC:
-    Cells(3, 5) = "NG!"
-    GoTo XX
-    
-ZZ:
-    Cells(3, 5) = "OK!"
-XX:
-
-'
-End Sub
-
-
----
-## 54H calc_MAIN_formulas.md
-
-# Sheet: MAIN - FORMULAS (Original Excel Formulas)
-
-*This shows the actual formulas as entered in Excel*
-
-*Formulas are shown in `code blocks` for clarity*
-
-## Formula Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U | Column_V | Column_W | Column_X | Column_Y | Column_Z | Column_AA | Column_AB |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-540   > | Ver. 2014/01/07 |  |  |  |  | Refrigerant |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  | OK! |  | R-600a=1,R-134a=2 | 1 | `=IF(H3=1,"R-600a",IF(H3=2,"R-134a","??"))` |  |  |  | å†·åª’ | R-600a |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼´ï¼¥ï¼­ï¼°ï¼¡ï¼²ï¼¡ï¼´ï¼µï¼²ï¼¥  â—‡ | (â„ƒ) |  | â—‡HEAT LOAD â—‡ |  |  | â—‡  Compressor Data  â—‡ |  |  |  |  |  | COMP NAME | EGX80CLC 100V 50Hz |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F ROOM   TF      (â„ƒ) | -18 |  | QF     TOTAL(kcal/h)  (inlet) | `=SIZE!E32` |  | COMPRESSOR NAME | `=N4` | R-600a |  |  |  | Capacity | 181.6 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| R ROOM   TR      (â„ƒ) | 3 |  | QR     TOTAL(kcal/h)  (inlet) | `=SIZE!E33+E8` |  | 220/240V 50Hz |  |  |  |  |  | COP | 1.77 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DP CON.  TC      (â„ƒ) | `=B8+E39` |  | QEV    TOTAL (kcal/h)  (inlet) | `=SIZE!E34` |  | å®šæ ¼ï½ºï½°ï¾…ï½° |  |  |  |  |  | Rpm0= | 2900 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE  T0      (â„ƒ) | 30 |  | heater          (kcal/h) | 0 |  | N(rpm) | 2900 |  | Volume Efficiency |  |  | Vc= | 11.14 | å›žè»¢é€Ÿåº¦è£œæ­£ |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | heater          (W) | `=E8/0.86` |  | Vc(cc) | `=N8` |  | Î·v=(A+B*PC/PE+C*PC)*KÎ·v |  |  | A= | 0.9260142251566365 | a= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼¯ ï¼´ ï¼¨ ï¼¥ ï¼² ï¼³  â—‡ |  |  | Qtotal  (=QF+QR+QEV) | `=SUM(E5:E7)` |  | Î·v | `=(N9+N10*H14/H15+N11*H14)*K10` |  | KÎ·v= | `=P9+P10*H8+P11*H8^2` |  | B= | -0.01221312333322575 | b= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN TOTAL                (m3/h) | `=70*B13/3000*(B12/100)^2` |  |  |  |  | T IN | 32.2 |  |  |  |  | C= | -0.0023789273042382304 | c= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN Diameter   Ï†mm | 100 |  | â—‡  CALCULATION â—‡ |  |  | TC  Cond | 54.4 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN SPEED               (rpm) | 2550 |  | Fan out air temp         T3      (â„ƒ) | `=E37+E7/B11/B21/B20/E38` |  | TE  Evap | -23.3 |  | R-600a | R-134a |  | AW= | 135.175 | å›žè»¢é€Ÿåº¦è£œæ­£ |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN INPUT                (W) | 2.1 |  | R Air Volume             MR     (m3/h) | `=E6/B20/B21/(B6-E13)/E38` | `=E14/B11` | Pc (Tcond) | `=IF(H3=1,J14,IF(H3=2,K14,"??"))` |  | `=EXP(68.322-4401/(H12+273.16)-9.8436*LN(H12+273.16)+0.0127711*(H12+273.16))` | `=EXP(104.918-5301.3/(H12+273.16)-16.2481*LN(H12+273.16)+0.0246593*(H12+273.16))` |  | BW= | 2.6366666666666667 | Ka= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| DEF. HEATER INPUT        (W) | 140 |  | F Air Volume             MF     (m3/h) | `=B11-E14` |  | Pe (Teva) | `=IF(H3=1,J15,IF(H3=2,K15,"??"))` |  | `=EXP(68.322-4401/(H13+273.16)-9.8436*LN(H13+273.16)+0.0127711*(H13+273.16))` | `=EXP(104.918-5301.3/(H13+273.16)-16.2481*LN(H13+273.16)+0.0246593*(H13+273.16))` |  | CW= | 0.9750000000000001 | Kb= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp ON     (W) | 2 |  | QF'  (FAN)                    (kcal/h) | `=(B11-E14)*B21*B20*(B5-E13)*E38` |  | Hout (kcal/kg) | `=IF(H3=1,J16,IF(H3=2,K16,"??"))` |  | `=104.5+0.049951*(H11+273.16)+0.00058822*(H11+273.16)^2-249.18*J15/(H11+273.16)` | `= 119.36 + 0.023174 *(H11+273.16) + 0.00031297 * (H11+273.16) ^ 2 - 138.07 *K15/ (H11+273.16)` |  | DW= | 0.02 | Kc= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp OFF    (W) | 1 |  | QR'  (FAN)                    (kcal/h) | `=E14*B20*B21*(B6-E13)*E38` |  | Hin  (kcal/kg) | `=IF(H3=1,J17,IF(H3=2,K17,"??"))` |  | `=75.545+0.55731*H11+0.0007088*H11^2+0.0000029408*H11^3` | `= 100.019 + 0.31763 * H11+ 0.00033057 * H11^ 2 + 0.0000035281 *H11^ 3` |  | EW= | 0.016666666666666666 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| TIMER   Period          (hr) | 10.5 |  | QEV'    =M*Î³*CP*(TEVIN-TEVOUT)*PR | `=B11*B21*B20*(E13-E37)*E38` |  | V(æ¯”ä½“ç©ï¼‰ | `=IF(H3=1,J18,IF(H3=2,K18,"??"))` |  | `= 0.015883+0.001455*(H11+273.16)/J15-7.2936/(H11+273.16)-0.0004645*J15` | `=0.01248+0.0008207*(H11+273.16)/K15-4.663/(H11+273.16)-0.0002297*K15` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Def. HEATER   ON  time  (min) | 0 |  | Air Speed in Evaporator       (m/sec) | `=B11/(B24*B25)/3600*10^6` |  | G(å¾ªç’°æµé‡) | `=H10*H8*60*H9*10^(-6)/H18` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DENSITY(Air)      Î³     (kg/m3) | 1.365 |  | EV INLET  Air   Temp.     T1     (â„ƒ) | `=(E14*B6+E15*B5)/B11` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cp(Air 0â„ƒ)              (kcal/kgâ„ƒ) | 0.24 |  | LOG. MEAN TEMP. DIFF. OF EVA.  (â„ƒ) | `=E10/E23/B33/E38` |  | Rated capacity | `=H19*(H16-H17)` | kcal/h |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | SUB CAL. X | `=EXP((E20-E37)/E21)` |  |  | `=H21/0.86` | W | å…¥åŠ›å›žè»¢æ•°è£œæ­£ |  |  |  | TC= | `=B7` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  EVAPORATOR  (NALCO)  â—‡ |  |  | EVA  Heat transfer Î± ( kcal/hm2â„ƒ) | `=12.93*E19^0.415` |  | Rated input(ï¼·ï¼‰ | `=K23*(N13+N14*H13+N15*H12+N16*H12*H13+N17*H13^2)*H8/N7` | W | Kw= | `=P14+P15*H8+P16*H8^2` |  |  | Te= | `=E24` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV WIDTH  (=30mm*N)      (mm) | 460 |  | EV TEMPRATURE                  (â„ƒ) | `=(E20-E22*E37)/(1-E22)` |  | COP | `=H21/H23/0.86` | W=(AW+BW*TE+CW*TC*TE+DW*TE^2)*Kw*Rpm/Rpm0 |  |  |  |  | T0= | `=B8` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV DEPTH                 (mm) | 60 |  | QEV''(Ability of Evaporator)  (kcal/h) | `=E23*B33*E21` |  |  |  |  |  |  |  |  | Tsub= | `=K28` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV Tire (æ®µæ•°) | 7 |  | COMP INPUT | `=K32` |  | â—‡  Cooling capacity of Refrigerator Condition  â—‡ |  |  |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Diameter  Ï† mm | 8 |  | ON Time INPUT | `=E26+B14+B16` |  | Pc (Tcond) | `=IF(H3=1,N27,IF(H3=2,O27,"??"))` |  | Capi Sub-cool | 10 |  | Pc= | `=EXP(68.322-4401/(O22+273.16)-9.8436*LN(O22+273.16)+0.0127711*(O22+273.16))` | `=EXP(104.918-5301.3/(O22+273.16)-16.2481*LN(O22+273.16)+0.0246593*(O22+273.16))` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface  30*60mm/pc | `=(28*60-3.146*(B27/2)^2*2)*2/10^6` |  | Energy consumption kWh/24h | `=(E27*E38+(1-E38)*B17)*24/1000+B15*E31*B19/60/1000` |  | Pe (Teva) | `=IF(H3=1,N28,IF(H3=2,O28,"??"))` |  | TC-Sub cool | `=B7-K27` |  | Pe= | `=EXP(68.322-4401/(O23+273.16)-9.8436*LN(O23+273.16)+0.0127711*(O23+273.16))` | `=EXP(104.918-5301.3/(O23+273.16)-16.2481*LN(O23+273.16)+0.0246593*(O23+273.16))` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Toatal fin quqntity | `=B45` |  | KWH/MONTH | `=E28*30` |  | V(m3/kgï¼‰ | `=IF(H3=1,N29,IF(H3=2,O29,"??"))` |  | Hevin | `=IF(H3=1,N30,IF(H3=2,O30,"??"))` |  | v= | `=0.015883+0.001455*(O24+273.16)/N28-7.2936/(O24+273.16)-0.0004645*N28` | `=0.01248+0.0008207*(O24+273.16 )/O28-4.663/(O24+273.16)-0.0002297*O28` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface    m2 | `=B29*B28` |  | Qcomp(Ability of Compressor)   (kcal/h) | `=K31` |  | Volume Efficiency | `=(N9+N10*H27/H28+N11*H27)*K10` |  | Hevout | `=IF(H3=1,N31,IF(H3=2,O31,"??"))` |  | Hevin= | `=75.545+0.55731*O25+0.0007088*O25^2+0.0000029408*O25^3` | `=100.019+0.31763*O25+0.00033057*O25^2+0.0000035281*O25^ 3` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Surface  Ï†8mm | `=(3.146*B27*B24)*B26*2/10^6` |  | How many defrost in a day   ï¼ˆTimes/24h) | `=24/E32` |  | G(kg/h) | `=H30*H8*60*H9*10^(-6)/H29` |  | QCOMP | `=H31*(K30-K29)` |  | Hevout= | `=104.5+0.049951*(O23+273.16)+0.00058822*(O23+273.16)^2-249.18*N28/(O23+273.16)` | `= 119.36 + 0.023174 *(O23+273.16) + 0.00031297 * (O23+273.16) ^ 2 - 138.07 *O28/ (O23+273.16)` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Side Plate surface | 0 |  | Defrosting cycle   Hr | `=B18/E38` |  |  |  |  | COMP INPUT | `=K23*(N13+N14*E24+N15*B7+N16*B7*E24+N17*E24*E24)*H8/N7` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| SURFACE OF EVAPORATOR    (m2) | `=B30+B31+B32` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | â—‡  Condenser Heat Exchange   â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡ quantity of Evaporator fin  â—‡ |  |  | â—‡  ï¼¶ï¼¡ï¼²ï¼©ï¼¡ï¼¢ï¼¬ï¼¥  â—‡ |  |  | ï¼² Front | `=(0.3405*(B7-B8)+0.03322*(B7-B6))*(SIZE!B8*2+MAIN!B9)/1000` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Evaporator Fin quantity | æžšæ•° |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ï¼¦ï¼² Partition | `=(0.1984*(B7-B8)+0.1219*(B7-B5))*(SIZE!B9-SIZE!B23-SIZE!B24)/1000` |  | ç†±é€šéŽçŽ‡ | é¢ç© |  | ã‚µã‚¤ãƒ‰ã‚³ãƒ³ãƒ»ãƒãƒƒã‚¯ã‚³ãƒ³ã®ç†±é€šéŽçŽ‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 æ®µ | 93 |  | X1 =EV OUT  Temp.          T2     (â„ƒ) | -21.34296095493092 |  | ï¼¦ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B6))*(SIZE!B7*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 æ®µ | 93 |  | X2 =RUNNING RATIO          PR     (ï¼…) | 0.5674402613435491 |  | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 æ®µ | 93 |  | X3 = âŠ¿T ( TC-T0) | 10.865155823364885 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4 æ®µ | 92 |  |  |  |  | TOTAL  QC0ut | `=SUM(H35:H39)` | ãƒãƒƒã‚¯ã‚³ãƒ³æ”¾ç†±åŠ¹çŽ‡ |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 5 æ®µ | 62 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6 æ®µ | 47 |  | â—‡  ï¼£ï¼¯ï¼®ï¼¤ï¼©ï¼´ï¼©ï¼¯ï¼®  â—‡ |  |  | â—‡ Radiate Heat â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7 æ®µ | 24 |  | F1= QF-QF' | `=E5-E16` |  | Q COND  Qcin | `=H31*(H45-H46)` | kcal/kg | Discharge |  |  |  | TC= | `=B7` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 8 æ®µ |  |  | F2= Qtotal-Qcomp*PR | `=E10-E30*E38` |  | enthalpy |  |  | Temp | 60 |  |  | Td= | `=K44` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Total | `=SUM(B37:B44)` |  | F3= QCout-QCin | `=H40-H43` |  | COND. IN | `=IF(H3=1,N46,IF(H3=2,O46,"??"))` | kcal/kg |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | COND. OUT | `=IF(H3=1,N47,IF(H3=2,O47,"??"))` | kcal/kg |  |  |  | Hcod nin | `=104.5+0.049951*(O44+273.16)+0.00058822*(O44+273.16)^2-249.18*N27/(O44+273.16)` | `=119.36+0.023174*(O44+273.16)+0.00031297*(O44+273.16)^2-138.07*O27/(O44+273.16)` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  |  | Hcond out | `=75.545+0.55731*O43+0.0007088*O43^2+0.0000029408*O43^3` | `= 100.019 + 0.31763 *O43+ 0.00033057 * O43^ 2 + 0.0000035281 *O43^ 3` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Outer Cab. Temp Rise |  | Cab. Temp. |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | F,R Cab | `=IF(K38=0,0,J38/10*E39)` | `=B8+H50*E38` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Back Cab | `=IF(K39=0,0,J39/10*E39)` | `=B8+H51*E38` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-## Summary
-
-**Rows with data:** 49
-**Columns:** 28
-**Cells containing formulas:** 112
-
-## Formula Legend
-
-- **`=FORMULA()`** : Excel formula (shown in code blocks)
-- **Plain text/number** : Static value (no formula)
-- **Empty cell** : No data
-
-## Tips
-
-- To copy a formula back to Excel, remove the backticks (`) and paste into a cell starting with `=`
-- Formulas are shown exactly as they appear in the Excel formula bar
-
----
-## 54H calc_MAIN_values.md
-
-# Sheet: MAIN - VALUES (Calculated/Displayed)
-
-*This shows the calculated values as they appear in Excel*
-
-## Data Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U | Column_V | Column_W | Column_X | Column_Y | Column_Z | Column_AA | Column_AB |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-540   > | Ver. 2014/01/07 |  |  |  |  | Refrigerant |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  | OK! |  | R-600a=1,R-134a=2 | 1 | R-600a |  |  |  | å†·åª’ | R-600a |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼´ï¼¥ï¼­ï¼°ï¼¡ï¼²ï¼¡ï¼´ï¼µï¼²ï¼¥  â—‡ | (â„ƒ) |  | â—‡HEAT LOAD â—‡ |  |  | â—‡  Compressor Data  â—‡ |  |  |  |  |  | COMP NAME | EGX80CLC 100V 50Hz |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F ROOM   TF      (â„ƒ) | -18 |  | QF     TOTAL(kcal/h)  (inlet) | 27.22038846917376 |  | COMPRESSOR NAME | EGX80CLC 100V 50Hz | R-600a |  |  |  | Capacity | 181.6 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| R ROOM   TR      (â„ƒ) | 3 |  | QR     TOTAL(kcal/h)  (inlet) | 36.4909934398205 |  | 220/240V 50Hz |  |  |  |  |  | COP | 1.77 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DP CON.  TC      (â„ƒ) | 40.86515582336489 |  | QEV    TOTAL (kcal/h)  (inlet) | 5.386370269218674 |  | å®šæ ¼ï½ºï½°ï¾…ï½° |  |  |  |  |  | Rpm0= | 2900 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE  T0      (â„ƒ) | 30 |  | heater          (kcal/h) | 0 |  | N(rpm) | 2900 |  | Volume Efficiency |  |  | Vc= | 11.14 | å›žè»¢é€Ÿåº¦è£œæ­£ |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | heater          (W) | 0 |  | Vc(cc) | 11.14 |  | Î·v=(A+B*PC/PE+C*PC)*KÎ·v |  |  | A= | 0.9260142251566365 | a= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼¯ ï¼´ ï¼¨ ï¼¥ ï¼² ï¼³  â—‡ |  |  | Qtotal  (=QF+QR+QEV) | 69.09775217821293 |  | Î·v | 0.7578241188782738 |  | KÎ·v= | 1 |  | B= | -0.01221312333322575 | b= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN TOTAL                (m3/h) | 59.5 |  |  |  |  | T IN | 32.2 |  |  |  |  | C= | -0.0023789273042382304 | c= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN Diameter   Ï†mm | 100 |  | â—‡  CALCULATION â—‡ |  |  | TC  Cond | 54.4 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN SPEED               (rpm) | 2550 |  | Fan out air temp         T3      (â„ƒ) | -20.855976387470033 |  | TE  Evap | -23.3 |  | R-600a | R-134a |  | AW= | 135.175 | å›žè»¢é€Ÿåº¦è£œæ­£ |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN INPUT                (W) | 2.1 |  | R Air Volume             MR     (m3/h) | 8.228571566131924 | 0.138295320439192 | Pc (Tcond) | 7.835776826532984 |  | 7.835776826532984 | 14.992292497076312 |  | BW= | 2.6366666666666667 | Ka= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| DEF. HEATER INPUT        (W) | 140 |  | F Air Volume             MF     (m3/h) | 51.271428433868074 |  | Pe (Teva) | 0.6399178637701737 |  | 0.6399178637701737 | 1.171334242712946 |  | CW= | 0.9750000000000001 | Kb= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp ON     (W) | 2 |  | QF'  (FAN)                    (kcal/h) | 27.220372846240565 |  | Hout (kcal/kg) | 174.0792661518202 |  | 174.0792661518202 | 155.0895912232625 |  | DW= | 0.02 | Kc= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp OFF    (W) | 1 |  | QR'  (FAN)                    (kcal/h) | 36.49099343982049 |  | Hin  (kcal/kg) | 94.32347647011841 |  | 94.32347647011841 | 110.7072242203688 |  | EW= | 0.016666666666666666 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| TIMER   Period          (hr) | 10.5 |  | QEV'    =M*Î³*CP*(TEVIN-TEVOUT)*PR | 5.38637026921868 |  | V(æ¯”ä½“ç©ï¼‰ | 0.6860064886989208 |  | 0.6860064886989208 | 0.21089214370746862 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Def. HEATER   ON  time  (min) | 0 |  | Air Speed in Evaporator       (m/sec) | 0.5988325281803543 |  | G(å¾ªç’°æµé‡) | 2.1412858089066673 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DENSITY(Air)      Î³     (kg/m3) | 1.365 |  | EV INLET  Air   Temp.     T1     (â„ƒ) | -15.095798270776967 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cp(Air 0â„ƒ)              (kcal/kgâ„ƒ) | 0.24 |  | LOG. MEAN TEMP. DIFF. OF EVA.  (â„ƒ) | 6.642367436234789 |  | Rated capacity | 170.77994062357286 | kcal/h |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | SUB CAL. X | 2.5612679411723747 |  |  | 198.58132630648007 | W | å…¥åŠ›å›žè»¢æ•°è£œæ­£ |  |  |  | TC= | 40.86515582336489 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  EVAPORATOR  (NALCO)  â—‡ |  |  | EVA  Heat transfer Î± ( kcal/hm2â„ƒ) | 10.451539320353254 |  | Rated input(ï¼·ï¼‰ | 110.47843333333333 | W | Kw= | 1 |  |  | Te= | -25.344300199406078 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV WIDTH  (=30mm*N)      (mm) | 460 |  | EV TEMPRATURE                  (â„ƒ) | -25.344300199406078 |  | COP | 1.7974668929937163 | W=(AW+BW*TE+CW*TC*TE+DW*TE^2)*Kw*Rpm/Rpm0 |  |  |  |  | T0= | 30 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV DEPTH                 (mm) | 60 |  | QEV''(Ability of Evaporator)  (kcal/h) | 121.77097200436155 |  |  |  |  |  |  |  |  | Tsub= | 30.865155823364887 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV Tire (æ®µæ•°) | 7 |  | COMP INPUT | 98.18563907431633 |  | â—‡  Cooling capacity of Refrigerator Condition  â—‡ |  |  |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Diameter  Ï† mm | 8 |  | ON Time INPUT | 102.28563907431632 |  | Pc (Tcond) | 5.596450223573579 |  | Capi Sub-cool | 10 |  | Pc= | 5.596450223573579 | 10.610649318363205 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface  30*60mm/pc | 0.003158656 |  | Energy consumption kWh/24h | 1.4033651881602824 |  | Pe (Teva) | 0.5845250949427135 |  | TC-Sub cool | 30.865155823364887 |  | Pe= | 0.5845250949427135 | 1.068431984708083 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Toatal fin quqntity | 504 |  | KWH/MONTH | 42.10095564480847 |  | V(m3/kgï¼‰ | 0.7461788464932085 |  | Hevin | 93.50817495732956 |  | v= | 0.7461788464932085 | 0.22972107024642002 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface    m2 | 1.591962624 |  | Qcomp(Ability of Compressor)   (kcal/h) | 121.77097166550514 |  | Volume Efficiency | 0.7957679097826498 |  | Hevout | 152.41503090320157 |  | Hevin= | 93.50817495732956 | 110.24135956298339 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Surface  Ï†8mm | 0.16208192 |  | How many defrost in a day   ï¼ˆTimes/24h) | 1.297006311642398 |  | G(kg/h) | 2.067178254724668 |  | QCOMP | 121.77097166550514 |  | Hevout= | 152.41503090320157 | 143.72791439205673 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Side Plate surface | 0 |  | Defrosting cycle   Hr | 18.50415050764774 |  |  |  |  | COMP INPUT | 98.18563907431633 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| SURFACE OF EVAPORATOR    (m2) | 1.754044544 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | â—‡  Condenser Heat Exchange   â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡ quantity of Evaporator fin  â—‡ |  |  | â—‡  ï¼¶ï¼¡ï¼²ï¼©ï¼¡ï¼¢ï¼¬ï¼¥  â—‡ |  |  | ï¼² Front | 11.203873237535912 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Evaporator Fin quantity | æžšæ•° |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ï¼¦ï¼² Partition | 6.438603493054403 |  | ç†±é€šéŽçŽ‡ | é¢ç© |  | ã‚µã‚¤ãƒ‰ã‚³ãƒ³ãƒ»ãƒãƒƒã‚¯ã‚³ãƒ³ã®ç†±é€šéŽçŽ‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 æ®µ | 93 |  | X1 =EV OUT  Temp.          T2     (â„ƒ) | -21.34296095493092 |  | ï¼¦ Front | 5.490409938591744 |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 æ®µ | 93 |  | X2 =RUNNING RATIO          PR     (ï¼…) | 0.5674402613435491 |  | Sid  Condenser | 111.46706779246904 | Side Cond | 5.395 | 1.9016 |  | Side Cond | 5.395 | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 æ®µ | 93 |  | X3 = âŠ¿T ( TC-T0) | 10.865155823364885 |  | Back Condenser | 36.02868286778478 | Back Cond | 4.17 | 0.7951999999999999 |  | Back Cond | 4.17 | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4 æ®µ | 92 |  |  |  |  | TOTAL  QC0ut | 170.6286373294359 | ãƒãƒƒã‚¯ã‚³ãƒ³æ”¾ç†±åŠ¹çŽ‡ |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 5 æ®µ | 62 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6 æ®µ | 47 |  | â—‡  ï¼£ï¼¯ï¼®ï¼¤ï¼©ï¼´ï¼©ï¼¯ï¼®  â—‡ |  |  | â—‡ Radiate Heat â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7 æ®µ | 24 |  | F1= QF-QF' | 1.562293319423702e-05 |  | Q COND  Qcin | 170.6286834529105 | kcal/kg | Discharge |  |  |  | TC= | 40.86515582336489 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 8 æ®µ |  |  | F2= Qtotal-Qcomp*PR | 1.9228077974275948e-07 |  | enthalpy |  |  | Temp | 60 |  |  | Td= | 60 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Total | 504 |  | F3= QCout-QCin | -4.612347461829813e-05 |  | COND. IN | 182.2457515330678 | kcal/kg |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | COND. OUT | 99.70391796698429 | kcal/kg |  |  |  | Hcod nin | 182.2457515330678 | 157.42161460276833 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  |  | Hcond out | 99.70391796698429 | 113.79180732525467 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Outer Cab. Temp Rise |  | Cab. Temp. |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | F,R Cab | 5.8617515667053555 | 33.326193840942246 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Back Cab | 4.530769978343157 | 32.57094130059855 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-**Rows with data:** 49
-**Columns:** 28
-**File type:** Values (calculated results)
-
----
-## 54H calc_SIZE_formulas.md
-
-# Sheet: SIZE - FORMULAS (Original Excel Formulas)
-
-*This shows the actual formulas as entered in Excel*
-
-*Formulas are shown in `code blocks` for clarity*
-
-## Formula Table
-
-| =MAIN!A1 | Column_B | Column_C | Column_D | PR= | =MAIN!E38 | TF= | =MAIN!B5 | T2= | =MAIN!E37 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `=MAIN!A2` |  |  |  |  |  | TR= | `=MAIN!B6` | Cab Side | `=MAIN!I50` |
-|  |  |  |  | Comp temp | `=50*F1+H4` | TC= | `=MAIN!B7` | Back cab | `=MAIN!I51` |
-| â—‡  ï¼³  ï¼©  ï¼º  ï¼¥  â—‡ | (mm) |  |  |  |  | T0= | `=MAIN!B8` | Cab Bottom | `=(F3-H4)*F1+H4` |
-| â—‡  BASIC  SIZE  â—‡ |  |  | â—‡  Heat Load  â—‡ |  |  |  | B=K*S |  |  |
-| TOTAL HIGHT         H | 1680 | 0 | POSITION | Q(kcal/h) | S(m2) or L(m) | K | B | INSIDE TEMP | OUTSIDE TEMP |
-| F HIGHT             Hf | 550 |  | F TOP | `=H7*(J7-I7)` | `=(B$9-(B$18+B$19)/2)*(B10-B$22/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B17/1000/(B$34+0.00011*(I7+J7)/2))` | `=G7*F7` | `=H1` | `=H4` |
-| R HIGHT             Hr | `=B6-B7` |  | F LEFT | `=H8*(J8-I8)` | `=(B10-B22/2)*(B7-(B17+B20)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B18/1000/(B$34+0.00011*(I8+J8)/2))` | `=G8*F8` | `=H1` | `=J2` |
-| WIDTH               W | 800 |  | F RIGHT | `=H9*(J9-I9)` | `=F8` | `=1/(1/B$40+1/B$41+B19/1000/(B$34+0.00011*(I9+J9)/2))` | `=G9*F9` | `=H1` | `=J2` |
-| DEPTH               D | 630 |  | F BOTTOM | `=H10*(J10-I10)` | `=(B10-B22/2)*(B9-(B18+B19)/2)*10^(-6)` | `=1/(1/B$41+1/B$41+B20/1000/(B$34+0.00011*(I10+J10)/2))` | `=G10*F10` | `=H1` | `=H2` |
-| BOTOM HIGHT        Hb | 260 |  | F DOOR | `=H11*(J11-I11)` | `=(B7-B14/2-B36*2)*(B9-B36*2)*10^(-6)` | `=1/(1/B$40+1/B$41+B21/1000/(B$34+0.00011*(I11+J11)/2))` | `=G11*F11` | `=H1` | `=H4` |
-| BOTTOM DEPTH       Db1 | 210 |  | F PACKIN | `=H12*(J12-I12)` | `=((B7-B36*2)+(B9-B36*2))*2*10^(-3)` | `=B37` | `=G12*F12` | `=H1` | `=H4` |
-| BOTTOM DEPTH       Db2 | 230 |  | F DPCON1(FR-Partition) | `=(0.1219*(H3-H1)*F1+0.1219*((0.1984*H4+0.1219*H1)/(0.1984+0.1219)-H1)*(1-F1))*F13` | `=(B9-B18-B19)*10^(-3)` | * | * | * | * |
-| Door gap of F&R door | 10 |  | F DPCON2(F-Front) | `=(0.0791*(MAIN!B7-MAIN!B5)-0.072*(MAIN!B8-MAIN!B5))*F14*MAIN!E38` | `=(B7*2+B9)*10^(-3)` | * | * | * | * |
-|  |  |  | R TOP | `=H15*(J15-I15)` | `=(B$9-(B$18+B$19)/2)*(B10-B$22/2)*10^(-6)` | `=1/(1/B$41+1/B$41+B23/1000/(B$34+0.00011*(I15+J15)/2))` | `=G15*F15` | `=H2` | `=H1` |
-| â—‡ THICKNESS OF WALL â—‡ |  |  | R LEFT | `=H16*(J16-I16)` | `=((B8-(B20+B27)/2)*(B10-B26/2)-((B13+B12)*B11/2))*10^(-6)` | `=1/(1/B$40+1/B$41+B24/1000/(B$34+0.00011*(I16+J16)/2))` | `=G16*F16` | `=H2` | `=J2` |
-| F TOP | 59.4 |  | R RIGHT | `=H17*(J17-I17)` | `=F16` | `=1/(1/B$40+1/B$41+B25/1000/(B$34+0.00011*(I17+J17)/2))` | `=G17*F17` | `=H2` | `=J2` |
-| F LEFT | 59.4 |  | R BACK | `=H18*(J18-I18)` | `=(B8-(B20+B27)/2-B11)*(B9-(B24+B25)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B26/1000/(B$34+0.00011*(I18+J18)/2))` | `=G18*F18` | `=H2` | `=J3` |
-| F RIGHT | 59.4 |  | R BOTTOMã€€1 | `=H19*(J19-I19)` | `=(B9-(B24+B25)/2)*B12*10^(-6)` | `=1/(1/B$40+1/B$41+B27/1000/(B$34+0.00011*(I19+J19)/2))` | `=G19*F19` | `=H2` | `=J4` |
-| F BOTTOM â€» | 70 |  | R BOTTOMã€€2 | `=H20*(J20-I20)` | `=(B9-(B24+B25)/2)*(SQRT(B11^2+(B13-B12)^2))*10^(-6)` | `=1/(1/B$40+1/B$41+B28/1000/(B$34+0.00011*(I20+J20)/2))` | `=G20*F20` | `=H2` | `=J4` |
-| F DOOR | 59.4 |  | R BOTTOMã€€3 | `=H21*(J21-I21)` | `=(B9-(B24+B25)/2)*B13*10^(-6)` | `=1/(1/B$40+1/B$41+B29/1000/(B$34+0.00011*(I21+J21)/2))` | `=G21*F21` | `=H2` | `=H4` |
-| EVA BACK | 60 |  | R DOOR | `=H22*(J22-I22)` | `=(B9-B43*2)*(B8-B14/2-B43*2)*10^(-6)` | `=1/(1/B$40+1/B$41+B30/1000/(B$34+0.00011*(I22+J22)/2))` | `=G22*F22` | `=H2` | `=H4` |
-| R TOP â€» | 70 |  | R PACKIN | `=H23*(J23-I23)` | `=((B8-B36*2)+(B9-B36*2))*2*10^(-3)` | `=B37` | `=G23*F23` | `=H2` | `=H4` |
-| R LEFT | 40 |  | R DPCON(R-Front) | `=(0.0546*(MAIN!B7-MAIN!B5)-0.0491*(MAIN!B8-MAIN!B5))*F24*MAIN!E38` | `=(B8*2+B9)*10^(-3)` | * | * | * | * |
-| R RIGHT | 40 |  | PWB Heat LOAD | 0 |  |  |  |  |  |
-| R BACK | 60 |  | EVA BACK | `=H26*(J26-I26)` | `=(B9-(B18+B19)/2)*(B7-(B17+B20)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B22/1000/(B$34+0.00011*(I26+J26)/2))` | `=G26*F26` | `=J1` | `=J3` |
-| R BOTTOM 1 | 40 |  | FAN LOAD (FAN INPUT*0.86*Prï¼‰ | `=MAIN!B14*0.86*MAIN!E38` |  |  |  |  |  |
-| R BOTTOM 2 | 40 |  | DEF. HEATER LOAD | `=MAIN!B15*0.86*MAIN!B19/60/24` |  |  |  |  |  |
-| R BOTTOM 3 | 40 |  |  |  |  |  |  |  |  |
-| R DOOR | 40 |  |  |  |  |  |  |  |  |
-| â—‡  Thermal Conductivity  â—‡ | (kcal/mhâ„ƒ) |  | QF     TOTAL(kcal/h)  (inlet) | `=SUM(E7:E14)` |  |  |  |  |  |
-| URETANE | 0.0165 |  | QR     TOTAL(kcal/h)  (inlet) | `=SUM(E15:E25)` |  |  |  |  |  |
-| A=X-0.00011*T          X= | `=B33-0.00011*25` |  | QEVOUT TOTAL(kcal/h)  (inlet) | `=SUM(E26:E28)` |  |  |  |  |  |
-| PS FORM     Î» | 0.035 |  | QEV  (=QF+QR+QEVOUT) | `=SUM(E32:E34)` |  |  |  |  |  |
-| Packing position  L mm | 15 |  |  |  |  |  |  |  |  |
-| PAKKIN | 0.035 |  |  |  |  |  |  |  |  |
-| â—‡  Heat trancefer coefficent â—‡ | (kcal/m2hâ„ƒ) |  |  |  |  |  |  |  |  |
-| OUTSIDE | 6 |  |  |  |  |  |  |  |  |
-| INSIDE | 10 |  |  |  |  |  |  |  |  |
-|  |  |  | VOLUME: |  |  |  |  |  |  |
-|  |  |  | Freezer Gross volume | `=(B9-B18-B19)*(B7-B17-B20/2)*(B10-B22)/1000000` | 59 |  |  |  |  |
-|  |  |  | Refrigeratorr Gross Volume | `=((B9-B24-B25)*(B8-B20/2-B27)*(B10-B26)-(B12+B13)*B11/2*(B9-B18-B19))/1000000` | 125 |  |  |  |  |
-|  |  |  | TOTAL | `=E44+E45` | `=F44+F45` |  |  |  |  |
-|  |  |  | ISO VOLUME |  |  |  |  |  |  |
-|  |  |  | Freezer VOLUME | `=E44-(60+25)*(B9-B18-B19)*(B7-B17-B20/2)/1000000` | 48 |  |  |  |  |
-|  |  |  | Refrigerator | `=E45-(B9-B18-B19)*60*300/1000000` | 120 |  |  |  |  |
-|  |  |  | TOTAL | `=E50+E51` | `=F50+F51` |  |  |  |  |
-| DOOR |  |  |  |  |  |  |  |  |  |
-|  | Packing |  |  |  |  |  |  |  |  |
-
----
-
-## Summary
-
-**Rows with data:** 48
-**Columns:** 10
-**Cells containing formulas:** 126
-
-## Formula Legend
-
-- **`=FORMULA()`** : Excel formula (shown in code blocks)
-- **Plain text/number** : Static value (no formula)
-- **Empty cell** : No data
-
-## Tips
-
-- To copy a formula back to Excel, remove the backticks (`) and paste into a cell starting with `=`
-- Formulas are shown exactly as they appear in the Excel formula bar
-
----
-## 54H calc_SIZE_values.md
-
-# Sheet: SIZE - VALUES (Calculated/Displayed)
-
-*This shows the calculated values as they appear in Excel*
-
-## Data Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | PR= | 0.5674402613435491 | TF= | -18 | T2= | -21.34296095493092 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-540   > |  |  |  |  |  | TR= | 3 | Cab Side | 33.326193840942246 |
-|  |  |  |  | Comp temp | 58.372013067177456 | TC= | 40.86515582336489 | Back cab | 32.57094130059855 |
-| â—‡  ï¼³  ï¼©  ï¼º  ï¼¥  â—‡ | (mm) |  |  |  |  | T0= | 30 | Cab Bottom | 46.099422509681766 |
-| â—‡  BASIC  SIZE  â—‡ |  |  | â—‡  Heat Load  â—‡ |  |  |  | B=K*S |  |  |
-| TOTAL HIGHT         H | 1680 | 0 | POSITION | Q(kcal/h) | S(m2) or L(m) | K | B | INSIDE TEMP | OUTSIDE TEMP |
-| F HIGHT             Hf | 550 |  | F TOP | 4.85992987012987 | 0.44436 | 0.2278525046382189 | 0.10124853896103894 | -18 | 30 |
-| R HIGHT             Hr | 1130 |  | F LEFT | 3.445865855975239 | 0.29118 | 0.23056732729118157 | 0.06713659436064624 | -18 | 33.326193840942246 |
-| WIDTH               W | 800 |  | F RIGHT | 3.445865855975239 | 0.29118 | 0.23056732729118157 | 0.06713659436064624 | -18 | 33.326193840942246 |
-| DEPTH               D | 630 |  | F BOTTOM | 1.6616437693738373 | 0.44436 | 0.17806709375215263 | 0.07912589377970654 | -18 | 3 |
-| BOTOM HIGHT        Hb | 260 |  | F DOOR | 4.337035714285713 | 0.39654999999999996 | 0.2278525046382189 | 0.0903549107142857 | -18 | 30 |
-| BOTTOM DEPTH       Db1 | 210 |  | F PACKIN | 4.3344000000000005 | 2.58 | 0.035 | 0.0903 | -18 | 30 |
-| BOTTOM DEPTH       Db2 | 230 |  | F DPCON1(FR-Partition) | 3.841631511627019 | 0.6812 | * | * | * | * |
-| Door gap of F&R door | 10 |  | F DPCON2(F-Front) | 1.2940158918068438 | 1.9000000000000001 | * | * | * | * |
-|  |  |  | R TOP | -1.6616437693738373 | 0.44436 | 0.17806709375215263 | 0.07912589377970654 | 3 | -18 |
-| â—‡ THICKNESS OF WALL â—‡ |  |  | R LEFT | 6.3511794618697035 | 0.5878 | 0.3562926769653677 | 0.20942883552024313 | 3 | 33.326193840942246 |
-| F TOP | 59.4 |  | R RIGHT | 6.3511794618697035 | 0.5878 | 0.3562926769653677 | 0.20942883552024313 | 3 | 33.326193840942246 |
-| F LEFT | 59.4 |  | R BACK | 4.481843419403305 | 0.6194 | 0.2446923148273912 | 0.1515624198040861 | 3 | 32.57094130059855 |
-| F RIGHT | 59.4 |  | R BOTTOMã€€1 | 2.5493463888332273 | 0.1596 | 0.37061629531977724 | 0.05915036073303644 | 3 | 46.099422509681766 |
-| F BOTTOM â€» | 70 |  | R BOTTOMã€€2 | 3.1656581161478594 | 0.1981837531181605 | 0.37061629531977724 | 0.073450128373222 | 3 | 46.099422509681766 |
-| F DOOR | 59.4 |  | R BOTTOMã€€3 | 1.6638610364509407 | 0.17479999999999998 | 0.3525428079606197 | 0.06162448283151632 | 3 | 30 |
-| EVA BACK | 60 |  | R DOOR | 8.566790233443058 | 0.8999999999999999 | 0.3525428079606197 | 0.3172885271645577 | 3 | 30 |
-| R TOP â€» | 70 |  | R PACKIN | 3.5343000000000004 | 3.74 | 0.035 | 0.13090000000000002 | 3 | 30 |
-| R LEFT | 40 |  | R DPCON(R-Front) | 1.4884790911765382 | 3.06 | * | * | * | * |
-| R RIGHT | 40 |  | PWB Heat LOAD | 0 |  |  |  |  |  |
-| R BACK | 60 |  | EVA BACK | 4.3615731572322245 | 0.35941318 | 0.225085954384664 | 0.08089885863872703 | -21.34296095493092 | 32.57094130059855 |
-| R BOTTOM 1 | 40 |  | FAN LOAD (FAN INPUT*0.86*Prï¼‰ | 1.0247971119864496 |  |  |  |  |  |
-| R BOTTOM 2 | 40 |  | DEF. HEATER LOAD | 0 |  |  |  |  |  |
-| R BOTTOM 3 | 40 |  |  |  |  |  |  |  |  |
-| R DOOR | 40 |  |  |  |  |  |  |  |  |
-| â—‡  Thermal Conductivity  â—‡ | (kcal/mhâ„ƒ) |  | QF     TOTAL(kcal/h)  (inlet) | 27.22038846917376 |  |  |  |  |  |
-| URETANE | 0.0165 |  | QR     TOTAL(kcal/h)  (inlet) | 36.4909934398205 |  |  |  |  |  |
-| A=X-0.00011*T          X= | 0.01375 |  | QEVOUT TOTAL(kcal/h)  (inlet) | 5.386370269218674 |  |  |  |  |  |
-| PS FORM     Î» | 0.035 |  | QEV  (=QF+QR+QEVOUT) | 69.09775217821293 |  |  |  |  |  |
-| Packing position  L mm | 15 |  |  |  |  |  |  |  |  |
-| PAKKIN | 0.035 |  |  |  |  |  |  |  |  |
-| â—‡  Heat trancefer coefficent â—‡ | (kcal/m2hâ„ƒ) |  |  |  |  |  |  |  |  |
-| OUTSIDE | 6 |  |  |  |  |  |  |  |  |
-| INSIDE | 10 |  |  |  |  |  |  |  |  |
-|  |  |  | VOLUME: |  |  |  |  |  |  |
-|  |  |  | Freezer Gross volume | 176.9021904 | 59 |  |  |  |  |
-|  |  |  | Refrigeratorr Gross Volume | 394.00736 | 125 |  |  |  |  |
-|  |  |  | TOTAL | 570.9095504 | 184 |  |  |  |  |
-|  |  |  | ISO VOLUME |  |  |  |  |  |  |
-|  |  |  | Freezer VOLUME | 150.5220392 | 48 |  |  |  |  |
-|  |  |  | Refrigerator | 381.74576 | 120 |  |  |  |  |
-|  |  |  | TOTAL | 532.2677992 | 168 |  |  |  |  |
-| DOOR |  |  |  |  |  |  |  |  |  |
-|  | Packing |  |  |  |  |  |  |  |  |
-
----
-
-**Rows with data:** 48
-**Columns:** 10
-**File type:** Values (calculated results)
-
----
-## Compressor pv73_DATA_formulas.md
-
-# Sheet: DATA - FORMULAS (Original Excel Formulas)
-
-*This shows the actual formulas as entered in Excel*
-
-*Formulas are shown in `code blocks` for clarity*
-
-## Formula Table
-
-| Column_A | Calculation of compressor performance formula data. | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |  |  |  |  |  |  |  | Volumetric efficiency |  |  | Input |  |  |  |  |
-|  | Compressor name |  | SQ47LAEG 220V 50Hz |  | 2 | Refrigerantã€€R-134a=1, R-600a=2 |  |  |  | R-600a |  |  | Î·v=A+B*PC/PE+C*PC |  |  | W=AW+BW*TE+CW*TC+DW*TC*TE+EW*TE^2 |  |  |  |  |
-|  | Cylinder volume |  | 10.17 | (CC) |  | Rated |  |  |  |  |  |  | A | `=B21` |  | AW | `=B22` |  |  |  |
-|  | Speed |  | `=37*60` | (rpm) |  | Cooling Capacity |  | 120.2650528866975 | (kcal/h) | `=I5/0.86` | W |  | B | `=C21` |  | BW | `=C22` |  |  |  |
-|  | Data quantity of Cond. |  | 3 | pcs |  | Input |  | 134.74999999999494 | (  W  ) |  |  |  | C | `=E21` |  | CW | `=E22` |  |  |  |
-|  | Data quantity of  Evap.. |  | 3 | pcs |  | C.O P. |  | `=I5/I6/0.86` |  |  |  |  |  |  |  | DW | `=G22` |  |  |  |
-|  | Total data quantity |  | 9 | pcs |  |  |  |  |  |  |  |  |  |  |  | EW | `=I22` |  |  |  |
-|  |  |  | Y |  |  |  | After input the yellow marked data press Calculate |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cooling Capacity ï¼±(kcal/hr) |  |  |  |  | Input  ï¼ˆï¼·ï¼‰ |  |  |  |  | Volumetric efficiency ï¼¥ï¼´ï¼¶ |  |  |  |  |  | COP |  |  |  |  |
-|  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |
-|  |  | 37.8 | 46.1 | 54.4 |  |  | `=C13` | `=D13` | `=E13` |  |  | 37.8 | 46.1 | 54.4 |  |  |  | `=IF(C13="","",C13)` | `=IF(D13="","",D13)` | `=IF(E13="","",E13)` |
-| Evap. Temp. | -34.4 | 70.554507 | 67.112824 | 61.950299 | Evap. Temp. | `=IF(B14="","",B14)` | 49.7 | 51.3 | 72 | Evap. Temp. | -34.4 | 0.750251124266466 | 0.7136535113015171 | 0.6587570865372743 |  | Evap. Temp. | `=IF(B14="","",B14)` | `=IF(C14="","",C14/H14)` | `=IF(D14="","",D14/I14)` | `=IF(E14="","",E14/J14)` |
-|  | -23.3 | 129.063122 | 126.48186 | 121.319335 |  | `=IF(B15="","",B15)` | 67.6 | 72.4 | 141 |  | -23.3 | 0.8194887439596955 | 0.8030989718742899 | 0.7703194213539598 |  |  | `=IF(B15="","",B15)` | `=IF(C15="","",C15/H15)` | `=IF(D15="","",D15/I15)` | `=IF(E15="","",E15/J15)` |
-|  | -12.2 | 215.105204 | 210.8031 | 203.919733 |  | `=IF(B16="","",B16)` | 86.2 | 93.5 | 237 |  | -12.2 | 0.8563733691862448 | 0.8392459021210147 | 0.8118419524279362 |  |  | `=IF(B16="","",B16)` | `=IF(C16="","",C16/H16)` | `=IF(D16="","",D16/I16)` | `=IF(E16="","",E16/J16)` |
-|  |  |  |  |  |  | `=IF(B17="","",B17)` |  |  |  |  | -20 | 0.8452696120886641 | 0.7577118041797148 | 0.6667863875215928 |  |  | `=IF(B17="","",B17)` | `=IF(C17="","",C17/H17)` | `=IF(D17="","",D17/I17)` | `=IF(E17="","",E17/J17)` |
-|  |  |  |  |  |  | `=IF(B18="","",B18)` |  |  |  |  | -15 | 0.8628511434767668 | 0.7782043547579203 | 0.6908270238532728 |  |  | `=IF(B18="","",B18)` | `=IF(C18="","",C18/H18)` | `=IF(D18="","",D18/I18)` | `=IF(E18="","",E18/J18)` |
-|  |  |  |  |  |  | `=IF(B19="","",B19)` |  |  |  |  | -10 | 0.8754891851607379 | 0.7928537266420329 | 0.7079848768614745 |  |  | `=IF(B19="","",B19)` | `=IF(C19="","",C19/H19)` | `=IF(D19="","",D19/I19)` | `=IF(E19="","",E19/J19)` |
-| Æ’Ã…v= | 0.9302583559597055 | -0.012294405565323853 | * PC/PE + | -0.0020532051517885733 | * PC |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| W= | -403.45924099760987 | -10.669447614327456 | *TE+ | 13.074324324321825 | *TC+ | 0.34869206555942833 | *TC*TE+ | 0.037469902334827346 | *TE^2 |  |  |  |  |  |  |  |  |  |  |  |
-| Calculation by the formula |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cooling Capacity ï¼±(kcal/hr) |  |  |  |  | Input  ï¼ˆï¼·ï¼‰ |  |  |  |  | Volumetric efficiency ï¼¥ï¼´ï¼¶ |  |  |  |  |  | COP |  |  |  |  |
-|  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |
-|  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  |  | `=IF(C26="","",C26)` | `=IF(D26="","",D26)` | `=IF(E26="","",E26)` |
-| Evap. Temp. | -34.4 | 70.90169277740574 | 66.93180951230698 | 62.315043224978375 | Evap. Temp. | -34.4 | 48.70833333332502 | 57.66666666666823 | 66.62500000001125 | Evap. Temp. | -34.4 | 0.7539429723269733 | 0.7117286686702702 | 0.6626356447824581 |  |  |  |  |  | `=IF(E27="","",E27/J27)` |
-|  | -23.3 | 129.21876574114629 | 125.07917734821743 | 120.2650528866975 |  | -23.3 | 52.583333333328426 | 93.66666666666168 | 134.74999999999494 |  | -23.3 | 0.8204770068496722 | 0.7941926117408092 | 0.763625237055447 |  |  |  |  |  | `=IF(E28="","",E28/J28)` |
-|  | -12.2 | 215.32314711884123 | 210.93194884523064 | 205.8252152722784 |  | -12.2 | 65.69166666667978 | 138.90000000000327 | 212.10833333332664 |  | -12.2 | 0.8572410408162303 | 0.8397588730657153 | 0.8194280277208225 |  |  |  |  |  | `=IF(E29="","",E29/J29)` |
-|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | `=IF(E30="","",E30/J30)` |
-|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | `=IF(E31="","",E31/J31)` |
-|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | `=IF(E32="","",E32/J32)` |
-|  |  |  | ã‚³ãƒ³ãƒ—æ¸¬å®šæ¡ä»¶ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  | å†·å‡èƒ½åŠ›  ï¼±(kcal/hr) è¨ˆç®—å€¤ |  |  |  |  |  | å…¥åŠ› W è¨ˆç®—å€¤ |  |  |  |  |  |  |  | COP |  |  |  |  |
-|  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-|  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |
-|  | -32 | 82.74996348895222 | 80.53754702732623 | 78.10332623032329 | 75.43518732930734 | 72.52102824642456 |  | -32 | 43.398500576436064 | 52.97939170853665 | 62.5602828406373 | 72.14117397273795 | 81.72206510483848 |  | -32 | `=C43/J43/0.86` | `=D43/K43/0.86` | `=E43/L43/0.86` | `=F43/M43/0.86` | `=G43/N43/0.86` |
-| è’¸ | -30 | 92.40268256327074 | 90.17475851170477 | 87.72347542168502 | 85.0366346149937 | 82.10204918613984 | è’¸ | -30 | 41.82178204742258 | 54.88959383511742 | 67.95740562281236 | 81.02521741050725 | 94.09302919820209 | è’¸ | -30 | `=C44/J44/0.86` | `=D44/K44/0.86` | `=E44/L44/0.86` | `=F44/M44/0.86` | `=G44/N44/0.86` |
-| ç™º | -28 | 102.8091852940007 | 100.56453300625279 | 98.09484460190035 | 95.38782980967038 | 92.43121021941172 | ç™º | -28 | 40.54482273708766 | 57.0995551803768 | 73.65428762366605 | 90.20902006695525 | 106.76375251024433 | ç™º | -28 | `=C45/J45/0.86` | `=D45/K45/0.86` | `=E45/L45/0.86` | `=F45/M45/0.86` | `=G45/N45/0.86` |
-| æ¸© | -26 | 114.01135320433427 | 111.74868247001977 | 109.25916919176912 | 106.53042444089253 | 103.55007124503463 | æ¸© | -26 | 39.567622645431356 | 59.6092757443148 | 79.6509288431983 | 99.6925819420818 | 119.73423504096519 | æ¸© | -26 | `=C46/J46/0.86` | `=D46/K46/0.86` | `=E46/L46/0.86` | `=F46/M46/0.86` | `=G46/N46/0.86` |
-| åº¦ | -24 | 126.05240486262706 | 123.77035341143949 | 121.25951641548403 | 118.50739882973866 | 115.5015176679268 | åº¦ | -24 | 38.89018177245373 | 62.41875552693142 | 85.94732928140922 | 109.47590303588703 | 133.00447679036466 | åº¦ | -24 | `=C47/J47/0.86` | `=D47/K47/0.86` | `=E47/L47/0.86` | `=F47/M47/0.86` | `=G47/N47/0.86` |
-|  | -22 | 138.97692252807428 | 136.67405345173714 | 134.1403117735203 | 131.3630884644847 | 128.32978666444038 |  | -22 | 38.51250011815466 | 65.52799452822671 | 92.54348893829876 | 119.55898334837082 | 146.57447775844275 |  | -22 | `=C48/J48/0.86` | `=D48/K48/0.86` | `=E48/L48/0.86` | `=F48/M48/0.86` | `=G48/N48/0.86` |
-|  | -20 | 152.83088523828675 | 150.5056843164508 | 147.94737192847313 | 145.14321677060147 | 142.08049982583788 |  | -20 | 38.43457768253421 | 68.93699274820051 | 99.43940781386681 | 129.94182287953316 | 160.44423794519935 | â„ƒ | -20 | `=C49/J49/0.86` | `=D49/K49/0.86` | `=E49/L49/0.86` | `=F49/M49/0.86` | `=G49/N49/0.86` |
-|  | -18 | 167.66170950318332 | 165.3125824173538 | 162.72794516378423 | 159.89493543444718 | 156.80070333449942 |  | -18 | 38.65641446559241 | 72.645750186853 | 106.6350859081136 | 140.62442162937424 | 174.61375735063473 |  | -18 | `=C50/J50/0.86` | `=D50/K50/0.86` | `=E50/L50/0.86` | `=F50/M50/0.86` | `=G50/N50/0.86` |
-|  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›  ï¼±(kcal/hr) è¨ˆç®—å€¤ |  |  |  |  |  |  | å…¥åŠ›  ï¼· |  |  |  |  |  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›ã«å¯¾ã™ã‚‹ã€€COP |  |  |  |  |
-|  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-|  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |
-|  | -32 | 62.476263413475145 | 57.76794087479624 | 53.02823489738986 | 48.27726321195574 | 43.53819896660536 |  | -32 | `=J43` | `=K43` | `=L43` | `=M43` | `=N43` |  | -32 | `=C60/J60/0.86` | `=D60/K60/0.86` | `=E60/L60/0.86` | `=F60/M60/0.86` | `=G60/N60/0.86` |
-| è’¸ | -30 | 70.52273054137947 | 65.41940573656082 | 60.27717575287826 | 55.115961510221574 | 49.958762191997046 | è’¸ | -30 | `=J44` | `=K44` | `=L44` | `=M44` | `=N44` | è’¸ | -30 | `=C61/J61/0.86` | `=D61/K61/0.86` | `=E61/L61/0.86` | `=F61/M61/0.86` | `=G61/N61/0.86` |
-| ç™º | -28 | 79.31518254647267 | 73.78667156977701 | 68.21124448162202 | 62.608615677281094 | 57.001602474535694 | ç™º | -28 | `=J45` | `=K45` | `=L45` | `=M45` | `=N45` | ç™º | -28 | `=C62/J62/0.86` | `=D62/K62/0.86` | `=E62/L62/0.86` | `=F62/M62/0.86` | `=G62/N62/0.86` |
-| æ¸© | -26 | 88.90690247756554 | 82.92126472480913 | 76.88018131689317 | 70.80314980160996 | 64.71279722812152 | æ¸© | -26 | `=J46` | `=K46` | `=L46` | `=M46` | `=N46` | æ¸© | -26 | `=C63/J63/0.86` | `=D63/K63/0.86` | `=E63/L63/0.86` | `=F63/M63/0.86` | `=G63/N63/0.86` |
-| åº¦ | -24 | 99.35395247280533 | 92.87742231946164 | 86.3363676775562 | 79.75005828685931 | 73.14092199862804 | åº¦ | -24 | `=J47` | `=K47` | `=L47` | `=M47` | `=N47` | åº¦ | -24 | `=C64/J64/0.86` | `=D64/K64/0.86` | `=E64/L64/0.86` | `=F64/M64/0.86` | `=G64/N64/0.86` |
-|  | -22 | 110.71529101056518 | 103.7122067917462 | 96.6349379708345 | 89.50251485170008 | 82.33715660706065 |  | -22 | `=J48` | `=K48` | `=L48` | `=M48` | `=N48` |  | -22 | `=C65/J65/0.86` | `=D65/K65/0.86` | `=E65/L65/0.86` | `=F65/M65/0.86` | `=G65/N65/0.86` |
-|  | -20 | 123.05290047470842 | 115.4856303758213 | 107.83390092056119 | 100.11649065086745 | 92.3554000029571 |  | -20 | `=J49` | `=K49` | `=L49` | `=M49` | `=N49` | â„ƒ | -20 | `=C66/J66/0.86` | `=D66/K66/0.86` | `=E66/L66/0.86` | `=F66/M66/0.86` | `=G66/N66/0.86` |
-|  | -18 | 136.4319267039476 | 128.26079111406074 | 119.99427197614187 | 111.65088301392503 | 103.25239526484405 |  | -18 | `=J50` | `=K50` | `=L50` | `=M50` | `=N50` |  | -18 | `=C67/J67/0.86` | `=D67/K67/0.86` | `=E67/L67/0.86` | `=F67/M67/0.86` | `=G67/N67/0.86` |
-|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›ã®ã€€COPæ¯” |  |  |  |  |
-|  |  |  | ä½“ç©åŠ¹çŽ‡ã€€æ¸¬å®šå€¤ |  |  | ä½“ç©åŠ¹çŽ‡ã€€è¨ˆç®—å€¤ |  |  |  |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-| PC | PE |  | `=M26` | `=N26` | `=D72` | `=E72` | `=N26` |  |  |  |  |  |  |  |  | 35 | 40 | 45 | 50 | 55 |
-| 5.162372024232351 | 0.382994430215269 | 13.47897414939101 | 0.750251124266466 |  |  | 0.7539429723269733 |  |  |  |  |  |  |  |  | -32 | `=Q60/$U$60` | `=R60/$U$60` | `=S60/$U$60` | `=T60/$U$60` | `=U60/$U$60` |
-| 6.3983727391430625 | 0.382994430215269 | 16.70617699465431 |  | 0.7136535113015171 |  |  | 0.7117286686702702 |  |  |  |  |  |  | è’¸ | -30 | `=Q61/$U$60` | `=R61/$U$60` | `=S61/$U$60` | `=T61/$U$60` | `=U61/$U$60` |
-| 7.835776826532984 | 0.382994430215269 | 20.459244856716957 |  |  | 0.6587570865372743 |  |  | 0.6626356447824581 |  |  |  |  |  | ç™º | -28 | `=Q62/$U$60` | `=R62/$U$60` | `=S62/$U$60` | `=T62/$U$60` | `=U62/$U$60` |
-| 5.162372024232351 | 0.6399178637701737 | 8.067241620381479 | 0.8194887439596955 |  |  | 0.8204770068496722 |  |  |  |  |  |  |  | æ¸© | -26 | `=Q63/$U$60` | `=R63/$U$60` | `=S63/$U$60` | `=T63/$U$60` | `=U63/$U$60` |
-| 6.3983727391430625 | 0.6399178637701737 | 9.998740621876179 |  | 0.8030989718742899 |  |  | 0.7941926117408092 |  |  |  |  |  |  | åº¦ | -24 | `=Q64/$U$60` | `=R64/$U$60` | `=S64/$U$60` | `=T64/$U$60` | `=U64/$U$60` |
-| 7.835776826532984 | 0.6399178637701737 | 12.244972785049804 |  |  | 0.7703194213539598 |  |  | 0.763625237055447 |  |  |  |  |  |  | -22 | `=Q65/$U$60` | `=R65/$U$60` | `=S65/$U$60` | `=T65/$U$60` | `=U65/$U$60` |
-| 5.162372024232351 | 1.0168283285879745 | 5.076935682349757 | 0.8563733691862448 |  |  | 0.8572410408162303 |  |  |  |  |  |  |  | â„ƒ | -20 | `=Q66/$U$60` | `=R66/$U$60` | `=S66/$U$60` | `=T66/$U$60` | `=U66/$U$60` |
-| 6.3983727391430625 | 1.0168283285879745 | 6.292480804530895 |  | 0.8392459021210147 |  |  | 0.8397588730657153 |  |  |  |  |  |  |  | -18 | `=Q67/$U$60` | `=R67/$U$60` | `=S67/$U$60` | `=T67/$U$60` | `=U67/$U$60` |
-| 7.835776826532984 | 1.0168283285879745 | 7.706096109078893 |  |  | 0.8118419524279362 |  |  | 0.8194280277208225 |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4.787831838082025 | 1.1086403483853422 | 4.318651982182653 | 0.8754891851607379 |  |  | 0.8684551596279145 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6.223359441868405 | 1.1086403483853422 | 5.6135061753185305 |  | 0.7928537266420329 |  |  | 0.7969223658821604 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7.947949161792489 | 1.1086403483853422 | 7.169096067419995 |  |  | 0.7079848768614745 |  |  | 0.7109855156216794 |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | å†·å‡èƒ½åŠ›ã€€è¿‘ä¼¼å¼ã¨ãƒ‡ãƒ¼ã‚¿ãƒ¼ã®æ¯”è¼ƒ |  |  |  |  |  |  |  | å…¥åŠ›ã€€è¿‘ä¼¼å¼ã¨ãƒ‡ãƒ¼ã‚¿ãƒ¼ã®æ¯”è¼ƒ |  |  |  |  |  |  |  |  |  |
-|  |  | è¨ˆç®—çµæžœ |  |  | ãƒ‡ãƒ¼ã‚¿ãƒ¼ |  |  |  |  |  | è¨ˆç®—çµæžœ |  |  | ãƒ‡ãƒ¼ã‚¿ãƒ¼ |  |  |  |  |  |  |
-|  |  | 37.8 | 46.1 | 54.4 | 37.8 | 46.1 | 54.4 |  |  |  | 40.5 | 54.4 | 65 | 40.5 | 54.4 | 65 |  |  |  |  |
-|  | -34.4 | `=IF(C27="","",C27)` | `=IF(D27="","",D27)` | `=IF(E27="","",E27)` | `=IF(C14="","",C14)` | `=IF(D14="","",D14)` | `=IF(E14="","",E14)` |  |  | -30 | `=IF(H27="","",H27)` | `=IF(I27="","",I27)` | `=IF(J27="","",J27)` | `=IF(H14="","",H14)` | `=IF(I14="","",I14)` | `=IF(J14="","",J14)` |  |  |  |  |
-|  | -23.3 | `=IF(C28="","",C28)` | `=IF(D28="","",D28)` | `=IF(E28="","",E28)` | `=IF(C15="","",C15)` | `=IF(D15="","",D15)` | `=IF(E15="","",E15)` |  |  | -20 | `=IF(H28="","",H28)` | `=IF(I28="","",I28)` | `=IF(J28="","",J28)` | `=IF(H15="","",H15)` | `=IF(I15="","",I15)` | `=IF(J15="","",J15)` |  |  |  |  |
-|  | -12.2 | `=IF(C29="","",C29)` | `=IF(D29="","",D29)` | `=IF(E29="","",E29)` | `=IF(C16="","",C16)` | `=IF(D16="","",D16)` | `=IF(E16="","",E16)` |  |  | -15 | `=IF(H29="","",H29)` | `=IF(I29="","",I29)` | `=IF(J29="","",J29)` | `=IF(H16="","",H16)` | `=IF(I16="","",I16)` | `=IF(J16="","",J16)` |  |  |  |  |
-|  | -20 | `=IF(C30="","",C30)` | `=IF(D30="","",D30)` | `=IF(E30="","",E30)` | `=IF(C17="","",C17)` | `=IF(D17="","",D17)` | `=IF(E17="","",E17)` |  |  | -10 | `=IF(H30="","",H30)` | `=IF(I30="","",I30)` | `=IF(J30="","",J30)` | `=IF(H17="","",H17)` | `=IF(I17="","",I17)` | `=IF(J17="","",J17)` |  |  |  |  |
-|  | -15 | `=IF(C31="","",C31)` | `=IF(D31="","",D31)` | `=IF(E31="","",E31)` | `=IF(C18="","",C18)` | `=IF(D18="","",D18)` | `=IF(E18="","",E18)` |  |  |  | `=IF(H31="","",H31)` | `=IF(I31="","",I31)` | `=IF(J31="","",J31)` | `=IF(H18="","",H18)` | `=IF(I18="","",I18)` | `=IF(J18="","",J18)` |  |  |  |  |
-|  | -10 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-## Summary
-
-**Rows with data:** 76
-**Columns:** 21
-**Cells containing formulas:** 281
-
-## Formula Legend
-
-- **`=FORMULA()`** : Excel formula (shown in code blocks)
-- **Plain text/number** : Static value (no formula)
-- **Empty cell** : No data
-
-## Tips
-
-- To copy a formula back to Excel, remove the backticks (`) and paste into a cell starting with `=`
-- Formulas are shown exactly as they appear in the Excel formula bar
-
----
-## Compressor pv73_DATA_values.md
-
-# Sheet: DATA - VALUES (Calculated/Displayed)
-
-*This shows the calculated values as they appear in Excel*
-
-## Data Table
-
-| Column_A | Calculation of compressor performance formula data. | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |  |  |  |  |  |  |  | Volumetric efficiency |  |  | Input |  |  |  |  |
-|  | Compressor name |  | SQ47LAEG 220V 50Hz |  | 2 | Refrigerantã€€R-134a=1, R-600a=2 |  |  |  | R-600a |  |  | Î·v=A+B*PC/PE+C*PC |  |  | W=AW+BW*TE+CW*TC+DW*TC*TE+EW*TE^2 |  |  |  |  |
-|  | Cylinder volume |  | 10.17 | (CC) |  | Rated |  |  |  |  |  |  | A | 0.9302583559597055 |  | AW | -403.45924099760987 |  |  |  |
-|  | Speed |  | 2220 | (rpm) |  | Cooling Capacity |  | 120.2650528866975 | (kcal/h) | 139.84308475197383 | W |  | B | -0.012294405565323853 |  | BW | -10.669447614327456 |  |  |  |
-|  | Data quantity of Cond. |  | 3 | pcs |  | Input |  | 134.74999999999494 | (  W  ) |  |  |  | C | -0.0020532051517885733 |  | CW | 13.074324324321825 |  |  |  |
-|  | Data quantity of  Evap.. |  | 3 | pcs |  | C.O P. |  | 1.0377965473245203 |  |  |  |  |  |  |  | DW | 0.34869206555942833 |  |  |  |
-|  | Total data quantity |  | 9 | pcs |  |  |  |  |  |  |  |  |  |  |  | EW | 0.037469902334827346 |  |  |  |
-|  |  |  | Y |  |  |  | After input the yellow marked data press Calculate |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cooling Capacity ï¼±(kcal/hr) |  |  |  |  | Input  ï¼ˆï¼·ï¼‰ |  |  |  |  | Volumetric efficiency ï¼¥ï¼´ï¼¶ |  |  |  |  |  | COP |  |  |  |  |
-|  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |
-|  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  |  | 37.8 | 46.1 | 54.4 |
-| Evap. Temp. | -34.4 | 70.554507 | 67.112824 | 61.950299 | Evap. Temp. | -34.4 | 49.7 | 51.3 | 72 | Evap. Temp. | -34.4 | 0.750251124266466 | 0.7136535113015171 | 0.6587570865372743 |  | Evap. Temp. | -34.4 | 1.4196077867203218 | 1.3082421832358675 | 0.8604208194444445 |
-|  | -23.3 | 129.063122 | 126.48186 | 121.319335 |  | -23.3 | 67.6 | 72.4 | 141 |  | -23.3 | 0.8194887439596955 | 0.8030989718742899 | 0.7703194213539598 |  |  | -23.3 | 1.9092177810650888 | 1.7469870165745855 | 0.8604208156028369 |
-|  | -12.2 | 215.105204 | 210.8031 | 203.919733 |  | -12.2 | 86.2 | 93.5 | 237 |  | -12.2 | 0.8563733691862448 | 0.8392459021210147 | 0.8118419524279362 |  |  | -12.2 | 2.4954199999999997 | 2.2545786096256686 | 0.8604208143459916 |
-|  |  |  |  |  |  |  |  |  |  |  | -20 | 0.8452696120886641 | 0.7577118041797148 | 0.6667863875215928 |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  | -15 | 0.8628511434767668 | 0.7782043547579203 | 0.6908270238532728 |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  | -10 | 0.8754891851607379 | 0.7928537266420329 | 0.7079848768614745 |  |  |  |  |  |  |
-| Æ’Ã…v= | 0.9302583559597055 | -0.012294405565323853 | * PC/PE + | -0.0020532051517885733 | * PC |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| W= | -403.45924099760987 | -10.669447614327456 | *TE+ | 13.074324324321825 | *TC+ | 0.34869206555942833 | *TC*TE+ | 0.037469902334827346 | *TE^2 |  |  |  |  |  |  |  |  |  |  |  |
-| Calculation by the formula |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cooling Capacity ï¼±(kcal/hr) |  |  |  |  | Input  ï¼ˆï¼·ï¼‰ |  |  |  |  | Volumetric efficiency ï¼¥ï¼´ï¼¶ |  |  |  |  |  | COP |  |  |  |  |
-|  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |  |  |  | Cond. Temp.ï¼ˆâ„ƒï¼‰ |  |  |
-|  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  | 37.8 | 46.1 | 54.4 |  |  |  | 37.8 | 46.1 | 54.4 |
-| Evap. Temp. | -34.4 | 70.90169277740574 | 66.93180951230698 | 62.315043224978375 | Evap. Temp. | -34.4 | 48.70833333332502 | 57.66666666666823 | 66.62500000001125 | Evap. Temp. | -34.4 | 0.7539429723269733 | 0.7117286686702702 | 0.6626356447824581 |  |  |  |  |  | 0.9353102172603054 |
-|  | -23.3 | 129.21876574114629 | 125.07917734821743 | 120.2650528866975 |  | -23.3 | 52.583333333328426 | 93.66666666666168 | 134.74999999999494 |  | -23.3 | 0.8204770068496722 | 0.7941926117408092 | 0.763625237055447 |  |  |  |  |  | 0.8925050306990874 |
-|  | -12.2 | 215.32314711884123 | 210.93194884523064 | 205.8252152722784 |  | -12.2 | 65.69166666667978 | 138.90000000000327 | 212.10833333332664 |  | -12.2 | 0.8572410408162303 | 0.8397588730657153 | 0.8194280277208225 |  |  |  |  |  | 0.9703777877921733 |
-|  |  |  | ã‚³ãƒ³ãƒ—æ¸¬å®šæ¡ä»¶ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  | å†·å‡èƒ½åŠ›  ï¼±(kcal/hr) è¨ˆç®—å€¤ |  |  |  |  |  | å…¥åŠ› W è¨ˆç®—å€¤ |  |  |  |  |  |  |  | COP |  |  |  |  |
-|  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-|  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |
-|  | -32 | 82.74996348895222 | 80.53754702732623 | 78.10332623032329 | 75.43518732930734 | 72.52102824642456 |  | -32 | 43.398500576436064 | 52.97939170853665 | 62.5602828406373 | 72.14117397273795 | 81.72206510483848 |  | -32 | 2.2171477470375125 | 1.767636574842011 | 1.45168495208685 | 1.2158844841781096 | 1.0318728108809567 |
-| è’¸ | -30 | 92.40268256327074 | 90.17475851170477 | 87.72347542168502 | 85.0366346149937 | 82.10204918613984 | è’¸ | -30 | 41.82178204742258 | 54.88959383511742 | 67.95740562281236 | 81.02521741050725 | 94.09302919820209 | è’¸ | -30 | 2.5691152902786243 | 1.9102777600690386 | 1.5009996372457823 | 1.2203584371873653 | 1.0146075630379976 |
-| ç™º | -28 | 102.8091852940007 | 100.56453300625279 | 98.09484460190035 | 95.38782980967038 | 92.43121021941172 | ç™º | -28 | 40.54482273708766 | 57.0995551803768 | 73.65428762366605 | 90.20902006695525 | 106.76375251024433 | ç™º | -28 | 2.9484791454273016 | 2.047923195307651 | 1.5486372412657379 | 1.229545350251126 | 1.006691399383023 |
-| æ¸© | -26 | 114.01135320433427 | 111.74868247001977 | 109.25916919176912 | 106.53042444089253 | 103.55007124503463 | æ¸© | -26 | 39.567622645431356 | 59.6092757443148 | 79.6509288431983 | 99.6925819420818 | 119.73423504096519 | æ¸© | -26 | 3.350500537352341 | 2.1798675932730878 | 1.5950290526043684 | 1.2425456753757602 | 1.005619316363897 |
-| åº¦ | -24 | 126.05240486262706 | 123.77035341143949 | 121.25951641548403 | 118.50739882973866 | 115.5015176679268 | åº¦ | -24 | 38.89018177245373 | 62.41875552693142 | 85.94732928140922 | 109.47590303588703 | 133.00447679036466 | åº¦ | -24 | 3.7688834845603902 | 2.3057014575146613 | 1.6405330901064086 | 1.2587181027375562 | 1.0097712013350235 |
-|  | -22 | 138.97692252807428 | 136.67405345173714 | 134.1403117735203 | 131.3630884644847 | 128.32978666444038 |  | -22 | 38.51250011815466 | 65.52799452822671 | 92.54348893829876 | 119.55898334837082 | 146.57447775844275 |  | -22 | 4.196068087277588 | 2.4252736423770562 | 1.6854465776343255 | 1.2775934773484 | 1.0180536506080695 |
-|  | -20 | 152.83088523828675 | 150.5056843164508 | 147.94737192847313 | 145.14321677060147 | 142.08049982583788 |  | -20 | 38.43457768253421 | 68.93699274820051 | 99.43940781386681 | 129.94182287953316 | 160.44423794519935 | â„ƒ | -20 | 4.623709752720483 | 2.5386458372143004 | 1.7300166162073238 | 1.2988211074109828 | 1.0297028153472518 |
-|  | -18 | 167.66170950318332 | 165.3125824173538 | 162.72794516378423 | 159.89493543444718 | 156.80070333449942 |  | -18 | 38.65641446559241 | 72.645750186853 | 106.6350859081136 | 140.62442162937424 | 174.61375735063473 |  | -18 | 5.043289163303535 | 2.6460451237548406 | 1.7744491813057566 | 1.3221341028405713 | 1.0441697263294092 |
-|  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›  ï¼±(kcal/hr) è¨ˆç®—å€¤ |  |  |  |  |  |  | å…¥åŠ›  ï¼· |  |  |  |  |  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›ã«å¯¾ã™ã‚‹ã€€COP |  |  |  |  |
-|  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-|  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |  |  | 35 | 40 | 45 | 50 | 55 |
-|  | -32 | 62.476263413475145 | 57.76794087479624 | 53.02823489738986 | 48.27726321195574 | 43.53819896660536 |  | -32 | 43.398500576436064 | 52.97939170853665 | 62.5602828406373 | 72.14117397273795 | 81.72206510483848 |  | -32 | 1.6739476469859955 | 1.2678896851546022 | 0.9856211553558694 | 0.7781458143896497 | 0.6194876828787984 |
-| è’¸ | -30 | 70.52273054137947 | 65.41940573656082 | 60.27717575287826 | 55.115961510221574 | 49.958762191997046 | è’¸ | -30 | 41.82178204742258 | 54.88959383511742 | 67.95740562281236 | 81.02521741050725 | 94.09302919820209 | è’¸ | -30 | 1.960776682235362 | 1.3858560634710642 | 1.0313775019098832 | 0.7909676689020034 | 0.6173845654582519 |
-| ç™º | -28 | 79.31518254647267 | 73.78667156977701 | 68.21124448162202 | 62.608615677281094 | 57.001602474535694 | ç™º | -28 | 40.54482273708766 | 57.0995551803768 | 73.65428762366605 | 90.20902006695525 | 106.76375251024433 | ç™º | -28 | 2.2746913224268175 | 1.5026116235521965 | 1.0768606026750922 | 0.807022577673284 | 0.6208186912834986 |
-| æ¸© | -26 | 88.90690247756554 | 82.92126472480913 | 76.88018131689317 | 70.80314980160996 | 64.71279722812152 | æ¸© | -26 | 39.567622645431356 | 59.6092757443148 | 79.6509288431983 | 99.6925819420818 | 119.73423504096519 | æ¸© | -26 | 2.6127452762668475 | 1.617534755412659 | 1.122341709872475 | 0.8258311937711783 | 0.6284538303652741 |
-| åº¦ | -24 | 99.35395247280533 | 92.87742231946164 | 86.3363676775562 | 79.75005828685931 | 73.14092199862804 | åº¦ | -24 | 38.89018177245373 | 62.41875552693142 | 85.94732928140922 | 109.47590303588703 | 133.00447679036466 | åº¦ | -24 | 2.970617427002971 | 1.7302011516466658 | 1.168054040140788 | 0.8470597030339565 | 0.6394339932886839 |
-|  | -22 | 110.71529101056518 | 103.7122067917462 | 96.6349379708345 | 89.50251485170008 | 82.33715660706065 |  | -22 | 38.51250011815466 | 65.52799452822671 | 92.54348893829876 | 119.55898334837082 | 146.57447775844275 |  | -22 | 3.3427772822443793 | 1.8403674667745342 | 1.2141989483209172 | 0.8704715344122363 | 0.6531892948882583 |
-|  | -20 | 123.05290047470842 | 115.4856303758213 | 107.83390092056119 | 100.11649065086745 | 92.3554000029571 |  | -20 | 38.43457768253421 | 68.93699274820051 | 99.43940781386681 | 129.94182287953316 | 160.44423794519935 | â„ƒ | -20 | 3.7228135866540013 | 1.947947123347306 | 1.260951363659349 | 0.8958972671990486 | 0.6693291163258737 |
-|  | -18 | 136.4319267039476 | 128.26079111406074 | 119.99427197614187 | 111.65088301392503 | 103.25239526484405 |  | -18 | 38.65641446559241 | 72.645750186853 | 106.6350859081136 | 140.62442162937424 | 174.61375735063473 |  | -18 | 4.103892650942922 | 2.0529825130883173 | 1.3084644893361088 | 0.9232152328270129 | 0.6875799853815265 |
-|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  | æœ‰åŠ¹å†·å‡èƒ½åŠ›ã®ã€€COPæ¯” |  |  |  |  |
-|  |  |  | ä½“ç©åŠ¹çŽ‡ã€€æ¸¬å®šå€¤ |  |  | ä½“ç©åŠ¹çŽ‡ã€€è¨ˆç®—å€¤ |  |  |  |  |  |  |  |  |  | å‡ç¸®æ¸©åº¦  â„ƒ |  |  |  |  |
-| PC | PE |  | 37.8 | 46.1 | 37.8 | 46.1 | 46.1 |  |  |  |  |  |  |  |  | 35 | 40 | 45 | 50 | 55 |
-| 5.162372024232351 | 0.382994430215269 | 13.47897414939101 | 0.750251124266466 |  |  | 0.7539429723269733 |  |  |  |  |  |  |  |  | -32 | 2.7021483933418255 | 2.046674567059411 | 1.5910262344129678 | 1.2561118419232435 | 1 |
-| 6.3983727391430625 | 0.382994430215269 | 16.70617699465431 |  | 0.7136535113015171 |  |  | 0.7117286686702702 |  |  |  |  |  |  | è’¸ | -30 | 3.16515846307631 | 2.2371002713579444 | 1.664887826529507 | 1.276809355153482 | 0.9966050698364605 |
-| 7.835776826532984 | 0.382994430215269 | 20.459244856716957 |  |  | 0.6587570865372743 |  |  | 0.6626356447824581 |  |  |  |  |  | ç™º | -28 | 3.671891121153827 | 2.425571427941013 | 1.7383083351566457 | 1.302725784511161 | 1.0021485631457836 |
-| 5.162372024232351 | 0.6399178637701737 | 8.067241620381479 | 0.8194887439596955 |  |  | 0.8204770068496722 |  |  |  |  |  |  |  | æ¸© | -26 | 4.217590354864289 | 2.611084610909248 | 1.8117256256926404 | 1.3330873503949079 | 1.0144734879066675 |
-| 6.3983727391430625 | 0.6399178637701737 | 9.998740621876179 |  | 0.8030989718742899 |  |  | 0.7941926117408092 |  |  |  |  |  |  | åº¦ | -24 | 4.795280857237264 | 2.792954887506902 | 1.8855161650878465 | 1.3673551976007279 | 1.0321980742493437 |
-| 7.835776826532984 | 0.6399178637701737 | 12.244972785049804 |  |  | 0.7703194213539598 |  |  | 0.763625237055447 |  |  |  |  |  |  | -22 | 5.396035102280456 | 2.970789440432827 | 1.9600049877964612 | 1.4051474443641883 | 1.054402392397612 |
-| 5.162372024232351 | 1.0168283285879745 | 5.076935682349757 | 0.8563733691862448 |  |  | 0.8572410408162303 |  |  |  |  |  |  |  | â„ƒ | -20 | 6.009503803778392 | 3.144448513156989 | 2.0354744710978405 | 1.4461906054947815 | 1.0804558909314532 |
-| 6.3983727391430625 | 1.0168283285879745 | 6.292480804530895 |  | 0.8392459021210147 |  |  | 0.8397588730657153 |  |  |  |  |  |  |  | -18 | 6.624655766958712 | 3.314000535971882 | 2.1121719212488483 | 1.4902882790772747 | 1.1099171208478253 |
-| 7.835776826532984 | 1.0168283285879745 | 7.706096109078893 |  |  | 0.8118419524279362 |  |  | 0.8194280277208225 |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4.787831838082025 | 1.1086403483853422 | 4.318651982182653 | 0.8754891851607379 |  |  | 0.8684551596279145 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6.223359441868405 | 1.1086403483853422 | 5.6135061753185305 |  | 0.7928537266420329 |  |  | 0.7969223658821604 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7.947949161792489 | 1.1086403483853422 | 7.169096067419995 |  |  | 0.7079848768614745 |  |  | 0.7109855156216794 |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | å†·å‡èƒ½åŠ›ã€€è¿‘ä¼¼å¼ã¨ãƒ‡ãƒ¼ã‚¿ãƒ¼ã®æ¯”è¼ƒ |  |  |  |  |  |  |  | å…¥åŠ›ã€€è¿‘ä¼¼å¼ã¨ãƒ‡ãƒ¼ã‚¿ãƒ¼ã®æ¯”è¼ƒ |  |  |  |  |  |  |  |  |  |
-|  |  | è¨ˆç®—çµæžœ |  |  | ãƒ‡ãƒ¼ã‚¿ãƒ¼ |  |  |  |  |  | è¨ˆç®—çµæžœ |  |  | ãƒ‡ãƒ¼ã‚¿ãƒ¼ |  |  |  |  |  |  |
-|  |  | 37.8 | 46.1 | 54.4 | 37.8 | 46.1 | 54.4 |  |  |  | 40.5 | 54.4 | 65 | 40.5 | 54.4 | 65 |  |  |  |  |
-|  | -34.4 | 70.90169277740574 | 66.93180951230698 | 62.315043224978375 | 70.554507 | 67.112824 | 61.950299 |  |  | -30 | 48.70833333332502 | 57.66666666666823 | 66.62500000001125 | 49.7 | 51.3 | 72 |  |  |  |  |
-|  | -23.3 | 129.21876574114629 | 125.07917734821743 | 120.2650528866975 | 129.063122 | 126.48186 | 121.319335 |  |  | -20 | 52.583333333328426 | 93.66666666666168 | 134.74999999999494 | 67.6 | 72.4 | 141 |  |  |  |  |
-|  | -12.2 | 215.32314711884123 | 210.93194884523064 | 205.8252152722784 | 215.105204 | 210.8031 | 203.919733 |  |  | -15 | 65.69166666667978 | 138.90000000000327 | 212.10833333332664 | 86.2 | 93.5 | 237 |  |  |  |  |
-|  | -20 |  |  |  |  |  |  |  |  | -10 |  |  |  |  |  |  |  |  |  |  |
-|  | -15 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  | -10 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-**Rows with data:** 73
-**Columns:** 21
-**File type:** Values (calculated results)
-
----
-## Compressor pv73_MACROS.md
-
-# VBA Macros
-
-
-
-
-
-
-'
-' Record2 Æ’}Æ’NÆ’Â
-' ÃÂ¸Ã›â€¹LËœ^â€œÃº : 1996/8/3  Ã•Â°Â»ÃžÂ°â€“Â¼ : Æ’VÆ’Æ’Â[Æ’v(Å â€)
-'
-'
-
-Dim N, AA(20, 20), F(10), TC(40), TE(40), PC(40), PE(40), Q(40), W(40), ETV(40), G(40), TEV, TD, IL, IGL, IG, VG, PL, PH, T, EAA(40), REI, ITC
-    
-Sub Record2()
-Dim QU(40)
-  
-
-'  Æ’fÂ[Æ’^Â[â€šÃŒâ€œÃ‡â€šÃÂÅ¾â€šÃ
-'  VC:Æ’VÆ’Å Æ’â€œÆ’_Â[â€”eÂÃ
-'  RPM:â€°Ã±â€œ]Ââ€
-'  NE:ÂÃ¶â€Â­â€°Â·â€œxâ€šÃŒÆ’fÂ[Æ’^Â[Ââ€
-'  NC:â€¹ÃƒÂkâ€°Â·â€œxÆ’fÂ[Æ’^Â[Ââ€
-'  NN:â€˜SÆ’fÂ[Æ’^Â[Ââ€
-    VC = Cells(4, 4)
-    RPM = Cells(5, 4)
-    NC = Cells(6, 4)
-    NE = Cells(7, 4)
-    NN = NC * NE
-    Cells(8, 4) = NN
-    YN = Cells(9, 4)
-    
-    REI = Cells(3, 6)
-    Cells(3, 10) = ""
-   
-    II = 0
-    For I = 1 To NE
-    For J = 1 To NC
-    II = II + 1
-    Q(II) = Cells(I + 13, J + 2)
-    TE(II) = Cells(I + 13, 2)
-    TC(II) = Cells(13, J + 2)
-    Next J
-    Next I
-    
-    
-    For I = 1 To 3
-    Cells(13, I + 12) = ""
-    Next I
-    
-    For I = 1 To 6
-    For J = 1 To 4
-    Cells(I + 25, J + 11) = ""
-    Cells(I + 26, J + 1) = ""
-    Cells(I + 26, J + 6) = ""
-    Cells(I + 26, J + 11) = ""
-    Cells(I + 26, J + 16) = ""
-    Next J
-    Next I
-
-    
-    If YN = "N" Then GoTo BB
-    II = 0
-    For I = 1 To NE
-    For J = 1 To NC
-    II = II + 1
-    W(II) = Cells(I + 13, J + 7)
-    Next J
-    Next I
-         
-BB:
-    For I = 1 To 5
-    For J = 1 To 5
-    AA(I, J) = 0
-    Next J
-    Next I
-    
-'  â€˜ÃŒÂÃÅ’Ã¸â€”Â¦â€šÃŒâ€¹ÃŸÅ½â€”Å½Â®ÂÃ¬ÂÂ¬
-    
-    T = 32.2
-    JOTA
-    IIN = IL
-    PDE = 0
-    TIN = 32.2
-    
-    For I = 1 To NN
-    TEV = TE(I)
-    TD = TC(I)
-    
-    JOTA
-    PE(I) = PL
-    PC(I) = PH
-    
-       
-    G(I) = Q(I) / (IG - IIN)
-    GK = 60 * RPM * VC / VG / 10 ^ 6
-    
-'Â@ÂÃ…ÂÂ¬â€šQÂÃ¦â€“@Å’vÅ½ZÆ’}Æ’gÆ’Å Æ’NÆ’XÂÃ¬ÂÂ¬
-    ETV(I) = G(I) / GK
-    F(1) = 1
-    F(2) = PC(I) / PE(I)
-    F(3) = PC(I)
-    F(4) = ETV(I)
-    
-    For J = 1 To 3
-    For K = 1 To 4
-    AA(J, K) = F(J) * F(K) + AA(J, K)
-    Next K
-    Next J
-    Next I
-    
-'  â€˜ÃŒÂÃÅ’Ã¸â€”Â¦â€šÃŒÅ’vÅ½ZÅ’â€¹â€°ÃŠâ€šÃŒË†Ã³ÂÃ¼
-    
-    For I = 1 To NC
-    Cells(13, 12 + I) = TC(I)
-    Next I
-    
-    For J = 1 To NE
-    Cells(J + 13, 12) = TE(J * NC)
-    Next J
-    
-    II = 0
-    For I = 1 To NE
-    For J = 1 To NC
-    II = II + 1
-    Cells(13 + I, J + 12) = ETV(II)
-    Next J
-    Next I
-    
- 
-       
-    N = 3
-' Æ’}Æ’gÆ’Å Æ’NÆ’Xâ€šÃŒÅ’vÅ½Z
-    MATX
-' â€˜ÃŒÂÃÅ’Ã¸â€”Â¦â€šÃŒÅ’WÂâ€Ë†Ã³Å½Å¡
-    E1 = AA(1, 4)
-    E2 = AA(2, 4)
-    E3 = AA(3, 4)
-    Cells(21, 1) = "Æ’Ã…v="
-    Cells(21, 2) = E1
-    
-    Cells(21, 3) = E2
-    Cells(21, 4) = "* PC/PE +"
-    Cells(21, 5) = E3
-    Cells(21, 6) = "* PC"
-    
-    If YN = "N" Then GoTo BX
-'  â€œÃ¼â€”Ãâ€¹ÃŸÅ½â€”Å½Â®â€šÃŒÂÃ¬ÂÂ¬
-    For I = 1 To 5
-    For J = 1 To 6
-    AA(I, J) = 0
-    Next J
-    Next I
-    
-    For I = 1 To NN
-    F(1) = 1
-    F(2) = TE(I)
-    F(3) = TC(I)
-    F(4) = TC(I) * TE(I)
-    F(5) = TE(I) * TE(I)
-    F(6) = W(I)
-    For J = 1 To 5
-    For K = 1 To 6
-    AA(J, K) = AA(J, K) + F(J) * F(K)
-    Next K
-    Next J
-    Next I
-    
-'    For I = 1 To 5
-'    For J = 1 To 6
-'    Cells(38 + I, 10 + J) = AA(I, J)
-'    Next J
-'    Next I
-    
-    N = 5
-' Æ’}Æ’gÆ’Å Æ’NÆ’Xâ€šÃŒÅ’vÅ½Z
-    MATX
-    
-    W1 = AA(1, 6)
-    W2 = AA(2, 6)
-    W3 = AA(3, 6)
-    W4 = AA(4, 6)
-    W5 = AA(5, 6)
-    
-    
-    Cells(22, 1) = "W="
-    Cells(22, 2) = W1
-    Cells(22, 3) = W2
-    Cells(22, 4) = "*TE+"
-    Cells(22, 5) = W3
-    Cells(22, 6) = "*TC+"
-    Cells(22, 7) = W4
-    Cells(22, 8) = "*TC*TE+"
-    Cells(22, 9) = W5
-    Cells(22, 10) = "*TE^2"
-    
-    
-BX:
-    
-    For I = 1 To NC
-    Cells(26, I + 2) = TC(I)
-    Cells(26, I + 7) = TC(I)
-    Cells(26, I + 12) = TC(I)
-    Cells(104, I + 2) = TC(I)
-    Cells(104, I + 5) = TC(I)
-    Next I
-    
-    For J = 1 To NE
-    Cells(J + 26, 2) = TE(J * NC)
-    Cells(J + 26, 7) = TE(J * NC)
-    Cells(J + 26, 12) = TE(J * NC)
-    Cells(J + 104, 2) = TE(J * NC)
-    Next J
-
-    II = 0
-    T = 32.2
-    For I = 1 To NE
-    For J = 1 To NC
-    II = II + 1
-    TD = TC(II)
-    TEV = TE(II)
-    JOTA
-    ET = E1 + E2 * PH / PL + E3 * PH
-    GG = ET * RPM * VC * 60 / VG / 10 ^ 6
-    QS = GG * (IG - IL)
-    Cells(I + 26, J + 2) = QS
-    
-    If YN = "N" Then GoTo ZB
-    Cells(I + 26, J + 7) = W1 + W2 * TEV + W3 * TD + W4 * TEV * TD + W5 * TEV ^ 2
-    Cells(I + 26, J + 12) = ET
-
-ZB:
-    Next J
-    Next I
-    
-'  â€˜ÃŒÂÃÅ’Ã¸â€”Â¦â€šÃŒÆ’OÆ’â€°Æ’t
-
-    For I = 1 To 15
-    For J = 1 To 9
-    Cells(I + 72, J) = ""
-    Next J
-    Next I
-    
-    
-    NN = 0
-    For I = 1 To NE
-    For J = 1 To NC
-    NN = NN + 1
-    Cells(NN + 72, 1) = PC(NN)
-    Cells(NN + 72, 2) = PE(NN)
-    Cells(NN + 72, 3) = PC(NN) / PE(NN)
-    ET = E1 + E2 * PC(NN) / PE(NN) + E3 * PC(NN)
-    Cells(NN + 72, J + 6) = ET
-    Cells(NN + 72, J + 3) = ETV(NN)
-    
-    Next J
-    Next I
-    
-
-    
-'â€™Ã¨Å iâ€”Ã¢â€œâ‚¬â€\â€”ÃÂAâ€œÃ¼â€”Ãâ€šÃŒÅ’vÅ½Z
-    T = 32.2
-    TD = 54.4
-    TEV = -23.3
-    JOTA
-    IIN = IL
-    EA = E1 + E2 * PH / PL + E3 * PH
-    GT = EA * VC * 60 * RPM / VG / 10 ^ 6
-    QT = GT * (IG - IL)
-    If YN = "N" Then GoTo BY
-    WT = W1 + W2 * TEV + W3 * TD + W4 * TEV * TD + W5 * TEV ^ 2
-BY:
-    Cells(5, 9) = QT
-    Cells(6, 9) = WT
-    
-    
-    
-'Â@â€”Ã¢â€œâ‚¬â€\â€”ÃÂAâ€œÃ¼â€”Ãâ€šÃŒÅ’vÅ½Z
-    II = 0
-    For I = 1 To 8
-    TE(I) = -34 + I * 2
-    TEV = TE(I)
-    JOTA
-    PE(I) = PL
-    
-    For J = 1 To 5
-    II = II + 1
-    TC(J) = J * 5 + 30
-    TD = TC(I)
-    T = 32.2
-    JOTA
-    I1 = ITC
-    I2 = IGL
-    TD = TC(J)
-    JOTA
-    
-    PC(J) = PH
-    T = TIN
-    TEV = TE(I)
-    JOTA
-    
-    EAA(II) = E1 + E2 * PC(J) / PE(I) + E3 * PC(J)
-    G(II) = EAA(II) * VC * 60 * RPM / VG / 10 ^ 6
-    Q(II) = G(II) * (IG - IIN)
-    QU(II) = G(II) * (I2 - ITC)
-    If YN = "N" Then GoTo BZ
-    W(II) = W1 + W2 * TE(I) + W3 * TC(J) + W4 * TC(J) * TE(I) + W5 * TE(I) ^ 2
-BZ:
-    Next J
-    Next I
-    
-    
-    For I = 1 To 5
-    Cells(42, I + 2) = TC(I)
-    Cells(42, I + 9) = TC(I)
-    Cells(59, I + 2) = TC(I)
-    Next I
-    For J = 1 To 8
-    Cells(42 + J, 2) = TE(J)
-    Cells(42 + J, 9) = TE(J)
-    Cells(59 + J, 2) = TE(J)
-    Next J
-    
-    II = 0
-    For I = 1 To 8
-    For J = 1 To 5
-    II = II + 1
-    Cells(42 + I, J + 2) = Q(II)
-    If YN = "N" Then GoTo ZZ
-    Cells(42 + I, J + 9) = W(II)
-ZZ:
-    Cells(59 + I, J + 2) = QU(II)
-    Next J
-    Next I
-    
-End Sub
-
-Sub MATX()
-    
-    For K = 1 To N
-    AK = AA(K, K)
-    For J = 1 To N + 1
-    AA(K, J) = AA(K, J) / AK
-    Next J
-    For I = 1 To N
-    AIK = AA(I, K)
-    For J = 1 To N + 1
-    If I = K Then GoTo DD
-    AA(I, J) = AA(I, J) - AIK * AA(K, J)
-    Next J
-DD:
-    Next I
-    Next K
-                                        
-'    For I = 1 To N
-'    For J = 1 To N + 1
-'    Cells(37 + I, 3 + J) = AA(I, J)
-'    Next J
-'    Next I
-End Sub
-                      
-Sub JOTA()
-
-    TA0 = T + 273.16
-    TAC = TD + 273.16
-    TAE = TEV + 273.16
-    
-    If REI = 1 Then GoTo RX
-    If REI = 2 Then GoTo RY
-    
-    Stop
-    
-RX:
-' R-134a â€”Ã¢â€}â€œÃÂÂ«Å½Â®
-    Cells(3, 11) = "R-134a"
-    
-    PH = Exp(104.918 - 5301.3 / TAC - 16.2481 * Log(TAC) + 0.0246593 * TAC)
-    PL = Exp(104.918 - 5301.3 / TAE - 16.2481 * Log(TAE) + 0.0246593 * TAE)
-    IL = 100.019 + 0.31763 * T + 0.00033057 * T ^ 2 + 0.0000035281 * T ^ 3
-    ITC = 100.019 + 0.31763 * (TD - 10) + 0.00033057 * (TD - 10) ^ 2 + 0.0000035281 * (TD - 10) ^ 3
-    IG = 119.36 + 0.023174 * TA0 + 0.00031297 * TA0 ^ 2 - 138.07 * PL / TA0
-    IGL = 119.36 + 0.023174 * TAE + 0.00031297 * TAE ^ 2 - 138.07 * PL / TAE
-    VG = 0.01077 + 0.0008278 * TA0 / PL - 4.511 / TA0 - 0.000118 * PL
-    GoTo JX
-
-RY:
-' R-600a â€”Ã¢â€}â€œÃÂÂ«
-    Cells(3, 11) = "R-600a"
-    
-    PH = Exp(68.322 - 4401 / TAC - 9.8436 * Log(TAC) + 0.0127711 * TAC)
-    PL = Exp(68.322 - 4401 / TAE - 9.8436 * Log(TAE) + 0.0127711 * TAE)
-    IL = 75.545 + 0.55731 * T + 0.0007088 * T ^ 2 + 0.0000029408 * T ^ 3
-    ITC = 75.545 + 0.55731 * (TD - 10) + 0.0007088 * (TD - 10) ^ 2 + 0.0000029408 * (TD - 10) ^ 3
-    IG = 104.5 + 0.049951 * TA0 + 0.00058822 * TA0 ^ 2 - 249.18 * PL / TA0
-    IGL = 104.5 + 0.049951 * TAE + 0.00058822 * TAE ^ 2 - 249.18 * PL / TAE
-    VG = 0.015883 + 0.001455 * TA0 / PL - 7.2936 / TA0 - 0.0004645 * PL
-    
-JX:
-
-End Sub
-    
-
-
-
-
-
----
 ## css_style.md
 
 # style.css
@@ -1257,7 +230,7 @@ button {
 
 ---
 
-*Converted from `style.css` on 2026-05-27 14:13:10*
+*Converted from `style.css` on 2026-06-22 22:25:35*
 
 
 ---
@@ -1267,7 +240,7 @@ button {
 
 **Source path:** `D:\refrigerator-volume-calculator\src`
 
-**Generated:** 2026-05-27 14:13:10
+**Generated:** 2026-06-22 22:25:35
 
 **Total files found:** 24
 
@@ -1362,7 +335,7 @@ button {
 
 | ðŸ“œ `js\engine\thermo\compressorMap.js` | [js_engine_thermo_compressorMap.md](js_engine_thermo_compressorMap.md) | JS | 4,500 bytes |
 
-| ðŸ“œ `js\engine\thermo\condenser.js` | [js_engine_thermo_condenser.md](js_engine_thermo_condenser.md) | JS | 1,885 bytes |
+| ðŸ“œ `js\engine\thermo\condenser.js` | [js_engine_thermo_condenser.md](js_engine_thermo_condenser.md) | JS | 1,891 bytes |
 
 | ðŸ“œ `js\engine\thermo\constants.js` | [js_engine_thermo_constants.md](js_engine_thermo_constants.md) | JS | 1,720 bytes |
 
@@ -1370,11 +343,11 @@ button {
 
 | ðŸ“œ `js\engine\thermo\evaporator.js` | [js_engine_thermo_evaporator.md](js_engine_thermo_evaporator.md) | JS | 1,890 bytes |
 
-| ðŸ“œ `js\engine\thermo\heatLoad.js` | [js_engine_thermo_heatLoad.md](js_engine_thermo_heatLoad.md) | JS | 10,377 bytes |
+| ðŸ“œ `js\engine\thermo\heatLoad.js` | [js_engine_thermo_heatLoad.md](js_engine_thermo_heatLoad.md) | JS | 10,388 bytes |
 
 | ðŸ“œ `js\engine\thermo\index.js` | [js_engine_thermo_index.md](js_engine_thermo_index.md) | JS | 7,152 bytes |
 
-| ðŸ“œ `js\engine\thermo\refrigerant.js` | [js_engine_thermo_refrigerant.md](js_engine_thermo_refrigerant.md) | JS | 5,080 bytes |
+| ðŸ“œ `js\engine\thermo\refrigerant.js` | [js_engine_thermo_refrigerant.md](js_engine_thermo_refrigerant.md) | JS | 5,081 bytes |
 
 | ðŸ“œ `js\engine\thermo\solver.js` | [js_engine_thermo_solver.md](js_engine_thermo_solver.md) | JS | 8,643 bytes |
 
@@ -1583,7 +556,7 @@ button {
 
 ---
 
-*Converted from `index.html` on 2026-05-27 14:13:10*
+*Converted from `index.html` on 2026-06-22 22:25:35*
 
 
 ---
@@ -1820,7 +793,7 @@ export function formatTotalsDisplay(totals) {
 
 ---
 
-*Converted from `calc.js` on 2026-05-27 14:13:09*
+*Converted from `calc.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -1985,7 +958,7 @@ export function upgradeConfig(oldConfig) {
 
 ---
 
-*Converted from `geometry.js` on 2026-05-27 14:13:09*
+*Converted from `geometry.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2191,7 +1164,7 @@ export { traverseAndCompute }              from './traversal.js';
 
 ---
 
-*Converted from `index.js` on 2026-05-27 14:13:10*
+*Converted from `index.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2284,7 +1257,7 @@ export function resolveCompressorState(TC, TE, refrigerant, compParams, subcool,
 
 ---
 
-*Converted from `compressor.js` on 2026-05-27 14:13:10*
+*Converted from `compressor.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2424,7 +1397,7 @@ export const SQ47LAEG_MAP = {
 
 ---
 
-*Converted from `compressorMap.js` on 2026-05-27 14:13:10*
+*Converted from `compressorMap.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2436,9 +1409,9 @@ export const SQ47LAEG_MAP = {
 
 **File type:** .JS
 
-**Size:** 1,885 bytes
+**Size:** 1,891 bytes
 
-**Last modified:** 2026-05-27 12:18:20
+**Last modified:** 2026-06-08 23:21:30
 
 
 ---
@@ -2454,8 +1427,8 @@ export function calcQCout(TC, T0, TF, TR, areas) {
   const dT_TC_TF = TC - TF;
   const dT_TC_TR = TC - TR;   // â† add
   return (areas.k_RFront1 * dT_TC_T0 + areas.k_RFront2 * dT_TC_TR) * areas.RFrontLength
-       + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TF) * areas.FRPartitionLength
-       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TR) * areas.FFrontLength  // â† fix
+       + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TR) * areas.FRPartitionLength
+       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TF) * areas.FFrontLength  // â† fix
        + areas.sideKA * dT_TC_T0
        + areas.backKA * dT_TC_T0;
 }
@@ -2483,7 +1456,7 @@ export function computeCondenserAreas(geom, condenserConfig, freezerPosition = '
   const t_lower_left = isTop ? tRleft : tFleft;
 
   const RFrontLength      = H_lower * 2 / 1000;
-  const FFrontLength      = H_upper * 2 / 1000;
+  const FFrontLength      = (H_upper + W) * 2 / 1000;
   const FRPartitionLength = (W - t_lower_left - t_lower_top) / 1000;
 
   return {
@@ -2501,7 +1474,7 @@ export function computeCondenserAreas(geom, condenserConfig, freezerPosition = '
 
 ---
 
-*Converted from `condenser.js` on 2026-05-27 14:13:10*
+*Converted from `condenser.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2569,7 +1542,7 @@ export const PHYSICAL_CONSTANTS = Object.freeze({
 
 ---
 
-*Converted from `constants.js` on 2026-05-27 14:13:10*
+*Converted from `constants.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2705,7 +1678,7 @@ export const SJ_PV73K_COMPONENTS = Object.freeze({
 
 ---
 
-*Converted from `defaultComponents.js` on 2026-05-27 14:13:10*
+*Converted from `defaultComponents.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2787,7 +1760,7 @@ export function evaporatorCapacity(alpha, area, LMTD) {
 
 ---
 
-*Converted from `evaporator.js` on 2026-05-27 14:13:10*
+*Converted from `evaporator.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -2799,9 +1772,9 @@ export function evaporatorCapacity(alpha, area, LMTD) {
 
 **File type:** .JS
 
-**Size:** 10,377 bytes
+**Size:** 10,388 bytes
 
-**Last modified:** 2026-05-26 04:41:26
+**Last modified:** 2026-06-08 23:15:51
 
 
 ---
@@ -2911,7 +1884,7 @@ export function calcHeatLoads(
   // Partition losses
   QF += (0.1219*(TC-TF)*PR + 0.1219*((0.1984*T0+0.1219*TF)/(0.1984+0.1219)-TF)*(1-PR))
         * (W - tFleft - tFright) / 1000;
-  QF += (0.0791*(TC-TF) - 0.072*(T0-TF)) * PR * (Hf*2 + W) / 1000;
+  QF += (0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000;
 
   // â”€â”€ Refrigerator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let ARtop, ARleft, ARback;
@@ -2961,7 +1934,7 @@ export function calcHeatLoads(
   // Refrigerator door + packing
   QR += kExterior(tRdoor, TR, T0) * ARdoor * (T0 - TR)
       + PC.insulation.packing * ARpackin * (T0 - TR);
-    QR += (0.0546*(TC-TF) - 0.0491*(T0-TF)) * PR * (Hr*2 + W) / 1000;
+    QR += (0.0546*(TC-TR)* PR + 0.0491*(T0-TR)* (1-PR )) * (Hr*2 + W) / 1000;
 // â”€â”€ Evaporator back (always on freezer back) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   let A_evaBack;
   if (isTopFreezer) {
@@ -3054,7 +2027,7 @@ export function computeWallConductances(geom, T0, TF, TR, freezerPosition = 'top
 
 ---
 
-*Converted from `heatLoad.js` on 2026-05-27 14:13:10*
+*Converted from `heatLoad.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -3284,7 +2257,7 @@ function deepMerge(target, source) {
 
 ---
 
-*Converted from `index.js` on 2026-05-27 14:13:10*
+*Converted from `index.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -3296,9 +2269,9 @@ function deepMerge(target, source) {
 
 **File type:** .JS
 
-**Size:** 5,080 bytes
+**Size:** 5,081 bytes
 
-**Last modified:** 2026-05-08 15:11:59
+**Last modified:** 2026-06-08 23:10:29
 
 
 ---
@@ -3381,10 +2354,10 @@ export function specificVolumeR600a(t, p) {
 export function specificVolumeR134a(t, p) {
   const Tk = t + 273.16;
   return (
-    0.01248
-    + (0.0008207 * Tk) / p
-    - 4.663 / Tk
-    - 0.0002297 * p
+     0.01077
+    + (0.0008278 * Tk) / p
+    - 4.511 / Tk
+    - 0.0001180 * p
   );
 }
 
@@ -3439,10 +2412,10 @@ export function vaporEnthalpyR134a(t, p) {
  */
 export function liquidEnthalpyR600a(t_sub) {
   return (
-    75.545
-    + 0.55731 * t_sub
-    + 0.0007088 * t_sub * t_sub
-    + 0.0000029408 * t_sub * t_sub * t_sub
+    75.544
+    + 0.55712 * t_sub
+    + 0.0007082 * t_sub * t_sub
+    + 0.0000031108 * t_sub * t_sub * t_sub
   );
 }
 
@@ -3495,7 +2468,7 @@ export function getRefrigerantFunctions(name) {
 
 ---
 
-*Converted from `refrigerant.js` on 2026-05-27 14:13:10*
+*Converted from `refrigerant.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -3509,7 +2482,7 @@ export function getRefrigerantFunctions(name) {
 
 **Size:** 8,643 bytes
 
-**Last modified:** 2026-05-26 05:11:17
+**Last modified:** 2026-06-08 23:23:41
 
 
 ---
@@ -3708,7 +2681,7 @@ export function runThermalAnalysisDynamic(config) {
 
 ---
 
-*Converted from `solver.js` on 2026-05-27 14:13:10*
+*Converted from `solver.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -4036,7 +3009,7 @@ function checkDoorBinDepth(fittings, space, nodeId) {
 
 ---
 
-*Converted from `traversal.js` on 2026-05-27 14:13:10*
+*Converted from `traversal.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -4233,7 +3206,7 @@ function checkDoorBinDepth(fittings, space, nodeId) {
 
 ---
 
-*Converted from `types.js` on 2026-05-27 14:13:10*
+*Converted from `types.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -4552,7 +3525,7 @@ function checkPositive(obj, fields, errors, nodeId) {
 
 ---
 
-*Converted from `validationPass1.js` on 2026-05-27 14:13:10*
+*Converted from `validationPass1.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -4788,7 +3761,7 @@ export function downloadResultsCSV(result, configName, filename) {
 
 ---
 
-*Converted from `io.js` on 2026-05-27 14:13:10*
+*Converted from `io.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -5588,7 +4561,7 @@ initThermoUI(() => readGeometryFromPanel());
 
 ---
 
-*Converted from `main.js` on 2026-05-27 14:13:09*
+*Converted from `main.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -5664,7 +4637,7 @@ export function getSettings() {
 
 ---
 
-*Converted from `settings.js` on 2026-05-27 14:13:09*
+*Converted from `settings.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -6134,7 +5107,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
 ---
 
-*Converted from `schematic.js` on 2026-05-27 14:13:10*
+*Converted from `schematic.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -6281,7 +5254,7 @@ function importSettings() {
 
 ---
 
-*Converted from `settingsModal.js` on 2026-05-27 14:13:10*
+*Converted from `settingsModal.js` on 2026-06-22 22:25:35*
 
 
 ---
@@ -6449,423 +5422,6 @@ function showWarnings(warnings) {
 
 ---
 
-*Converted from `thermoUI.js` on 2026-05-27 14:13:10*
+*Converted from `thermoUI.js` on 2026-06-22 22:25:35*
 
-
----
-## pv73 calc_MACROS.md
-
-# VBA Macros
-
-
-
-
-Sub Macro2()
-
-Dim AA(10, 10), X(10), FX0(10), FX1(10), FDX(10)
-
-' Æ’nÆ’â€œÆ’`Æ’â€œÆ’O Macro
-' Æ’}Æ’NÆ’Ââ€¹LËœ^â€œÃº : 2002/4/13  Æ’â€ Â[Æ’UÂ[â€“Â¼ : takatori
-'
-    Cells(3, 5) = ""
-    DD1 = 0.0005
-    DX = 0.001
-    DY = 0.00001
-    DZ = 0.001
-    DH = 0.001
-    NN = 0
-    NNC = 0
-    NM = 0
-    KF = 2
-    KTC = Cells(36, 5)
-
-A0:
-    For I = 1 To KF
-    X(I) = Cells(36 + I, 5)
-    Next I
-   
-A1:
-    For I = 1 To KF
-    FX0(I) = Cells(42 + I, 5)
-    Next I
-    
-    For I = 1 To KF
-    If Abs(FX0(I)) > DD1 Then GoTo A2
-    Next I
-    
-    NN = 0
-    If KTC = 1 Then GoTo BB
-    GoTo ZZ
-
-A2:
-    NN = NN + 1
-    If NN > 100 Then GoTo CC
-    
-    For I = 1 To KF
-    Cells(36 + I, 5) = X(I) + DX
-    
-    For J = 1 To KF
-    FX1(J) = Cells(42 + J, 5)
-    AA(J, I) = (FX1(J) - FX0(J)) / DX
-
-    Next J
-    
-    Cells(36 + I, 5) = X(I)
-    Next I
-    
-    For I = 1 To KF
-    AA(I, KF + 1) = -1 * FX0(I)
-    Next I
-    
-    N = KF
-    
-    For K = 1 To N
-    AK = AA(K, K)
-    For J = 1 To N + 1
-    AA(K, J) = AA(K, J) / AK
-    Next J
-    For I = 1 To N
-    AIK = AA(I, K)
-    For J = 1 To N + 1
-    If I = K Then GoTo DD
-    AA(I, J) = AA(I, J) - AIK * AA(K, J)
-    Next J
-DD:
-    Next I
-    Next K
-        
-    For I = 1 To KF
-    X(I) = X(I) + AA(I, KF + 1)
-    Cells(36 + I, 5) = X(I)
-    Next I
-    
-    GoTo A1
-BB:
-    If KTC = 0 Then GoTo ZZ
-    If NNC = 1 Then GoTo EE
-    NM = NM + 1
-    If NM > 100 Then GoTo CC
-    X3 = Cells(39, 5)
-    FH0 = Cells(45, 5)
-    If Abs(FH0) < DD1 Then GoTo ZZ
-    Cells(39, 5) = X3 + DH
-    NNC = 1
-    GoTo A0
-EE:
-
-    FH1 = Cells(45, 5)
-    FDH = (FH1 - FH0) / DH
-    X3 = X3 - FH0 / FDH
-    Cells(39, 5) = X3
-    NNC = 0
-    GoTo A0
-    
-    
-CC:
-    Cells(3, 5) = "NG!"
-    GoTo XX
-    
-ZZ:
-    Cells(3, 5) = "OK!"
-XX:
-
-'
-End Sub
-
-
----
-## pv73 calc_MAIN_formulas.md
-
-# Sheet: MAIN - FORMULAS (Original Excel Formulas)
-
-*This shows the actual formulas as entered in Excel*
-
-*Formulas are shown in `code blocks` for clarity*
-
-## Formula Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U | Column_V | Column_W | Column_X | Column_Y | Column_Z | Column_AA | Column_AB |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-pv73k   > | Ver. 2014/01/07 |  |  |  |  | Refrigerant |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  | OK! |  | R-600a=1,R-134a=2 | 1 | `=IF(H3=1,"R-600a",IF(H3=2,"R-134a","??"))` |  |  |  | Refrigerant | R-600a |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼´ï¼¥ï¼­ï¼°ï¼¡ï¼²ï¼¡ï¼´ï¼µï¼²ï¼¥  â—‡ | (â„ƒ) |  | â—‡HEAT LOAD â—‡ |  |  | â—‡  Compressor Data  â—‡ |  |  |  |  |  | COMP NAME | EGX80CLC 100V 50Hz |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F ROOM   TF      (â„ƒ) | -18 |  | QF     TOTAL(kcal/h)  (inlet) | `=SIZE!E32` |  | COMPRESSOR NAME | `=N4` | R-600a |  |  |  | Capacity | `=[1]DATA!$K$5` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| R ROOM   TR      (â„ƒ) | 3 |  | QR     TOTAL(kcal/h)  (inlet) | `=SIZE!E33+E8` |  | 220/240V 50Hz |  |  |  |  |  | COP | `=[1]DATA!$I$7` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DP CON.  TC      (â„ƒ) | `=B8+E39` | Trial | QEV    TOTAL (kcal/h)  (inlet) | `=SIZE!E34` |  | å®šæ ¼ï½ºï½°ï¾…ï½° |  |  |  |  |  | Rpm0= | `=[1]DATA!$D$5` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE  T0      (â„ƒ) | 25 |  | heater          (kcal/h) | 0 |  | N(rpm) | `=N7` |  | Volume Efficiency |  |  | Vc= | `=[1]DATA!$D$4` | Rotational Speed â€‹â€‹Correction |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | heater          (W) | `=E8/0.86` |  | Vc(cc) | `=N8` |  | Î·v=(A+B*PC/PE+C*PC)*KÎ·v |  |  | A= | `=[1]DATA!O4` | a= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼¯ ï¼´ ï¼¨ ï¼¥ ï¼² ï¼³  â—‡ |  |  | Qtotal  (=QF+QR+QEV) | `=SUM(E5:E7)` |  | Î·v | `=(N9+N10*H14/H15+N11*H14)*K10` |  | KÎ·v= | `=P9+P10*H8+P11*H8^2` |  | B= | `=[1]DATA!O5` | b= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN TOTAL                (m3/h) | 146.4 |  |  |  |  | T IN | 32.2 |  |  |  |  | C= | `=[1]DATA!O6` | c= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN Diameter   Ï†mm | 100 |  | â—‡  CALCULATION â—‡ |  |  | TC  Cond | 54.4 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN SPEED               (rpm) | 2850 |  | Fan out air temp         T3      (â„ƒ) | `=E37+E7/B11/B21/B20/E38` |  | TE  Evap | -23.3 |  | R-600a | R-134a |  | AW= | `=[1]DATA!R4` | Rotational Speed â€‹â€‹Correction |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN INPUT                (W) | 2.4 |  | R Air Volume             MR     (m3/h) | `=E6/B20/B21/(B6-E13)/E38` | `=E14/B11` | Pc (Tcond) | `=IF(H3=1,J14,IF(H3=2,K14,"??"))` |  | `=EXP(68.322-4401/(H12+273.16)-9.8436*LN(H12+273.16)+0.0127711*(H12+273.16))` | `=EXP(104.918-5301.3/(H12+273.16)-16.2481*LN(H12+273.16)+0.0246593*(H12+273.16))` |  | BW= | `=[1]DATA!R5` | Ka= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| DEF. HEATER INPUT        (W) | 112 |  | F Air Volume             MF     (m3/h) | `=B11-E14` |  | Pe (Teva) | `=IF(H3=1,J15,IF(H3=2,K15,"??"))` |  | `=EXP(68.322-4401/(H13+273.16)-9.8436*LN(H13+273.16)+0.0127711*(H13+273.16))` | `=EXP(104.918-5301.3/(H13+273.16)-16.2481*LN(H13+273.16)+0.0246593*(H13+273.16))` |  | CW= | `=[1]DATA!R6` | Kb= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp ON     (W) | 2 |  | QF'  (FAN)                    (kcal/h) | `=(B11-E14)*B21*B20*(B5-E13)*E38` |  | Hout (kcal/kg) | `=IF(H3=1,J16,IF(H3=2,K16,"??"))` |  | `=104.5+0.049951*(H11+273.16)+0.00058822*(H11+273.16)^2-249.18*J15/(H11+273.16)` | `= 119.36 + 0.023174 *(H11+273.16) + 0.00031297 * (H11+273.16) ^ 2 - 138.07 *K15/ (H11+273.16)` |  | DW= | `=[1]DATA!R7` | Kc= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp OFF    (W) | 1 |  | QR'  (FAN)                    (kcal/h) | `=E14*B20*B21*(B6-E13)*E38` |  | Hin  (kcal/kg) | `=IF(H3=1,J17,IF(H3=2,K17,"??"))` |  | `=75.545+0.55731*H11+0.0007088*H11^2+0.0000029408*H11^3` | `= 100.019 + 0.31763 * H11+ 0.00033057 * H11^ 2 + 0.0000035281 *H11^ 3` |  | EW= | `=[1]DATA!R8` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| TIMER   Period          (hr) | 10.5 |  | QEV'    =M*Î³*CP*(TEVIN-TEVOUT)*PR | `=B11*B21*B20*(E13-E37)*E38` |  | V(specific volumeï¼‰ | `=IF(H3=1,J18,IF(H3=2,K18,"??"))` |  | `= 0.015883+0.001455*(H11+273.16)/J15-7.2936/(H11+273.16)-0.0004645*J15` | `=0.01248+0.0008207*(H11+273.16)/K15-4.663/(H11+273.16)-0.0002297*K15` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Def. HEATER   ON  time  (min) | 0 |  | Air Speed in Evaporator       (m/sec) | `=B11/(B24*B25)/3600*10^6` |  | G(mass flow rate) | `=H10*H8*60*H9*10^(-6)/H18` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DENSITY(Air)      Î³     (kg/m3) | 1.365 |  | EV INLET  Air   Temp.     T1     (â„ƒ) | `=(E14*B6+E15*B5)/B11` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cp(Air 0â„ƒ)              (kcal/kgâ„ƒ) | 0.24 |  | LOG. MEAN TEMP. DIFF. OF EVA.  (â„ƒ) | `=E10/E23/B33/E38` |  | Rated capacity | `=H19*(H16-H17)` | kcal/h |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | SUB CAL. X | `=EXP((E20-E37)/E21)` |  |  | `=H21/0.86` | W | å…¥åŠ›å›žè»¢æ•°è£œæ­£ |  |  |  | TC= | `=B7` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  EVAPORATOR  (NALCO)  â—‡ |  |  | EVA  Heat transfer Î± ( kcal/hm2â„ƒ) | `=12.93*E19^0.415` |  | Rated input(ï¼·ï¼‰ | `=K23*(N13+N14*H13+N15*H12+N16*H12*H13+N17*H13^2)*H8/N7` | W | Kw= | `=P14+P15*H8+P16*H8^2` |  |  | Te= | `=E24` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV WIDTH  (=30mm*N)      (mm) | 440.5 |  | EV TEMPRATURE                  (â„ƒ) | `=(E20-E22*E37)/(1-E22)` |  | COP | `=H21/H23/0.86` | W=(AW+BW*TE+CW*TC*TE+DW*TE^2)*Kw*Rpm/Rpm0 |  |  |  |  | T0= | `=B8` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV DEPTH                 (mm) | 58 |  | QEV''(Ability of Evaporator)  (kcal/h) | `=E23*B33*E21` |  |  |  |  |  |  |  |  | Tsub= | `=K28` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV Tire (pitch) | 5 |  | COMP INPUT | `=K32` |  | â—‡  Cooling capacity of Refrigerator Condition  â—‡ |  |  |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Diameter  Ï† mm | 8 |  | ON Time INPUT | `=E26+B14+B16` |  | Pc (Tcond) | `=IF(H3=1,N27,IF(H3=2,O27,"??"))` |  | Capi Sub-cool | 10 |  | Pc= | `=EXP(68.322-4401/(O22+273.16)-9.8436*LN(O22+273.16)+0.0127711*(O22+273.16))` | `=EXP(104.918-5301.3/(O22+273.16)-16.2481*LN(O22+273.16)+0.0246593*(O22+273.16))` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface  27*77mm/pc | `=(27*77-3.146*(B27/2)^2*2)*2/10^6` |  | Energy consumption kWh/24h | `=(E27*E38+(1-E38)*B17)*24/1000+B15*E31*B19/60/1000` |  | Pe (Teva) | `=IF(H3=1,N28,IF(H3=2,O28,"??"))` |  | TC-Sub cool | `=B7-K27` |  | Pe= | `=EXP(68.322-4401/(O23+273.16)-9.8436*LN(O23+273.16)+0.0127711*(O23+273.16))` | `=EXP(104.918-5301.3/(O23+273.16)-16.2481*LN(O23+273.16)+0.0246593*(O23+273.16))` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Toatal fin quqntity | `=B45` |  | KWH/MONTH | `=E28*30` |  | V(m3/kgï¼‰ | `=IF(H3=1,N29,IF(H3=2,O29,"??"))` |  | Hevin | `=IF(H3=1,N30,IF(H3=2,O30,"??"))` |  | v= | `=0.015883+0.001455*(O24+273.16)/N28-7.2936/(O24+273.16)-0.0004645*N28` | `=0.01248+0.0008207*(O24+273.16 )/O28-4.663/(O24+273.16)-0.0002297*O28` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface    m2 | `=B29*B28` |  | Qcomp(Ability of Compressor)   (kcal/h) | `=K31` |  | Volume Efficiency | `=(N9+N10*H27/H28+N11*H27)*K10` |  | Hevout | `=IF(H3=1,N31,IF(H3=2,O31,"??"))` |  | Hevin= | `=75.545+0.55731*O25+0.0007088*O25^2+0.0000029408*O25^3` | `=100.019+0.31763*O25+0.00033057*O25^2+0.0000035281*O25^ 3` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Surface  Ï†8mm | `=(3.146*B27*B24)*B26*2/10^6` |  | How many defrost in a day   ï¼ˆTimes/24h) | `=24/E32` |  | G(kg/h) | `=H30*H8*60*H9*10^(-6)/H29` |  | QCOMP | `=H31*(K30-K29)` |  | Hevout= | `=104.5+0.049951*(O23+273.16)+0.00058822*(O23+273.16)^2-249.18*N28/(O23+273.16)` | `= 119.36 + 0.023174 *(O23+273.16) + 0.00031297 * (O23+273.16) ^ 2 - 138.07 *O28/ (O23+273.16)` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Side Plate surface | `=0.07*0.235` |  | Defrosting cycle   Hr | `=B18/E38` |  |  |  |  | COMP INPUT | `=K23*(N13+N14*E24+N15*B7+N16*B7*E24+N17*E24*E24)*H8/N7` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| SURFACE OF EVAPORATOR    (m2) | `=B30+B31+B32` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | â—‡  Condenser Heat Exchange   â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡ quantity of Evaporator fin  â—‡ |  |  | â—‡  ï¼¶ï¼¡ï¼²ï¼©ï¼¡ï¼¢ï¼¬ï¼¥  â—‡ |  |  | ï¼² Front | `=(0.3405*(B7-B8)+0.03322*(B7-B6))*(SIZE!B7*2+SIZE!B9)/1000` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Evaporator Fin quantity | æžšæ•° |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ï¼¦ï¼² Partition | `=(0.1984*(B7-B8)+0.1219*(B7-B5))*(SIZE!B9-SIZE!B25-SIZE!B24)/1000` |  | ç†±é€šéŽçŽ‡ | é¢ç© |  | ã‚µã‚¤ãƒ‰ã‚³ãƒ³ãƒ»ãƒãƒƒã‚¯ã‚³ãƒ³ã®ç†±é€šéŽçŽ‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 part | 67 |  | X1 =EV OUT  Temp.          T2     (â„ƒ) | -19.325223898279788 | Trial | ï¼¦ Front | `=(0.3395*(B7-B8)+0.0344*(B7-B5))*(SIZE!B8*2)/1000` |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 part | 73 |  | X2 =RUNNING RATIO          PR     (ï¼…) | 0.46552849936977625 | Trial | Sid  Condenser | `=J38*K38*E39` | Side Cond | `=N38` | `=(SIZE!B6*(SIZE!B10-30)-(SIZE!B13+SIZE!B12)*SIZE!B11/2)*2/10^6` |  | Side Cond | `=(10.57-0.042*O38+0.00005*O38^2)` | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 part | 73 |  | X3 = âŠ¿T ( TC-T0) | 7.959973536317755 |  | Back Condenser | `=J39*K39*E39` | Back Cond | `=N39` | `=SIZE!B9*(SIZE!B6-SIZE!B11)/10^6*K40` |  | Back Cond | `=(10.57-0.042*O39+0.00005*O39^2)` | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4 part | 47 |  |  |  |  | TOTAL  QC0ut | `=SUM(H35:H39)` | ãƒãƒƒã‚¯ã‚³ãƒ³æ”¾ç†±åŠ¹çŽ‡ |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 5 part | 36 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6 part | 0 |  | â—‡  ï¼£ï¼¯ï¼®ï¼¤ï¼©ï¼´ï¼©ï¼¯ï¼®  â—‡ |  |  | â—‡ Radiate Heat â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7 part |  |  | F1= QF-QF' | `=E5-E16` | T2 | Q COND  Qcin | `=H31*(H45-H46)` | kcal/kg | Discharge |  |  |  | TC= | `=B7` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 8 part |  |  | F2= Qtotal-Qcomp*PR | `=E10-E30*E38` | Pr | enthalpy |  |  | Temp | 60 |  |  | Td= | `=K44` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Total | `=SUM(B37:B44)` |  | F3= QCout-QCin | `=H40-H43` | Tc | COND. IN | `=IF(H3=1,N46,IF(H3=2,O46,"??"))` | kcal/kg |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | COND. OUT | `=IF(H3=1,N47,IF(H3=2,O47,"??"))` | kcal/kg |  |  |  | Hcod nin | `=104.5+0.049951*(O44+273.16)+0.00058822*(O44+273.16)^2-249.18*N27/(O44+273.16)` | `=119.36+0.023174*(O44+273.16)+0.00031297*(O44+273.16)^2-138.07*O27/(O44+273.16)` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  |  | Hcond out | `=75.545+0.55731*O43+0.0007088*O43^2+0.0000029408*O43^3` | `= 100.019 + 0.31763 *O43+ 0.00033057 * O43^ 2 + 0.0000035281 *O43^ 3` |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Outer Cab. Temp Rise |  | Cab. Temp. |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | F,R Cab | `=IF(K38=0,0,J38/10*E39)` | `=B8+H50*E38` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Back Cab | `=IF(K39=0,0,J39/10*E39)` | `=B8+H51*E38` |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-## Summary
-
-**Rows with data:** 49
-**Columns:** 28
-**Cells containing formulas:** 125
-
-## Formula Legend
-
-- **`=FORMULA()`** : Excel formula (shown in code blocks)
-- **Plain text/number** : Static value (no formula)
-- **Empty cell** : No data
-
-## Tips
-
-- To copy a formula back to Excel, remove the backticks (`) and paste into a cell starting with `=`
-- Formulas are shown exactly as they appear in the Excel formula bar
-
----
-## pv73 calc_MAIN_values.md
-
-# Sheet: MAIN - VALUES (Calculated/Displayed)
-
-*This shows the calculated values as they appear in Excel*
-
-## Data Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | Column_E | Column_F | Column_G | Column_H | Column_I | Column_J | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q | Column_R | Column_S | Column_T | Column_U | Column_V | Column_W | Column_X | Column_Y | Column_Z | Column_AA | Column_AB |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-pv73k   > | Ver. 2014/01/07 |  |  |  |  | Refrigerant |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  | OK! |  | R-600a=1,R-134a=2 | 1 | R-600a |  |  |  | Refrigerant | R-600a |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼´ï¼¥ï¼­ï¼°ï¼¡ï¼²ï¼¡ï¼´ï¼µï¼²ï¼¥  â—‡ | (â„ƒ) |  | â—‡HEAT LOAD â—‡ |  |  | â—‡  Compressor Data  â—‡ |  |  |  |  |  | COMP NAME | EGX80CLC 100V 50Hz |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F ROOM   TF      (â„ƒ) | -18 |  | QF     TOTAL(kcal/h)  (inlet) | 24.04444892528598 |  | COMPRESSOR NAME | EGX80CLC 100V 50Hz | R-600a |  |  |  | Capacity | 139.84308475197383 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| R ROOM   TR      (â„ƒ) | 3 |  | QR     TOTAL(kcal/h)  (inlet) | 21.378465301500093 |  | 220/240V 50Hz |  |  |  |  |  | COP | 1.0377965473245203 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DP CON.  TC      (â„ƒ) | 32.959973536317754 | Trial | QEV    TOTAL (kcal/h)  (inlet) | 4.456262999632735 |  | å®šæ ¼ï½ºï½°ï¾…ï½° |  |  |  |  |  | Rpm0= | 2220 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE  T0      (â„ƒ) | 25 |  | heater          (kcal/h) | 0 |  | N(rpm) | 2220 |  | Volume Efficiency |  |  | Vc= | 10.17 | Rotational Speed â€‹â€‹Correction |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | heater          (W) | 0 |  | Vc(cc) | 10.17 |  | Î·v=(A+B*PC/PE+C*PC)*KÎ·v |  |  | A= | 0.9302583559597055 | a= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  ï¼¯ ï¼´ ï¼¨ ï¼¥ ï¼² ï¼³  â—‡ |  |  | Qtotal  (=QF+QR+QEV) | 49.87917722641881 |  | Î·v | 0.763625237055447 |  | KÎ·v= | 1 |  | B= | -0.012294405565323853 | b= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN TOTAL                (m3/h) | 146.4 |  |  |  |  | T IN | 32.2 |  |  |  |  | C= | -0.0020532051517885733 | c= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN Diameter   Ï†mm | 100 |  | â—‡  CALCULATION â—‡ |  |  | TC  Cond | 54.4 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN SPEED               (rpm) | 2850 |  | Fan out air temp         T3      (â„ƒ) | -19.125633533951014 |  | TE  Evap | -23.3 |  | R-600a | R-134a |  | AW= | -403.45924099760987 | Rotational Speed â€‹â€‹Correction |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| FAN INPUT                (W) | 2.4 |  | R Air Volume             MR     (m3/h) | 6.33564221465305 | 0.043276244635608266 | Pc (Tcond) | 7.835776826532984 |  | 7.835776826532984 | 14.992292497076312 |  | BW= | -10.669447614327456 | Ka= | 1 |  |  |  |  |  |  |  |  |  |  |  |  |
-| DEF. HEATER INPUT        (W) | 112 |  | F Air Volume             MF     (m3/h) | 140.06435778534694 |  | Pe (Teva) | 0.6399178637701737 |  | 0.6399178637701737 | 1.171334242712946 |  | CW= | 13.074324324321825 | Kb= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp ON     (W) | 2 |  | QF'  (FAN)                    (kcal/h) | 24.04444868218791 |  | Hout (kcal/kg) | 174.0792661518202 |  | 174.0792661518202 | 155.0895912232625 |  | DW= | 0.34869206555942833 | Kc= | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PWB input     Comp OFF    (W) | 1 |  | QR'  (FAN)                    (kcal/h) | 21.37846530150009 |  | Hin  (kcal/kg) | 94.32347647011841 |  | 94.32347647011841 | 110.7072242203688 |  | EW= | 0.037469902334827346 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| TIMER   Period          (hr) | 10.5 |  | QEV'    =M*Î³*CP*(TEVIN-TEVOUT)*PR | 4.4562629996327745 |  | V(specific volumeï¼‰ | 0.6860064886989208 |  | 0.6860064886989208 | 0.21089214370746862 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Def. HEATER   ON  time  (min) | 0 |  | Air Speed in Evaporator       (m/sec) | 1.591712656724986 |  | G(mass flow rate) | 1.5079162699869755 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| DENSITY(Air)      Î³     (kg/m3) | 1.365 |  | EV INLET  Air   Temp.     T1     (â„ƒ) | -17.091198862652227 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Cp(Air 0â„ƒ)              (kcal/kgâ„ƒ) | 0.24 |  | LOG. MEAN TEMP. DIFF. OF EVA.  (â„ƒ) | 5.2621549906485106 |  | Rated capacity | 120.26505288669749 | kcal/h |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | SUB CAL. X | 1.528895615294822 |  |  | 139.84308475197383 | W | å…¥åŠ›å›žè»¢æ•°è£œæ­£ |  |  |  | TC= | 32.959973536317754 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  EVAPORATOR  (NALCO)  â—‡ |  |  | EVA  Heat transfer Î± ( kcal/hm2â„ƒ) | 15.680949738109854 |  | Rated input(ï¼·ï¼‰ | 134.74999999999494 | W | Kw= | 1 |  |  | Te= | -23.549167094296358 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV WIDTH  (=30mm*N)      (mm) | 440.5 |  | EV TEMPRATURE                  (â„ƒ) | -23.549167094296358 |  | COP | 1.03779654732452 | W=(AW+BW*TE+CW*TC*TE+DW*TE^2)*Kw*Rpm/Rpm0 |  |  |  |  | T0= | 25 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV DEPTH                 (mm) | 58 |  | QEV''(Ability of Evaporator)  (kcal/h) | 107.14527100691862 |  |  |  |  |  |  |  |  | Tsub= | 22.959973536317754 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| EV Tire (pitch) | 5 |  | COMP INPUT | 28.858397981949786 |  | â—‡  Cooling capacity of Refrigerator Condition  â—‡ |  |  |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Diameter  Ï† mm | 8 |  | ON Time INPUT | 33.258397981949784 |  | Pc (Tcond) | 4.527779307783581 |  | Capi Sub-cool | 10 |  | Pc= | 4.527779307783581 | 8.54402304391223 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface  27*77mm/pc | 0.003956656 |  | Energy consumption kWh/24h | 0.3844128865106425 |  | Pe (Teva) | 0.6329531083276008 |  | TC-Sub cool | 22.959973536317754 |  | Pe= | 0.6329531083276008 | 1.158389818606113 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Toatal fin quqntity | 296 |  | KWH/MONTH | 11.532386595319274 |  | V(m3/kgï¼‰ | 0.6765218083059241 |  | Hevin | 88.75006836527743 |  | v= | 0.6765218083059241 | 0.2078160853243258 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Fin Surface    m2 | 1.1711701760000002 |  | Qcomp(Ability of Compressor)   (kcal/h) | 107.14527096393257 |  | Volume Efficiency | 0.8330148517604343 |  | Hevout | 152.98583124731502 |  | Hevin= | 88.75006836527743 | 107.52874247327101 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Pipe Surface  Ï†8mm | 0.11086504 |  | How many defrost in a day   ï¼ˆTimes/24h) | 1.0640651414166316 |  | G(kg/h) | 1.6680002876387396 |  | QCOMP | 107.14527096393257 |  | Hevout= | 152.98583124731502 | 144.00350205972978 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Side Plate surface | 0.01645 |  | Defrosting cycle   Hr | 22.555010088994987 |  |  |  |  | COMP INPUT | 28.858397981949786 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| SURFACE OF EVAPORATOR    (m2) | 1.2984852160000002 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | â—‡  Condenser Heat Exchange   â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡ quantity of Evaporator fin  â—‡ |  |  | â—‡  ï¼¶ï¼¡ï¼²ï¼©ï¼¡ï¼¢ï¼¬ï¼¥  â—‡ |  |  | ï¼² Front | 10.713009027188813 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Evaporator Fin quantity | æžšæ•° |  | Calculate Cond Temp?  Yes=1, No=0 | 1 |  | ï¼¦ï¼² Partition | 4.916297379443706 |  | ç†±é€šéŽçŽ‡ | é¢ç© |  | ã‚µã‚¤ãƒ‰ã‚³ãƒ³ãƒ»ãƒãƒƒã‚¯ã‚³ãƒ³ã®ç†±é€šéŽçŽ‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 1 part | 67 |  | X1 =EV OUT  Temp.          T2     (â„ƒ) | -19.325223898279788 | Trial | ï¼¦ Front | 6.64750768500198 |  | K | S |  |  | K | Pipe Pitch |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 2 part | 73 |  | X2 =RUNNING RATIO          PR     (ï¼…) | 0.46552849936977625 | Trial | Sid  Condenser | 96.37625566565463 | Side Cond | 5.395 | 2.244228 |  | Side Cond | 5.395 | 150 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 3 part | 73 |  | X3 = âŠ¿T ( TC-T0) | 7.959973536317755 |  | Back Condenser | 28.557641484229343 | Back Cond | 4.17 | 0.860349 |  | Back Cond | 4.17 | 200 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 4 part | 47 |  |  |  |  | TOTAL  QC0ut | 147.21071124151848 | ãƒãƒƒã‚¯ã‚³ãƒ³æ”¾ç†±åŠ¹çŽ‡ |  | 0.7 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 5 part | 36 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 6 part | 0 |  | â—‡  ï¼£ï¼¯ï¼®ï¼¤ï¼©ï¼´ï¼©ï¼¯ï¼®  â—‡ |  |  | â—‡ Radiate Heat â—‡ |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 7 part |  |  | F1= QF-QF' | 2.4309807145073137e-07 | T2 | Q COND  Qcin | 147.21071190419318 | kcal/kg | Discharge |  |  |  | TC= | 32.959973536317754 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| 8 part |  |  | F2= Qtotal-Qcomp*PR | 2.0011221124605072e-08 | Pr | enthalpy |  |  | Temp | 60 |  |  | Td= | 60 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| Total | 296 |  | F3= QCout-QCin | -6.626746937854477e-07 | Tc | COND. IN | 183.04504142019874 | kcal/kg |  |  |  |  | R-600a | R-134a |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | COND. OUT | 94.78923415496853 | kcal/kg |  |  |  | Hcod nin | 183.04504142019874 | 158.2780772324761 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  |  |  |  |  |  |  | Hcond out | 94.78923415496853 | 110.97352290370623 |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Outer Cab. Temp Rise |  | Cab. Temp. |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | F,R Cab | 4.294405722843429 | 26.99916825184028 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  |  |  |  | Back Cab | 3.3193089646445038 | 26.5452329212556 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-**Rows with data:** 49
-**Columns:** 28
-**File type:** Values (calculated results)
-
----
-## pv73 calc_SIZE_formulas.md
-
-# Sheet: SIZE - FORMULAS (Original Excel Formulas)
-
-*This shows the actual formulas as entered in Excel*
-
-*Formulas are shown in `code blocks` for clarity*
-
-## Formula Table
-
-| =MAIN!A1 | Column_B | Column_C | Column_D | PR= | =MAIN!E38 | TF= | =MAIN!B5 | T2= | =MAIN!E37 | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `=MAIN!A2` |  | CP | 70mm |  |  | TR= | `=MAIN!B6` | Cab Side | `=MAIN!I50` |  |  |  |  |  |  |  |
-|  |  |  |  | Comp temp | `=50*F1+H4` | TC= | `=MAIN!B7` | Back cab | `=MAIN!I51` |  |  |  |  |  |  |  |
-| â—‡  ï¼³  ï¼©  ï¼º  ï¼¥  â—‡ | (mm) |  |  |  |  | T0= | `=MAIN!B8` | Cab Bottom | `=(F3-H4)*F1+H4` |  |  |  |  |  |  |  |
-| â—‡  BASIC  SIZE  â—‡ |  |  | â—‡  Heat Load  â—‡ |  |  |  | B=K*S |  |  |  |  |  |  |  |  |  |
-| TOTAL HIGHT         H | 1794 |  | POSITION | Q(kcal/h) | S(m2) or L(m) | K | B | INSIDE TEMP | OUTSIDE TEMP |  |  |  |  |  |  |  |
-| R HIGHT             HR | 1048 |  | R TOP | `=H7*(J7-I7)` | `=(B$9-(B$18+B$19)/2)*(B10-B20/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B17/1000/(B$34+0.00011*(I7+J7)/2))` | `=G7*F7` | `=H2` | `=H4` |  |  |  |  |  |  |  |
-| F HIGHT             HF | 746 |  | R LERT | `=H8*(J8-I8)` | `=(B10-B20/2)*(B7-(B17+B21)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B18/1000/(B$34+0.00011*(I8+J8)/2))` | `=G8*F8` | `=H2` | `=J2` |  |  |  |  |  |  |  |
-| WIDTH               W | 795 |  | R RIGHT | `=H9*(J9-I9)` | `=F8` | `=1/(1/B$40+1/B$41+B19/1000/(B$34+0.00011*(I9+J9)/2))` | `=G9*F9` | `=H2` | `=J2` |  |  |  |  |  |  |  |
-| DEPTH               D | 687 |  | R BOTTOM | `=H10*(J10-I10)` | `=(B10-B20/2)*(B9-(B18+B19)/2)*10^(-6)` | `=1/(1/B$41+1/B$41+B21/1000/(B$34+0.00011*(I10+J10)/2))` | `=G10*F10` | `=H2` | `=H1` |  |  |  |  |  |  |  |
-| BOTOM HIGHT        Hb | 248 |  | R BACK | `=H11*(J11-I11)` | `=(B7-(B17+B21)/2)*(B9-(B18+B19)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B20/1000/(B$34+0.00011*(I11+J11)/2))` | `=G11*F11` | `=H2` | `=J3` |  |  |  |  |  |  |  |
-| BOTTOM DEPTH       Db1 | 195 |  | R DOOR | `=H12*(J12-I12)` | `=(B7-B14/2-B36*2)*(B9-B36*2)*10^(-6)` | `=1/(1/B$40+1/B$41+B22/1000/(B$34+0.00011*(I12+J12)/2))` | `=G12*F12` | `=H2` | `=H4` |  |  |  |  |  |  |  |
-| BOTTOM DEPTH       Db2 | 261 |  | R PACKIN | `=H13*(J13-I13)` | `=((B7-B36*2)+(B9-B36*2))*2*10^(-3)` | `=B37` | `=G13*F13` | `=H2` | `=H4` |  |  |  |  |  |  |  |
-| Door gap of F&R door | 10 |  | R DPCON1(RR-Partition) | `=(0.1219*(H3-H1)*F1+0.1219*((0.1984*H4+0.1219*H1)/(0.1984+0.1219)-H1)*(1-F1))*F14` | `=(B9-B18-B19)*10^(-3)` | * | * | * | * |  |  |  |  |  |  |  |
-|  |  |  | R DPCON2(R-Rront) | `=(0.0791*(MAIN!B7-MAIN!B5)-0.072*(MAIN!B8-MAIN!B5))*F15*MAIN!E38` | `=(B7*2+B9)*10^(-3)` | * | * | * | * |  |  |  |  |  |  |  |
-| â—‡ THICKNESS OF WALL â—‡ |  |  | F TOP | `=H16*(J16-I16)` | `=(B$9-(B$24+B$25)/2)*(B10-B$26/2)*10^(-6)` | `=1/(1/B$41+1/B$41+B23/1000/(B$34+0.00011*(I16+J16)/2))` | `=G16*F16` | `=H1` | `=H2` |  |  |  |  |  |  |  |
-| R TOP | 55 |  | F LEFT | `=H17*(J17-I17)` | `=((B8-(B21+B27)/2)*(B10-B26/2)-((B13+B12)*B11/2))*10^(-6)` | `=1/(1/B$40+1/B$41+B24/1000/(B$34+0.00011*(I17+J17)/2))` | `=G17*F17` | `=H1` | `=J2` |  |  |  |  |  |  |  |
-| R LEFT | 57 |  | F FIGHT | `=H18*(J18-I18)` | `=F17` | `=1/(1/B$40+1/B$41+B25/1000/(B$34+0.00011*(I18+J18)/2))` | `=G18*F18` | `=H1` | `=J2` |  |  |  |  |  |  |  |
-| R RIGHT | 57 |  | F BOTTOMã€€1 | `=H19*(J19-I19)` | `=(B9-(B24+B25)/2)*B12*10^(-6)` | `=1/(1/B$40+1/B$41+B27/1000/(B$34+0.00011*(I19+J19)/2))` | `=G19*F19` | `=H1` | `=J4` |  |  |  |  |  |  |  |
-| R BACK | 80 |  | F BOTTOMã€€2 | `=H20*(J20-I20)` | `=(B9-(B24+B25)/2)*(SQRT(B11^2+(B13-B12)^2))*10^(-6)` | `=1/(1/B$40+1/B$41+B28/1000/(B$34+0.00011*(I20+J20)/2))` | `=G20*F20` | `=H1` | `=J4` |  |  |  |  |  |  |  |
-| R BOTTOM â€» | 32 |  | F BOTTOMã€€3 | `=H21*(J21-I21)` | `=(B9-(B24+B25)/2)*(B10-B13)*10^(-6)` | `=1/(1/B$40+1/B$41+B29/1000/(B$34+0.00011*(I21+J21)/2))` | `=G21*F21` | `=H1` | `=H4` |  |  |  |  |  |  |  |
-| R DOOR | 58 |  | F DOOF | `=H22*(J22-I22)` | `=(B9-B36*2)*(B8-B14/2-B36*2)*10^(-6)` | `=1/(1/B$40+1/B$41+B30/1000/(B$34+0.00011*(I22+J22)/2))` | `=G22*F22` | `=H1` | `=H4` |  |  |  |  |  |  |  |
-| F TOP â€» | 32 |  | F PACKIN | `=H23*(J23-I23)` | `=((B8-B36*2)+(B9-B36*2))*2*10^(-3)` | `=B37` | `=G23*F23` | `=H1` | `=H4` |  |  |  |  |  |  | 1 |
-| F LEFT | 82 |  | F DPCON(F-FFont) | `=(0.0546*(MAIN!B7-MAIN!B5)-0.0491*(MAIN!B8-MAIN!B5))*F24*MAIN!E38` | `=(B8*2+B9)*10^(-3)` | * | * | * | * |  |  |  |  |  |  | 2 |
-| F RIGHT | 82 |  | PWB Heat LOAD | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| EVA BACK | 55 |  | EVA BACK | `=H26*(J26-I26)` | `=(B9-(B24+B25)/2)*(B8-B11-(B23+B27)/2)*10^(-6)` | `=1/(1/B$40+1/B$41+B26/1000/(B$34+0.00011*(I26+J26)/2))` | `=G26*F26` | `=J1` | `=J3` |  |  |  |  |  | 3 |  |
-| F BOTTOM 1 | 76 |  | FAN LOAD (FAN INPUT*0.86*Prï¼‰ | `=MAIN!B14*0.86*MAIN!E38` |  |  |  |  |  |  |  |  |  |  |  |  |
-| F BOTTOM 2 | 80 |  | DEF. HEATER LOAD | `=MAIN!B15*0.86*MAIN!B19/60/24` |  |  |  |  |  |  |  |  |  |  |  |  |
-| F BOTTOM 3 | 82 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F DOOR | 80 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  Thermal Conductivity  â—‡ | (kcal/mhâ„ƒ) |  | QF     TOTAL(kcal/h)  (inlet) | `=SUM(E16:E25)` |  |  |  |  |  |  |  |  |  |  |  |  |
-| URETANE | 0.0165 |  | QR     TOTAL(kcal/h)  (inlet) | `=SUM(E7:E15)` |  |  |  |  |  |  |  |  |  |  |  |  |
-| A=X-0.00011*T          X= | `=B33-0.00011*25` |  | QEVOUT TOTAL(kcal/h)  (inlet) | `=SUM(E26:E28)` |  |  |  |  |  |  |  |  |  |  |  |  |
-| PS FORM     Î» | 0.035 |  | QEV  (=QF+QR+QEVOUT) | `=SUM(E32:E34)` |  |  |  |  |  |  |  |  |  |  |  |  |
-| Packing position  L mm | 15 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| PAKKIN | 0.035 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  Heat trancefer coefficent â—‡ | (kcal/m2hâ„ƒ) |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE | 6 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| INSIDE | 10 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | VOLUME: |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Refrigeratorr Gross volume | `=(B9-B18-B19)*(B7-B17-B21/2)*(B10-B20)/1000000` | 59 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Freezer   Gross Volume | `=((B9-B24-B25)*(B8-B21/2-B27)*(B10-B26)-(B12+B13)*B11/2*(B9-B24-B25))/1000000` | 125 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | TOTAL | `=E44+E45` | `=F44+F45` |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | ISO VOLUME |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Freezer VOLUME | `=E44-(60+25)*(B9-B18-B19)*(B7-B17-B20/2)/1000000` | 48 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Refrigerator | `=E45-(B9-B18-B19)*60*300/1000000` | 120 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | TOTAL | `=E50+E51` | `=F50+F51` |  |  |  |  |  |  |  |  |  |  |  |
-| DOOR |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  | Packing |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-## Summary
-
-**Rows with data:** 48
-**Columns:** 17
-**Cells containing formulas:** 125
-
-## Formula Legend
-
-- **`=FORMULA()`** : Excel formula (shown in code blocks)
-- **Plain text/number** : Static value (no formula)
-- **Empty cell** : No data
-
-## Tips
-
-- To copy a formula back to Excel, remove the backticks (`) and paste into a cell starting with `=`
-- Formulas are shown exactly as they appear in the Excel formula bar
-
----
-## pv73 calc_SIZE_values.md
-
-# Sheet: SIZE - VALUES (Calculated/Displayed)
-
-*This shows the calculated values as they appear in Excel*
-
-## Data Table
-
-| FAN COOL MODEL | Column_B | Column_C | Column_D | PR= | 0.46552849936977625 | TF= | -18 | T2= | -19.325223898279788 | Column_K | Column_L | Column_M | Column_N | Column_O | Column_P | Column_Q |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| <  SJ-pv73k   > |  | CP | 70mm |  |  | TR= | 3 | Cab Side | 26.99916825184028 |  |  |  |  |  |  |  |
-|  |  |  |  | Comp temp | 48.27642496848881 | TC= | 32.959973536317754 | Back cab | 26.5452329212556 |  |  |  |  |  |  |  |
-| â—‡  ï¼³  ï¼©  ï¼º  ï¼¥  â—‡ | (mm) |  |  |  |  | T0= | 25 | Cab Bottom | 35.83583918627379 |  |  |  |  |  |  |  |
-| â—‡  BASIC  SIZE  â—‡ |  |  | â—‡  Heat Load  â—‡ |  |  |  | B=K*S |  |  |  |  |  |  |  |  |  |
-| TOTAL HIGHT         H | 1794 |  | POSITION | Q(kcal/h) | S(m2) or L(m) | K | B | INSIDE TEMP | OUTSIDE TEMP |  |  |  |  |  |  |  |
-| R HIGHT             HR | 1048 |  | R TOP | 2.7187540739821245 | 0.47748599999999997 | 0.25881330685203574 | 0.12357973063555112 | 3 | 25 |  |  |  |  |  |  |  |
-| F HIGHT             HF | 746 |  | R LERT | 3.930803515736131 | 0.6499115 | 0.2520176302892344 | 0.16378915612772177 | 3 | 26.99916825184028 |  |  |  |  |  |  |  |
-| WIDTH               W | 795 |  | R RIGHT | 3.930803515736131 | 0.6499115 | 0.2520176302892344 | 0.16378915612772177 | 3 | 26.99916825184028 |  |  |  |  |  |  |  |
-| DEPTH               D | 687 |  | R BOTTOM | -3.7473366358247793 | 0.47748599999999997 | 0.3737169293046118 | 0.17844460170594187 | 3 | -18 |  |  |  |  |  |  |  |
-| BOTOM HIGHT        Hb | 248 |  | R BACK | 3.191009484951473 | 0.741321 | 0.18281793584918682 | 0.13552677502165503 | 3 | 26.5452329212556 |  |  |  |  |  |  |  |
-| BOTTOM DEPTH       Db1 | 195 |  | R DOOR | 4.1992138692598475 | 0.774945 | 0.24630568323381585 | 0.19087335769362943 | 3 | 25 |  |  |  |  |  |  |  |
-| BOTTOM DEPTH       Db2 | 261 |  | R PACKIN | 2.7458200000000006 | 3.5660000000000003 | 0.035 | 0.12481000000000002 | 3 | 25 |  |  |  |  |  |  |  |
-| Door gap of F&R door | 10 |  | R DPCON1(RR-Partition) | 3.151123325107604 | 0.681 | * | * | * | * |  |  |  |  |  |  |  |
-|  |  |  | R DPCON2(R-Rront) | 1.2582741525515564 | 2.891 | * | * | * | * |  |  |  |  |  |  |  |
-| â—‡ THICKNESS OF WALL â—‡ |  |  | F TOP | 3.69034013264421 | 0.47022349999999996 | 0.3737169293046118 | 0.17573048250686713 | -18 | 3 |  |  |  |  |  |  |  |
-| R TOP | 55 |  | F LEFT | 2.987173481772801 | 0.39982999999999996 | 0.1660277115326437 | 0.06638285990209693 | -18 | 26.99916825184028 |  |  |  |  |  |  |  |
-| R LEFT | 57 |  | F FIGHT | 2.987173481772801 | 0.39982999999999996 | 0.1660277115326437 | 0.06638285990209693 | -18 | 26.99916825184028 |  |  |  |  |  |  |  |
-| R RIGHT | 57 |  | F BOTTOMã€€1 | 1.3795157219861334 | 0.139035 | 0.18430241499320044 | 0.025624486268579622 | -18 | 35.83583918627379 |  |  |  |  |  |  |  |
-| R BACK | 80 |  | F BOTTOMã€€2 | 1.729000206801049 | 0.1829786390265268 | 0.17551860762034943 | 0.03211615594620251 | -18 | 35.83583918627379 |  |  |  |  |  |  |  |
-| R BOTTOM â€» | 32 |  | F BOTTOMã€€3 | 2.1524415302672284 | 0.303738 | 0.16480249350972376 | 0.050056779773656475 | -18 | 25 |  |  |  |  |  |  |  |
-| R DOOR | 58 |  | F DOOF | 3.9464830794284302 | 0.5439149999999999 | 0.1687371671415156 | 0.09177867626577745 | -18 | 25 |  |  |  |  |  |  |  |
-| F TOP â€» | 32 |  | F PACKIN | 4.45781 | 2.962 | 0.035 | 0.10367000000000001 | -18 | 25 |  |  |  |  |  |  | 1 |
-| F LEFT | 82 |  | F DPCON(F-FFont) | 0.7145112906133265 | 2.287 | * | * | * | * |  |  |  |  |  |  | 2 |
-| F RIGHT | 82 |  | PWB Heat LOAD | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| EVA BACK | 55 |  | EVA BACK | 3.495412176933517 | 0.31657199999999996 | 0.24070927766986722 | 0.0762018174505052 | -19.325223898279788 | 26.5452329212556 |  |  |  |  |  | 3 |  |
-| F BOTTOM 1 | 76 |  | FAN LOAD (FAN INPUT*0.86*Prï¼‰ | 0.9608508226992182 |  |  |  |  |  |  |  |  |  |  |  |  |
-| F BOTTOM 2 | 80 |  | DEF. HEATER LOAD | 0 |  |  |  |  |  |  |  |  |  |  |  |  |
-| F BOTTOM 3 | 82 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| F DOOR | 80 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  Thermal Conductivity  â—‡ | (kcal/mhâ„ƒ) |  | QF     TOTAL(kcal/h)  (inlet) | 24.04444892528598 |  |  |  |  |  |  |  |  |  |  |  |  |
-| URETANE | 0.0165 |  | QR     TOTAL(kcal/h)  (inlet) | 21.378465301500093 |  |  |  |  |  |  |  |  |  |  |  |  |
-| A=X-0.00011*T          X= | 0.01375 |  | QEVOUT TOTAL(kcal/h)  (inlet) | 4.456262999632735 |  |  |  |  |  |  |  |  |  |  |  |  |
-| PS FORM     Î» | 0.035 |  | QEV  (=QF+QR+QEVOUT) | 49.87917722641881 |  |  |  |  |  |  |  |  |  |  |  |  |
-| Packing position  L mm | 15 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| PAKKIN | 0.035 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| â—‡  Heat trancefer coefficent â—‡ | (kcal/m2hâ„ƒ) |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| OUTSIDE | 6 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-| INSIDE | 10 |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | VOLUME: |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Refrigeratorr Gross volume | 403.859559 | 59 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Freezer   Gross Volume | 225.130704 | 125 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | TOTAL | 628.990263 | 184 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | ISO VOLUME |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Freezer VOLUME | 348.695154 | 48 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | Refrigerator | 212.872704 | 120 |  |  |  |  |  |  |  |  |  |  |  |
-|  |  |  | TOTAL | 561.567858 | 168 |  |  |  |  |  |  |  |  |  |  |  |
-| DOOR |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-|  | Packing |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |
-
----
-
-**Rows with data:** 48
-**Columns:** 17
-**File type:** Values (calculated results)
 
