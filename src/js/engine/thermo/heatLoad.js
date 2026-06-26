@@ -25,9 +25,9 @@ export const DEFAULT_GEOMETRY = {
 };
 
 export function calcHeatLoads(
-  geom, temps, electrical, PIPEPITCH, BackcondenserEfficiency=0.7,
-  fanAirflow_m3h, evapParams, fanInputPower_W,
-  freezerPosition = 'top', backCondenser = 'yes'
+  geom, temps, electrical, PIPEPITCH, BackcondenserEfficiency=0,
+  fanInputPower_W,
+  freezerPosition = 'top', backCondenser = 'No'
 ) {
   const {
     H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
@@ -50,14 +50,14 @@ export function calcHeatLoads(
   const T_wallBack = T0 + TRise_back * PR;
 
   const isTopFreezer = (freezerPosition === 'top');
-  const hasBackCondenser = (backCondenser === 'yes');
+  const isBackCondenserAbsent = (backCondenser !== 'Yes');
   // ── Freezer ───────────────────────────────────────────────────
   const AFtop    = (W - (tFleft + tFright)/2) * (D - tFback/2) / 1e6;
   const AFdoor   = (Hf - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6;
   const AFpackin = ((Hf - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000;
 
   // Freezer left/right area depends on orientation
-  let AFleft, AFright;
+  let AFleft1, AFleft2, AFright1, AFright2;
   if (isTopFreezer) {
     // top‑freezer: freezer has no machine‑compartment cut‑out
     AFleft1  = (D - tEvaBack) * (Hf - (tFtop + tFbottom)/2) / 1e6;
@@ -138,10 +138,10 @@ export function calcHeatLoads(
       + kExterior(tRright, TR, T_wallSide) * ARleft * (T_wallSide - TR);
 
   // Refrigerator back
-  if (hasBackCondenser) {
-    QR += kExterior(tRback, TR, T_wallBack) * ARback * (T_wallBack - TR);
+  if (isBackCondenserAbsent) {
+    QR += kExterior(tRback, TR, T0) * ARback * (T0 - TR);
   } else {
-  QR += kExterior(tRback, TR, T0) * ARback * (T0 - TR);
+  QR += kExterior(tRback, TR, T_wallBack) * ARback * (T_wallBack - TR);
   }
   // Refrigerator bottom
   if (isTopFreezer) {
@@ -170,10 +170,10 @@ export function calcHeatLoads(
     A_evaBack = (W - (tFleft+tFright)/2) * (Hf - Hb - (tFtop+tFfloor1)/2) / 1e6;
   }
   let QEV_cond;
-  if (hasBackCondenser) {
-    QEV_cond = kExterior(tEvaBack, T2, T_wallBack) * A_evaBack * (T_wallBack - T2);
-  } else {
+  if (isBackCondenserAbsent) {
     QEV_cond = kExterior(tEvaBack, T2, T0) * A_evaBack * (T0 - T2);
+  } else {
+    QEV_cond = kExterior(tEvaBack, T2, T_wallBack) * A_evaBack * (T_wallBack - T2);
   }
   const fanLoad = (fanInputPower_W ?? 2.1) * PC.conversion.wattToKcalPerH * PR;
   const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min/60/24) * PC.conversion.wattToKcalPerH;
