@@ -6,7 +6,7 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
  * Excel SIZE B29-B33: Fin area + Tube area + Side plate area
  */
 export function computeEvaporatorArea(evap) {
-  const { width_mm, depth_mm, rows, tubeOD_mm, finPitch_mm, finHeight_mm, finLength_mm, numFins } = evap;
+  const { width_mm, height_mm, depth_mm, rows, tubeOD_mm, finPitch_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
   // Fin area (both sides) – Excel: (28*60 - π*(4^2))*2 / 1e6 per fin
   const tubeCrossArea = Math.PI * (tubeOD_mm/2)**2;
   const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6; // m²
@@ -14,7 +14,7 @@ export function computeEvaporatorArea(evap) {
   // Tube outer area – Excel: (π * tubeOD * width) * rows * 2 / 1e6
   const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * 2 / 1e6;
   // Side plate area (Excel B32) – usually zero
-  const sidePlateArea = 0;
+  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows) * 2 / 1e6;
   return totalFinArea + tubeArea + sidePlateArea;
 }
 

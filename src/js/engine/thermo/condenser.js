@@ -1,50 +1,34 @@
-import { getRefrigerantFunctions } from './refrigerant.js';
-import { compressorState } from './compressor.js';
 
-export function calcQCout(TC, T0, TF, TR, areas) {
-  const dT_TC_T0 = TC - T0;
-  const dT_TC_TF = TC - TF;
-  const dT_TC_TR = TC - TR;   // ← add
-  return (areas.k_RFront1 * dT_TC_T0 + areas.k_RFront2 * dT_TC_TR) * areas.RFrontLength
-       + (areas.k_FRPartition1 * dT_TC_T0 + areas.k_FRPartition2 * dT_TC_TR) * areas.FRPartitionLength
-       + (areas.k_FFront1      * dT_TC_T0 + areas.k_FFront2      * dT_TC_TF) * areas.FFrontLength  // ← fix
-       + areas.sideKA * dT_TC_T0
-       + areas.backKA * dT_TC_T0;
-}
+export function calcQCout(geom, TC, T0, TF, TR, PR, PIPEPITCH ,freezerPosition = 'top',backCondenserEfficiency=0) {
+  const { H, W, D, Hf, Hr, Hb, Db1, Db2, tFright, tFleft } = geom;
 
-// FIX in condenser.js:
-export function computeCondenserAreas(geom, condenserConfig, freezerPosition = 'top') {
-  const { H, W, D, Hf, Hr, Hb, Db1, Db2, tRtop, tRleft, tFtop, tFleft } = geom;
-  const {
-    K_side_kcalhm2C: K_side,
-    K_back_kcalhm2C: K_back,
-    backCondenserEfficiency,
-    k_RFront1, k_RFront2,
-    k_FRPartition1, k_FRPartition2,
-    k_FFront1, k_FFront2,
-  } = condenserConfig;
-
-  const sideArea    = ((H * (D - 30)) - ((Db1 + Db2) * Hb / 2)) * 2 / 1e6;
+  const sideArea    = ((H * (D - 60)) - ((Db1 + Db2) * Hb / 2)) * 2 / 1e6;
   const backAreaRaw = (W * (H - Hb)) / 1e6;
   const backArea    = backAreaRaw * backCondenserEfficiency;
+  const K_side = 1.0738 - 0.004152 * PIPEPITCH.side + 0.00000482 * PIPEPITCH.side ** 2;
+  const K_back = 1.0738 - 0.004152 * PIPEPITCH.back + 0.00000482 * PIPEPITCH.back ** 2;
+  const TRise_side = (TC - T0) * K_side;
+  const TRise_back = (TC - T0) * K_back;
+  const Qdpfr = (0.1984*(TC-T0)+0.1219*(TC-TF))*PR*(W-tFright - tFleft)/1000;
 
   const isTop    = freezerPosition === 'top';
-  const H_lower  = isTop ? Hr : Hf;
-  const H_upper  = isTop ? Hf : Hr;
-  const t_lower_top  = isTop ? tRtop  : tFtop;
-  const t_lower_left = isTop ? tRleft : tFleft;
-
-  const RFrontLength      = H_lower * 2 / 1000;
-  const FFrontLength      = (H_upper + W) * 2 / 1000;
-  const FRPartitionLength = (W - t_lower_left - t_lower_top) / 1000;
+  let Qdpf;
+  let Qdpr;
+  if (isTop) {
+    Qdpf = (0.3395*(TC-T0)+0.0344*(TC-TF))*PR*(Hf*2+W)/1000;
+    Qdpr = (0.3405*(TC-T0)+0.03322*(TC-TR))*PR*(Hr*2)/1000;
+  }else{
+    Qdpf = (0.3395*(TC-T0)+0.0344*(TC-TR))*PR*(Hr*2+W)/1000;
+    Qdpr = (0.3405*(TC-T0)+0.03322*(TC-TF))*PR*(Hf*2)/1000;
+  }
 
   return {
-    RFrontLength, FRPartitionLength, FFrontLength,
-    sideKA: K_side * sideArea,
-    backKA:  K_back * backArea,
-    sideArea, backArea,
-    k_RFront1, k_RFront2,
-    k_FRPartition1, k_FRPartition2,
-    k_FFront1, k_FFront2,
+    Qdpfr,
+    Qdpf,
+    Qdpr,
+    Qdp: Qdpfr + Qdpf + Qdpr,
+    Qside: K_side * sideArea * (TC - T0),
+    Qback: K_back * backArea * (TC - T0),
+    QCout: Qdp + Qside + Qback
   };
 }
