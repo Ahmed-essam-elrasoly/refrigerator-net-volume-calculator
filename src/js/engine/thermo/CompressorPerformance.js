@@ -164,7 +164,7 @@ function r600a_specificVolume(T_K, Pe) {
  *             gasEnthalpy: Function, specificVolume: Function }}
  * @throws {Error} If REI is not 1 or 2
  */
-function getRefrigerantProperties(REI) {
+export function getRefrigerantProperties(REI) {
   if (REI === 1) {
     return {
       satPressure:    r134a_satPressure,
@@ -185,7 +185,15 @@ function getRefrigerantProperties(REI) {
     `Unsupported refrigerant index ${REI}. Use 1 (R-134a) or 2 (R-600a).`
   );
 }
-
+export function getRefrigerantFunctionsC(refrigerantIndex) {
+  const prop = getRefrigerantProperties(refrigerantIndex);
+  return {
+    satPressure:     (t)    => prop.satPressure(t + 273.16),
+    specificVolume:  (t, p) => prop.specificVolume(t + 273.16, p),
+    vaporEnthalpy:   (t, p) => prop.gasEnthalpy(t + 273.16, p),
+    liquidEnthalpy:  (t)    => prop.liquidEnthalpy(t),        // already °C
+  };
+}
 // =============================================================================
 // Gauss-Jordan solver with partial pivoting — mirrors MATX subroutine
 // Partial pivoting was absent in the original; added for numerical stability.
@@ -441,6 +449,7 @@ export function compressorPower(
     VolumetricEfficiency,
     QCompressor,
     CompPower,
+    massFlow: G
   };
 }
 
