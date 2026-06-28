@@ -1,22 +1,22 @@
 // src/js/engine/geometry.js
 
+// src/js/engine/geometry.js
+
 export const DEFAULT_CABINET = Object.freeze({
-  // External dimensions (mm)
   H: 1680,  W: 800,  D: 630,
-
-  // Bottom heel / machine compartment (mm)
-  Hb: 260,
-  Db1: 210,
-  Db2: 230,
-
-  // Door gap & packing position (mm)
-  doorGap: 10,
-  packingPos: 15,
-
-  // Air gap (mm) – no longer used in calculations
-  airGap: 5,
+  Hb: 260, Db1: 210, Db2: 230,
+  doorGap: 10, packingPos: 15, airGap: 5,
+  walls: {
+    freezer: {
+      top:    59.4, bottom: 70, left:   59.4,
+      right:  59.4, door:   59.4, rear:  60,
+    },
+    refrigerator: {
+      top:     70, bottom1: 40, bottom2: 40, bottom3: 40,
+      left:    40, right:   40, door:    40, rear:    60,
+    },
+  },
 });
-
 export function toVolumeFormat(geom) {
   const { H, W, D, walls } = geom;
   const t = {

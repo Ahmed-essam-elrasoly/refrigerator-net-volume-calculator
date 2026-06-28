@@ -584,11 +584,8 @@ loadBtn.addEventListener('click', () => {
     document.getElementById('grossVol').textContent      = disp.gross;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
 
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-    const usableL = result.totals.gross * (usableFactor / 100);
-    const usableCuft = usableL * settings.lToCuft;
-    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+    document.getElementById('grossVol').textContent = roundForDisplay(result.totals.gross, 'L');
+    document.getElementById('grossVolCuft').textContent = roundForDisplay(toCuft(result.totals.gross), 'cuft');
   }
         showMessages(result.validationErrors, result.warnings, result.calcErrors);
 

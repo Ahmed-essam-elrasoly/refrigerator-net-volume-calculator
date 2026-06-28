@@ -14,7 +14,7 @@ export function computeEvaporatorArea(evap) {
   // Tube outer area – Excel: (π * tubeOD * width) * rows * 2 / 1e6
   const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * 2 / 1e6;
   // Side plate area (Excel B32) – usually zero
-  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows) * 2 / 1e6;
+  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows *2 ) * 2 / 1e6;
   return totalFinArea + tubeArea + sidePlateArea;
 }
 
@@ -22,7 +22,9 @@ export function computeEvaporatorArea(evap) {
  * Air speed over evaporator (m/s) – Excel MAIN E19
  * v = fanAirflow_m3h / (width_m * depth_m) / 3600
  */
-export function airSpeed(fanAirflow_m3h, evap) {
+export function airSpeed(fanParam, evap) {
+  const {fanDiam, fanRPM, fanThick} = fanParam
+  const fanAirflow_m3h = (Math.PI * (fanDiam/2)**2 * fanThick) * fanRPM / 1e6 * 3600; // m³/h
   const frontArea_m2 = (evap.width_mm * evap.depth_mm) / 1e6;
   return fanAirflow_m3h / frontArea_m2 / 3600;
 }

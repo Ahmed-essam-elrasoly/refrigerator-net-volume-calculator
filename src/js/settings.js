@@ -1,7 +1,4 @@
 const DEFAULTS = {
-  iceMakerRemovable: true,       // deduct from EG Net if true
-  lightRemovable: true,          // deduct from EG Net if true
-  iecFactor: 0.97,               // IEC fixed deduction factor
   mm3ToL: 1e-6,
   lToCuft: 0.0353147,
   displayPrecisionL: 2,

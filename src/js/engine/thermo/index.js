@@ -5,7 +5,6 @@
  */
 
 import { solveThermalSystem } from './solver.js';
-import { DEFAULT_GEOMETRY } from './heatLoad.js';
 import { SJ54H_COMPONENTS } from './defaultComponents.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
 import { DEFAULT_CABINET, toThermalFormat } from '../geometry.js';
@@ -14,27 +13,10 @@ import { DEFAULT_CABINET, toThermalFormat } from '../geometry.js';
 // Public API
 // ---------------------------------------------------------------------------
 
-/**
- * Run a full thermodynamic analysis of a refrigerator.
- *
- * @param {object} config
- * @param {object} config.geom               - cabinet dimensions (see DEFAULT_GEOMETRY)
- * @param {object} config.compParams         - compressor parameters
- * @param {object} config.condenserConfig    - condenser design
- * @param {string} config.refrigerant        - 'R-600a' | 'R-134a'
- * @param {number} config.subcool            - sub‑cooling (K)
- * @param {number} config.dischargeTemp      - discharge temperature (°C)
- * @param {object} config.fixedTemps         - { T0, TF, TR }
- * @param {object} config.fan                - { totalAirflow, density?, cp? }
- * @param {object} config.electrical         - { defrostHeater_W, defrostOn_min, ... }
- * @param {object} [config.solverOptions]    - optional solver tuning
- * @returns {{ success: boolean, errors: string[], warnings: string[], results: object|null }}
- */
 export function runThermoAnalysis(config) {
   const errors = [];
   const warnings = [];
 
-  // Basic input validation
   if (!config) {
     errors.push('No configuration provided.');
     return { success: false, errors, warnings, results: null };
@@ -50,6 +32,7 @@ export function runThermoAnalysis(config) {
     }
   }
 
+  // Fixed temperatures validation
   if (config.fixedTemps) {
     const { T0, TF, TR, TE } = config.fixedTemps;
     if ([T0, TF, TR, TE].some(v => typeof v !== 'number')) {
@@ -57,11 +40,11 @@ export function runThermoAnalysis(config) {
     }
   }
 
+  // Fan defaults
   if (config.fan) {
     if (!config.fan.totalAirflow) {
       errors.push('fan.totalAirflow is required.');
     }
-    // Apply defaults for density and cp if not supplied
     config.fan.density = config.fan.density ?? PHYSICAL_CONSTANTS.air.density;
     config.fan.cp = config.fan.cp ?? PHYSICAL_CONSTANTS.air.cp;
   }
@@ -71,14 +54,14 @@ export function runThermoAnalysis(config) {
   }
 
   // Merge solver options with defaults
-  const solverOptions = {
+  const solverDefaults = {
     TC0: 54.4,
     DH: 0.001,
     tolOuter: 0.0005,
     maxIterOuter: 100,
-    innerOptions: {},
-    ...(config.solverOptions || {}),
+    innerOptions: { dx: 0.001, tol: 1e-4, maxIter: 100 },
   };
+  const solverOptions = { ...solverDefaults, ...(config.solverOptions || {}) };
 
   try {
     const result = solveThermalSystem({
@@ -91,6 +74,8 @@ export function runThermoAnalysis(config) {
       fixedTemps: config.fixedTemps,
       fan: config.fan,
       electrical: config.electrical,
+      freezerPosition: config.freezerPosition || 'top',   // new field
+      initialTE: config.fixedTemps.TE,                    // solver needs initial TE
       ...solverOptions,
     });
 
@@ -99,11 +84,11 @@ export function runThermoAnalysis(config) {
       return { success: false, errors, warnings, results: null };
     }
 
-    // Build output
     const output = {
       TC: result.TC,
       T2: result.T2,
       PR: result.PR,
+      TE: result.TE,   // dynamic TE result
       heatLoads: {
         QF: result.heatLoads.QF,
         QR: result.heatLoads.QR,
@@ -123,7 +108,6 @@ export function runThermoAnalysis(config) {
       },
     };
 
-    // Warnings (e.g. if PR hit a limit – not implemented yet, but placeholder)
     if (result.PR >= 1) {
       warnings.push('Compressor running ratio reached 100% — system may be undersized.');
     } else if (result.PR <= 0.1) {
@@ -138,30 +122,44 @@ export function runThermoAnalysis(config) {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: build a default configuration using the SJ‑54H baseline
+// Default config builder (SJ‑54H)
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a complete configuration object pre‑filled with SJ‑54H defaults.
- * The caller can override any field after.
- *
- * @param {object} [overrides] - optional partial config to merge
- * @returns {object} config ready for runThermoAnalysis
+ * Returns a complete configuration object for the SJ‑54H baseline,
+ * formatted exactly as the solver expects.
  */
 export function buildDefaultConfig(overrides = {}) {
+  // Convert compressor coefficients from the old object format to arrays
+  const { compressor: compRaw, condenser: condRaw, fan, electrical } = SJ54H_COMPONENTS;
+
+  const compParams = {
+    name: compRaw.name,
+    cylinderVolumeCm3: compRaw.Vc,
+    speedRpm: compRaw.rpm,
+    rpm0: compRaw.rpm0,
+    T_suction: compRaw.T_suction,
+    wCoeffs: [
+      compRaw.powerCoeffs.AW,
+      compRaw.powerCoeffs.BW,
+      compRaw.powerCoeffs.CW,
+      compRaw.powerCoeffs.DW,
+      compRaw.powerCoeffs.EW,
+    ],
+    etaCoeffs: [
+      compRaw.volEffCoeffs.A,
+      compRaw.volEffCoeffs.B,
+      compRaw.volEffCoeffs.C,
+    ],
+  };
   const base = {
     geom: toThermalFormat(DEFAULT_CABINET),
-    compParams: { ...SJ54H_COMPONENTS.compressor },
+    compParams,
     condenserConfig: {
-      K_side: SJ54H_COMPONENTS.condenser.K_side_kcalhm2C,
-      K_back: SJ54H_COMPONENTS.condenser.K_back_kcalhm2C,
-      backCondenserEfficiency: SJ54H_COMPONENTS.condenser.backCondenserEfficiency,
-      k_RFront1: SJ54H_COMPONENTS.condenser.k_RFront1,
-      k_RFront2: SJ54H_COMPONENTS.condenser.k_RFront2,
-      k_FRPartition1: SJ54H_COMPONENTS.condenser.k_FRPartition1,
-      k_FRPartition2: SJ54H_COMPONENTS.condenser.k_FRPartition2,
-      k_FFront1: SJ54H_COMPONENTS.condenser.k_FFront1,
-      k_FFront2: SJ54H_COMPONENTS.condenser.k_FFront2,
+      sidePipePitch_mm: condRaw.sidePipePitch_mm,
+      backPipePitch_mm: condRaw.backPipePitch_mm,
+      backCondenserEfficiency: condRaw.backCondenserEfficiency,
+      backCondenser: 'Yes',   // SJ‑540 has a back condenser
     },
     refrigerant: 'R-600a',
     subcool: SJ54H_COMPONENTS.subcool_K,
@@ -170,30 +168,42 @@ export function buildDefaultConfig(overrides = {}) {
       T0: 30,
       TF: -18,
       TR: 3,
-      TE: -23.3,
+      TE: -23.3,          // initial guess (will be updated by dynamic loop if used)
     },
     fan: {
-      totalAirflow: SJ54H_COMPONENTS.fan.totalAirflow_m3h,
-      inputPower_W: SJ54H_COMPONENTS.fan.inputPower_W,   // add this
+      totalAirflow: fan.totalAirflow_m3h,
+      inputPower_W: fan.inputPower_W,
     },
-    electrical: { ...SJ54H_COMPONENTS.electrical },
+    electrical: { ...electrical },
+    freezerPosition: 'top',   // SJ‑540 is top‑freezer
+    initialTE: -25.27,        // better starting point for TE iterations
     solverOptions: {
       TC0: 54.4,
       DH: 0.001,
       tolOuter: 0.0005,
       maxIterOuter: 100,
-      innerOptions: { dx: 0.001, tol: 1e-4, maxIter: 100 },
+      innerOptions: {
+        dx: 0.001,
+        tol: 1e-4,
+        maxIter: 100,
+        initialT2: -21.25,
+        initialPR: 0.59,
+      },
     },
   };
 
   return deepMerge(base, overrides);
 }
 
-// Simple deep merge (only one level needed for our configs)
+// Simple deep merge (one level deep suffices for our configs)
 function deepMerge(target, source) {
   const out = { ...target };
   for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+    if (
+      source[key] &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key])
+    ) {
       out[key] = deepMerge(out[key] || {}, source[key]);
     } else {
       out[key] = source[key];
