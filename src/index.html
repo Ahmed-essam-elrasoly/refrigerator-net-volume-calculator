@@ -58,6 +58,11 @@
         <div id="compartmentBuilder"></div>
       </fieldset>
 
+      <!-- USABLE FACTOR -->
+      <fieldset>
+        <legend>Usable Volume Factor</legend>
+        <label>Usable volume factor (%): <input type="number" id="usableFactor" value="97" step="any" min="0" max="100"></label>
+      </fieldset>
 
       <!-- RESULTS -->
       <fieldset>
@@ -94,15 +99,8 @@
         </fieldset>
         <fieldset>
           <legend>Fan</legend>
-          <label>Diameter (mm): <input type="number" id="thermoFanDiam" step="any"></label>
-          <label>RPM: <input type="number" id="thermoFanRPM" step="any"></label>
-          <label>Thickness (mm): <input type="number" id="thermoFanThick" step="any"></label>
-        </fieldset>
-        <fieldset>
-          <legend>Defrost</legend>
-          <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
-          <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
-          <label>Timer period (hr): <input type="number" id="thermoTimerPeriod" step="any"></label>
+          <label>Total airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
+          <label>Fan input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
         </fieldset>
         <details id="thermoAdvanced">
           <summary>Advanced Parameters</summary>

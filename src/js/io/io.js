@@ -6,7 +6,8 @@
 
 import { formatLeafDisplay, formatTotalsDisplay, toCuft, roundForDisplay } from '../engine/calc.js';
 
-const SCHEMA_VERSION = '1.0';
+const SCHEMA_VERSION = '2.0';
+const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
 
 // ---------------------------------------------------------------------------
 // JSON — Save
@@ -76,9 +77,10 @@ export function configFromJSON(jsonString) {
   if (!parsed.schemaVersion) {
     throw new Error('Missing schemaVersion in config file.');
   }
-  if (parsed.schemaVersion !== SCHEMA_VERSION) {
+  if (!ACCEPTED_VERSIONS.has(parsed.schemaVersion)) {
     throw new Error(
-      `Schema version mismatch: file is v${parsed.schemaVersion}, expected v${SCHEMA_VERSION}.`
+      `Unsupported schema version v${parsed.schemaVersion}. ` +
+      `Accepted: ${[...ACCEPTED_VERSIONS].join(', ')}.`
     );
   }
   if (!parsed.cabinet?.layout) {

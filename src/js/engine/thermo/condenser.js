@@ -21,14 +21,8 @@ export function calcQCout(geom, TC, T0, TF, TR, PR, PIPEPITCH ,freezerPosition =
     Qdpf = (0.3395*(TC-T0)+0.0344*(TC-TR))*PR*(Hr*2+W)/1000;
     Qdpr = (0.3405*(TC-T0)+0.03322*(TC-TF))*PR*(Hf*2)/1000;
   }
+  const Qdp   = Qdpfr + Qdpf + Qdpr;
+  const Qside = K_side * sideArea * (TC - T0);
+  const Qback = K_back * backArea * (TC - T0);
 
-  return {
-    Qdpfr,
-    Qdpf,
-    Qdpr,
-    Qdp: Qdpfr + Qdpf + Qdpr,
-    Qside: K_side * sideArea * (TC - T0),
-    Qback: K_back * backArea * (TC - T0),
-    QCout: Qdp + Qside + Qback
-  };
-}
+  return { Qdpfr, Qdpf, Qdpr, Qdp, Qside, Qback, QCout: Qdp + Qside + Qback };}
