@@ -543,6 +543,91 @@ calculateBtn.addEventListener('click', () => {
   }
 });
 
+
+// ---- populateUIFromConfig ---------------------------------------------
+/**
+ * Restores all left-panel inputs and reactive state from a loaded config.
+ * Must run synchronously before the subsequent runCalculation() call so that
+ * compartmentsData, currentGeometry, and all DOM inputs are consistent.
+ *
+ * Supports:
+ *   v2.0 configs: cabinet.geometry  (produced by the current UI)
+ *   v1.0 configs: cabinet.external  (old format, geometry inputs only)
+ */
+function populateUIFromConfig(config) {
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val != null) el.value = val;
+  };
+
+  const geometry = config.cabinet?.geometry;
+
+  if (geometry) {
+    // ── v2.0 format ─────────────────────────────────────────────────────────
+    set('geom-H',          geometry.H);
+    set('geom-W',          geometry.W);
+    set('geom-D',          geometry.D);
+    set('geom-Hb',         geometry.Hb);
+    set('geom-Db1',        geometry.Db1);
+    set('geom-Db2',        geometry.Db2);
+    set('geom-packingPos', geometry.packingPos);
+    set('geom-doorGap',    geometry.doorGap);
+
+    const rw = geometry.walls?.refrigerator;
+    if (rw) {
+      set('geom-bottom1', rw.bottom1);
+      set('geom-bottom2', rw.bottom2);
+      set('geom-bottom3', rw.bottom3);
+    }
+
+    // Restore compartment data from _compartments saved by readGeometryFromPanel().
+    // This field carries type, per-wall thicknesses, height, and ratio for each
+    // compartment — everything needed to rebuild the compartment UI cards.
+    const savedComps = geometry._compartments;
+    if (savedComps?.length > 0) {
+      numCompartmentsInput.value = savedComps.length;
+      compartmentsData = savedComps.map(c => ({ ...c }));
+
+      // Restore divider thickness from the layout node
+      const layout = config.cabinet.layout;
+      if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
+        divHorizInput.value = layout.dividers[0].thickness ?? 20;
+      }
+    } else {
+      // Manually-authored config with no _compartments — reset to UI defaults
+      initCompartments();
+    }
+
+    // Update the shared geometry reference used by the schematic renderer
+    currentGeometry = { ...geometry };
+
+  } else if (config.cabinet?.external) {
+    // ── v1.0 format (backward compat) ────────────────────────────────────────
+    const ext = config.cabinet.external;
+    set('geom-H', ext.height);
+    set('geom-W', ext.width);
+    set('geom-D', ext.depth);
+
+    const wtt = config.cabinet.wallThicknessesByType;
+    if (wtt?.fresh) {
+      set('geom-bottom1', wtt.fresh.bottom);
+      set('geom-bottom2', wtt.fresh.bottom);
+      set('geom-bottom3', wtt.fresh.bottom);
+    }
+
+    initCompartments();
+    currentGeometry = { ...DEFAULT_CABINET };
+
+  } else {
+    console.warn('populateUIFromConfig: unrecognised config structure — UI not restored.');
+    return;
+  }
+
+  buildCompartmentUI();
+  syncConstraints();
+  syncDisplay();
+}
+
 // ---- Save / Load / Export ---------------------------------------------
 saveBtn.addEventListener('click', () => {
   if (!currentConfig) { alert('Calculate first'); return; }
@@ -584,8 +669,11 @@ loadBtn.addEventListener('click', () => {
     document.getElementById('grossVol').textContent      = disp.gross;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
 
-    document.getElementById('grossVol').textContent = roundForDisplay(result.totals.gross, 'L');
-    document.getElementById('grossVolCuft').textContent = roundForDisplay(toCuft(result.totals.gross), 'cuft');
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    const usableL = result.totals.gross * (usableFactor / 100);
+    const usableCuft = usableL * settings.lToCuft;
+    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
   }
         showMessages(result.validationErrors, result.warnings, result.calcErrors);
 

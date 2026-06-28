@@ -205,3 +205,51 @@ button {
 .remove-fitting-btn:hover {
     background: #c0392b;
 }
+/* ---- Thermal analysis results table --------------------------------- */
+.thermo-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.thermo-results-table thead tr {
+    background: #2c3e50;
+    color: #fff;
+}
+
+.thermo-results-table thead th {
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 13px;
+}
+
+/* Section sub-headers (Operating Points / Compressor / Heat Loads / Solver) */
+.thermo-results-table tr.section-header td {
+    background: #ecf0f1;
+    color: #2c3e50;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-top: 1px solid #bdc3c7;
+}
+
+.thermo-results-table tbody tr td {
+    padding: 3px 8px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* Right-align the value column */
+.thermo-results-table tbody tr td:last-child {
+    text-align: right;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: nowrap;
+}
+
+/* Alternating row shading within data rows */
+.thermo-results-table tbody tr:not(.section-header):nth-child(even) {
+    background: #f8f9fa;
+}
+
+#thermoResults {
+    margin-top: 6px;
+}
