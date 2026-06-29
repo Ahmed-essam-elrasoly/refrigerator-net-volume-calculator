@@ -246,7 +246,7 @@ export function solveThermalSystem(config, TE_override = null) {
       fixedTemps, fan, electrical, condenserConfig,
       TE, freezerPosition, innerOptions
     );
-    
+    console.log('inner.compressor:', inner.compressor);
     if (!inner.converged)
       return { TC, T2: NaN, PR: NaN, converged: false, error: 'Inner loop failed: ' + inner.error };
     
@@ -270,21 +270,27 @@ export function solveThermalSystem(config, TE_override = null) {
       `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
     );
 
-    if (Math.abs(F3) < tolOuter) {
-      return {
-        TC,
-        T2:                   inner.T2,
-        PR:                   inner.PR,
-        TE,
-        converged:            true,
-        outerIterations:      iter + 1,
-        innerTotalIterations: totalInner,
-        heatLoads:            inner.heatLoads,
-        compressor:           inner.compressor,
-        MR:                   inner.MR,
-        MF:                   inner.MF,
-      };
-    }
+if (Math.abs(F3) < tolOuter) {
+  return {
+    TC,
+    T2: inner.T2,
+    PR: inner.PR,
+    TE,
+    Pe: inner.compressor.Pe,   // added
+    Pc: inner.compressor.Pc,   // added
+    converged: true,
+    outerIterations:      iter + 1,
+    innerTotalIterations: totalInner,
+    heatLoads:            inner.heatLoads,
+    compressor: {
+      ...inner.compressor,
+    },
+    MR:                   inner.MR,
+    MF:                   inner.MF,
+    fan:                  fan,
+    electrical:           electrical,
+  };
+}
 
     // ── 3. Perturb TC for numerical derivative (Recalculating QCin) ──────────
     const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR };
@@ -387,10 +393,33 @@ export function runThermalAnalysisDynamic(config) {
   return result;
 }
 export function EnergyConsumption(result) {
-  if (!result.converged) return NaN;
-  const { compressor, fan, electrical } = result;
-  const OnPower_W = (compressor.inputPower ?? 0) + (fan.inputPower_W ?? 0) + (electrical.pwbOn_W ?? 0);
-  const EnergyConsumption_W = (OnPower_W * PR + electrical.pwboff_W * (1-PR)) * 24/1000 + electrical.defrostOn_min* electrical.defrostOn_W * (24/(10.5/PR)) / 60 / 1000;
-  const EnergyConsumption_kWhMonth = EnergyConsumption_W * 30; // kWh/month
-  return {EnergyConsumption_W, EnergyConsumption_kWhMonth}; // kWh/day and kWh/month
+  // Only reject if converged is explicitly false.
+  // Missing converged (undefined) is tolerated because the caller
+  // should only pass successful runs.
+  if (result.converged === false) {
+    console.log('EnergyConsumption: converged === false, returning NaN');
+    return NaN;
+  }
+
+  const PR = result.PR;
+  const compressor = result.compressor || {};
+  const fan = result.fan || {};
+  const electrical = result.electrical || {};
+
+  const pwbOn_W  = electrical.pwbOn_W  ?? 0;
+  const pwbOff_W = electrical.pwboff_W ?? 0;
+  const defrostOn_W    = electrical.defrostOn_W    ?? electrical.defrostHeater_W ?? 0;
+  const defrostOn_min  = electrical.defrostOn_min  ?? 0;
+  const fanPower       = fan.inputPower_W ?? 0;
+
+  const OnPower_W = (compressor.inputPower ?? 0) + fanPower + pwbOn_W;
+
+  const energy_W =
+    (OnPower_W * PR + pwbOff_W * (1 - PR)) * 24 / 1000 +
+    defrostOn_min * defrostOn_W * (24 / (10.5 / PR)) / 60 / 1000;
+
+  return {
+    EnergyConsumption_W: energy_W,
+    EnergyConsumption_kWhMonth: energy_W * 30
+  };
 }

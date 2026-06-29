@@ -1,44 +1,17 @@
-/**
- * @file traversal.js
- * Pass 2 — single recursive descent that simultaneously:
- *   1. Derives each node's available space from parent context
- *   2. Validates dimension-dependent rules at each node
- *   3. Calculates leaf volumes immediately after validation passes
- *
- * If a node fails dimension-dependent validation, its entire subtree is
- * skipped (childrenSkipped: true on the error). Sibling subtrees continue.
- *
- * Fitting-level errors do NOT skip the leaf — they exclude the offending
- * fitting from IEC deductions only; gross and EG_Net are unaffected.
- */
+import { calcLeafGross } from './calc.js';
+import { settings } from '../settings.js';
 
-import { calcLeaf } from './calc.js';
-
-const DIM_TOL   = 0.01;   // mm tolerance for explicit height balance
+const DIM_TOL   = 0.01;
 const RATIO_TOL = 0.001;
 
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
-/**
- * Runs Pass 2 from the root node.
- * Call only after validateStructure() returns no errors.
- *
- * @param {import('./types').Node}   rootNode
- * @param {import('./types').Space}  rootSpace  - from deriveRootSpace()
- * @returns {{ leaves: import('./types').LeafResult[],
- *             errors: import('./types').ValidationError[],
- *             warnings: import('./types').Warning[] }}
- */
 export function traverseAndCompute(rootNode, rootSpace) {
   const errors   = [];
   const warnings = [];
   const leaves   = [];
-
-  // Pre-traverse: validate cabinet-level wall ratio and positive internal dims
-  // These are checked before traverseNode to avoid propagating bad root space.
-  // (Called by runCalculation in index.js before this function is invoked.)
 
   traverseNode(rootNode, rootSpace, errors, warnings, leaves);
 
@@ -49,13 +22,6 @@ export function traverseAndCompute(rootNode, rootSpace) {
 // Recursive node traversal
 // ---------------------------------------------------------------------------
 
-/**
- * @param {import('./types').Node}                node
- * @param {import('./types').Space}               space
- * @param {import('./types').ValidationError[]}   errors
- * @param {import('./types').Warning[]}           warnings
- * @param {import('./types').LeafResult[]}        leaves
- */
 function traverseNode(node, space, errors, warnings, leaves) {
   switch (node.nodeType) {
     case 'leaf':
@@ -78,14 +44,12 @@ function processHorizontal(node, space, errors, warnings, leaves) {
   const { children, dividers, id } = node;
   const mode = children[0].heightMode;
 
-  // Derive child heights
   let childHeights;
   if (mode === 'ratio') {
     const totalDividerH = dividers.reduce((s, d) => s + d.thickness, 0);
     const usableH = space.height - totalDividerH;
     childHeights = children.map(c => usableH * c.heightValue);
   } else {
-    // explicit mode — validate balance first
     const sumHeights   = children.reduce((s, c) => s + c.heightValue, 0);
     const sumDividers  = dividers.reduce((s, d) => s + d.thickness, 0);
     const total        = sumHeights + sumDividers;
@@ -97,12 +61,11 @@ function processHorizontal(node, space, errors, warnings, leaves) {
         message:        `Sum of heights (${sumHeights}) + dividers (${sumDividers}) = ${total} ≠ availableHeight (${space.height})`,
         childrenSkipped: true,
       });
-      return; // skip entire subtree
+      return;
     }
     childHeights = children.map(c => c.heightValue);
   }
 
-  // Recurse into each child with its derived height
   for (let i = 0; i < children.length; i++) {
     const childSpace = {
       width:  space.width,
@@ -120,7 +83,6 @@ function processHorizontal(node, space, errors, warnings, leaves) {
 function processVertical(node, space, errors, warnings, leaves) {
   const { dividerThickness, leftWidthRatio, left, right, id } = node;
 
-  // Validate divider fits within available width
   if (dividerThickness >= space.width) {
     errors.push({
       rule:           'verticalDividerBounds',
@@ -140,51 +102,34 @@ function processVertical(node, space, errors, warnings, leaves) {
 }
 
 // ---------------------------------------------------------------------------
-// Leaf: dimension-dependent fitting validation + calculation
+// Leaf: keep fitting dimension validation, but compute only gross
 // ---------------------------------------------------------------------------
 
 function processLeaf(node, space, errors, warnings, leaves) {
-  const excludedFittingIds = new Set();
   const { fittings, id } = node;
 
-  // Shelves
+  // Validate fittings (dimensions only – no volume deduction needed)
   for (const shelf of fittings.shelves ?? []) {
-    const shelfErrors = validateShelf(shelf, space, id);
-    for (const e of shelfErrors) {
-      errors.push(e);
-      excludedFittingIds.add(shelf.id); // exclude from IEC deduction
-    }
+    errors.push(...validateShelf(shelf, space, id));
   }
-
-  // Drawers
   for (const drawer of fittings.drawers ?? []) {
-    const drawerErrors = validateDrawer(drawer, space, id);
-    for (const e of drawerErrors) {
-      errors.push(e);
-      excludedFittingIds.add(drawer.id);
-    }
+    errors.push(...validateDrawer(drawer, space, id));
   }
-
-  // Door bins
   for (const bin of fittings.doorBins ?? []) {
-    const binErrors = validateDoorBin(bin, space, id);
-    for (const e of binErrors) {
-      errors.push(e);
-      excludedFittingIds.add(bin.id);
-    }
+    errors.push(...validateDoorBin(bin, space, id));
   }
 
-  // Soft warning: door bin depth vs shelf depth
+  // Soft warning: door bin depth vs shelf depth (still useful)
   const binDepthWarning = checkDoorBinDepth(fittings, space, id);
   if (binDepthWarning) warnings.push(binDepthWarning);
 
-  // Calculate leaf volumes (gross and EG always computed; excluded fittings skipped in IEC)
-  const result = calcLeaf(node, space, excludedFittingIds);
-  leaves.push(result);
+  // Compute only gross volume
+  const leafResult = calcLeafGross(node, space);
+  leaves.push(leafResult);
 }
 
 // ---------------------------------------------------------------------------
-// Fitting validators (return ValidationError[])
+// Fitting validators (unchanged, except we don't need excludedFittingIds)
 // ---------------------------------------------------------------------------
 
 function validateShelf(shelf, space, nodeId) {
@@ -229,14 +174,12 @@ function validateDrawer(drawer, space, nodeId) {
       message: `Drawer outerHeight (${oH}) must be < compartment height (${space.height})` });
   }
 
-  // Wall ratio: must be < 50% of the smallest outer dimension
   const minOuter = Math.min(oW, oD, oH);
   if (t >= minOuter * 0.5) {
     errs.push({ rule: 'drawerWall', nodeId,
       message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
   }
 
-  // Inner dimensions positive
   const innerW = oW - 2 * t;
   const innerD = oD - 2 * t;
   const innerH = oH - t;
@@ -267,22 +210,12 @@ function validateDoorBin(bin, space, nodeId) {
   return errs;
 }
 
-// ---------------------------------------------------------------------------
-// Soft warnings
-// ---------------------------------------------------------------------------
-
-/**
- * Fires if sum of all door bin depths exceeds availableDepth minus min shelf depth.
- * @returns {import('./types').Warning|null}
- */
 function checkDoorBinDepth(fittings, space, nodeId) {
-  const bins   = fittings.doorBins ?? [];
+  const bins    = fittings.doorBins ?? [];
   const shelves = fittings.shelves ?? [];
   if (!bins.length) return null;
 
   const totalBinDepth = bins.reduce((s, b) => s + b.outerDepth, 0);
-
-  // If no shelves, use 0 as minShelfDepth — threshold equals full availableDepth
   const minShelfDepth = shelves.length
     ? Math.min(...shelves.map(s => s.depth))
     : 0;

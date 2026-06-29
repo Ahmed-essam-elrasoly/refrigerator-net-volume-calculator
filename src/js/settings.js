@@ -1,3 +1,5 @@
+// js/settings.js
+
 const DEFAULTS = {
   mm3ToL: 1e-6,
   lToCuft: 0.0353147,
@@ -5,7 +7,7 @@ const DEFAULTS = {
   displayPrecisionCuft: 3,
   canvasWidth: 600,
   canvasHeight: 800,
-  autoCalculate: false,          // auto‑run calculate on input change
+  autoCalculate: false,
   showDirtyOverlay: true,
 };
 
@@ -22,21 +24,21 @@ function loadSettings() {
   return { ...DEFAULTS };
 }
 
-function saveSettings(settings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+function saveToStorage(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
 
 export const settings = loadSettings();
 
 export function updateSettings(newSettings) {
   Object.assign(settings, newSettings);
-  saveSettings(settings);
+  saveToStorage(settings);
   document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
 }
 
 export function resetSettings() {
   Object.assign(settings, DEFAULTS);
-  saveSettings(settings);
+  saveToStorage(settings);
   document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
 }
 
