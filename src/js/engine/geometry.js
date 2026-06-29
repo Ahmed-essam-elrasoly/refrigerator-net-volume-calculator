@@ -64,6 +64,7 @@ export function toThermalFormat(geom) {
     tFright:  walls.freezer.right,
     tFbottom: walls.freezer.bottom,
     tFdoor:   walls.freezer.door,
+    tFback:   walls.freezer.rear,  
     tEvaBack: walls.freezer.rear,
     tRtop:    walls.refrigerator.top,
     tRleft:   walls.refrigerator.left,

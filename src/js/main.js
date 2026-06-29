@@ -1,12 +1,14 @@
 import { runCalculation } from './engine/index.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView } from './ui/schematic.js';
-import { initSettingsModal, showModal } from './ui/settingsModal.js';
-import { settings } from './settings.js';
-import { formatTotalsDisplay, formatLeafDisplay, walkBoundaries, roundForDisplay } from './engine/calc.js';
+import { initSettingsModal } from './ui/settingsModal.js';    // no showModal
+import { settings, updateSettings } from './settings.js';    // from the core settings
+import { formatTotalsDisplay, roundForDisplay } from './engine/calc.js'; // no walkBoundaries unused
 import { initThermoUI } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 
+// Load settings from localStorage on startup
+updateSettings(settings);  // this triggers the event and refreshes display if needed
 // ---- DOM references ---------------------------------------------------
 const divHorizInput       = document.getElementById('divHoriz');
 const usableFactorInput   = document.getElementById('usableFactor');
@@ -439,7 +441,7 @@ function showMessages(errors, warnings, calcErrors) {
     messagesFieldset.style.display = 'none';
   }
 }
-function computeAccurateBottomVolume(geom, eff, bottomCompHeight_mm) {
+function computeAccurateBottomVolume(geom, eff) {
   const { H, D, Hb, Db1, Db2, walls } = geom;
   const rearX = eff.rear;
   const doorX = D - eff.door;
@@ -489,19 +491,19 @@ calculateBtn.addEventListener('click', () => {
   const result = runCalculation(config);
 
   if (result.leaves && result.totals) {
-    // Replace the bottom leaf with the accurate stepped‑floor cavity volume
+    // Replace bottom leaf with accurate stepped-floor volume (still needed for gross)
     const eff = getEffectiveThicknesses();
     const bottomIdx = result.leaves.length - 1;
     const bottomCompHeight = compartmentsData[bottomIdx].height;
-    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff, bottomCompHeight);
+    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
 
     const bottomLeaf = result.leaves[bottomIdx];
     const oldBottomVol = bottomLeaf.gross;
     bottomLeaf.gross = accurateBottomVol;
     result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
 
-    // Display
-    const disp = formatTotalsDisplay(result.totals);
+    // Format totals display (now only gross)
+    const disp = formatTotalsDisplay({ gross: result.totals.gross });
     document.getElementById('grossVol').textContent      = disp.gross;
     document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
 
@@ -511,8 +513,9 @@ calculateBtn.addEventListener('click', () => {
     document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
     document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
   }
-    showMessages(result.validationErrors, result.warnings, result.calcErrors);
+  showMessages(result.validationErrors, result.warnings, result.calcErrors);
 
+  // Draw schematics
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   if (frontCanvas && sideCanvas) {
@@ -525,6 +528,8 @@ calculateBtn.addEventListener('click', () => {
     sideCanvas.width   = panelWidth / 2 - 5;
 
     const effectiveWalls = getEffectiveThicknesses();
+    // Gather fittings from the layout tree (all leaves)
+    const fittings = extractFittingsFromLayout(layout); // see below
     const drawOptions = {
       dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
       compHeights: compartmentsData.map(c => c.height),
@@ -534,6 +539,7 @@ calculateBtn.addEventListener('click', () => {
         right: c.right,
         rear: c.rear
       })),
+      fittings  // <-- pass to schematic
     };
 
     drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
@@ -543,6 +549,23 @@ calculateBtn.addEventListener('click', () => {
   }
 });
 
+function extractFittingsFromLayout(node) {
+  const fittings = [];
+  function walk(n) {
+    if (n.nodeType === 'leaf' && n.fittings) {
+      fittings.push({
+        leafId: n.id,
+        type: n.type,
+        shelves: n.fittings.shelves || [],
+        drawers: n.fittings.drawers || [],
+        doorBins: n.fittings.doorBins || []
+      });
+    }
+    if (n.children) n.children.forEach(c => walk(c.node));
+  }
+  walk(node);
+  return fittings;
+}
 
 // ---- populateUIFromConfig ---------------------------------------------
 /**
@@ -644,39 +667,43 @@ loadBtn.addEventListener('click', () => {
     try {
       const config = await loadConfigFromFile(file);
       currentConfig = config;
-      if (currentConfig) {
-        storeSlotABtn.style.display = 'inline-block';
-        storeSlotBBtn.style.display = 'inline-block';
-        compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
-      }
+
+      storeSlotABtn.style.display = 'inline-block';
+      storeSlotBBtn.style.display = 'inline-block';
+      compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
+
+      // 1. Restore UI inputs and reactive state
       populateUIFromConfig(config);
 
+      // 2. Run the calculation
       const result = runCalculation(config);
-  if (result.leaves && result.totals) {
-    // Replace the bottom leaf with the accurate stepped‑floor cavity volume
-    const eff = getEffectiveThicknesses();
-    const bottomIdx = result.leaves.length - 1;
-    const bottomCompHeight = compartmentsData[bottomIdx].height;
-    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff, bottomCompHeight);
 
-    const bottomLeaf = result.leaves[bottomIdx];
-    const oldBottomVol = bottomLeaf.gross;
-    bottomLeaf.gross = accurateBottomVol;
-    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+      // 3. Display results (with accurate bottom volume replacement)
+      if (result.leaves && result.totals) {
+        const eff = getEffectiveThicknesses();
+        const bottomIdx = result.leaves.length - 1;
+        const bottomCompHeight = compartmentsData[bottomIdx].height;
+        const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
 
-    // Display
-    const disp = formatTotalsDisplay(result.totals);
-    document.getElementById('grossVol').textContent      = disp.gross;
-    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+        const bottomLeaf = result.leaves[bottomIdx];
+        const oldBottomVol = bottomLeaf.gross;
+        bottomLeaf.gross = accurateBottomVol;
+        result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
 
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-    const usableL = result.totals.gross * (usableFactor / 100);
-    const usableCuft = usableL * settings.lToCuft;
-    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-  }
-        showMessages(result.validationErrors, result.warnings, result.calcErrors);
+        const disp = formatTotalsDisplay({ gross: result.totals.gross });
+        document.getElementById('grossVol').textContent      = disp.gross;
+        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
 
+        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+        const usableL = result.totals.gross * (usableFactor / 100);
+        const usableCuft = usableL * settings.lToCuft;
+        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+      }
+
+      showMessages(result.validationErrors, result.warnings, result.calcErrors);
+
+      // 4. Draw schematics (once)
       const frontCanvas = document.getElementById('schematicFront');
       const sideCanvas  = document.getElementById('schematicSide');
       if (frontCanvas && sideCanvas && result.leaves) {
@@ -689,6 +716,7 @@ loadBtn.addEventListener('click', () => {
         sideCanvas.width   = panelWidth / 2 - 5;
 
         const effectiveWalls = getEffectiveThicknesses();
+        const fittings = extractFittingsFromLayout(config.cabinet.layout);
         const drawOptions = {
           dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
           compHeights: compartmentsData.map(c => c.height),
@@ -698,14 +726,17 @@ loadBtn.addEventListener('click', () => {
             right: c.right,
             rear: c.rear
           })),
+          fittings   // <-- correct placement at top level
         };
+
         drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
         drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+
         dirtySchematic = false;
         schematicOverlay.classList.add('hidden');
       }
 
-      alert('Configuration loaded and calculated.');
+      // alert('Configuration loaded and calculated.');   // optional, remove after testing
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -721,7 +752,6 @@ exportBtn.addEventListener('click', () => {
 
 // ---- Settings Modal --------------------------------------------------
 initSettingsModal();
-settingsBtn.addEventListener('click', showModal);
 
 // ---- Reset All ---------------------------------------------------------
 resetAllBtn.addEventListener('click', () => {
@@ -853,6 +883,36 @@ function buildComparisonTable(resultA, resultB) {
   }
   comparisonContent.innerHTML = html;
 }
+// ---- Tab Switching ----
+document.getElementById('tabVolume').addEventListener('click', () => {
+  // Left panel switching
+  document.getElementById('panelVolume').classList.remove('hidden');
+  document.getElementById('panelThermal').classList.add('hidden');
+  document.getElementById('tabVolume').classList.add('active');
+  document.getElementById('tabThermal').classList.remove('active');
 
+  // Right panel: hide thermal results, show schematics
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (thermoRight) thermoRight.classList.add('hidden');
+  if (frontCanvas) frontCanvas.style.display = '';
+  if (sideCanvas)  sideCanvas.style.display  = '';
+  // If schematic is dirty, the overlay may be shown – handled by dirty flag
+});
+document.getElementById('tabThermal').addEventListener('click', () => {
+  document.getElementById('panelThermal').classList.remove('hidden');
+  document.getElementById('panelVolume').classList.add('hidden');
+  document.getElementById('tabThermal').classList.add('active');
+  document.getElementById('tabVolume').classList.remove('active');
+
+  // Right panel: hide schematics, show thermal results (if any)
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (thermoRight) thermoRight.classList.remove('hidden');
+  if (frontCanvas) frontCanvas.style.display = 'none';
+  if (sideCanvas)  sideCanvas.style.display = 'none';
+});
 // Thermo UI init with geometry provider
 initThermoUI(() => readGeometryFromPanel());

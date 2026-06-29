@@ -253,3 +253,65 @@ button {
 #thermoResults {
     margin-top: 6px;
 }
+/* Tabs for volume/thermal */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.tab {
+  padding: 6px 14px;
+  background: #e0e0e0;
+  border: 1px solid #999;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.tab.active {
+  background: #fff;
+  border-bottom: 1px solid #fff;
+}
+.tab-panel {
+  display: block;
+}
+.tab-panel.hidden {
+  display: none;
+}
+
+/* Settings tabs */
+.settings-tabs {
+  margin-bottom: 10px;
+}
+.stab {
+  padding: 4px 10px;
+  background: #eee;
+  border: 1px solid #bbb;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.stab.active {
+  background: #fff;
+  border-bottom: 1px solid #fff;
+  font-weight: bold;
+}
+.stab-panel {
+  padding: 10px 0;
+}
+.stab-panel.hidden { display: none; }
+
+/* Compressor list in settings */
+.compressor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.compressor-row select {
+  width: 200px;
+}
+.thermo-results-panel {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  box-sizing: border-box;
+}

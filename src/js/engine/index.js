@@ -7,7 +7,7 @@
  *   runCalculation(config) → CalcResult
  */
 
-import { deriveRootSpace, aggregateTotals, walkBoundaries } from './calc.js';
+import { deriveRootSpace, walkBoundaries } from './calc.js';
 import { validateStructure }                                from './validationPass1.js';
 import { traverseAndCompute }                               from './traversal.js';
 import { upgradeConfig, toVolumeFormat } from './geometry.js';
@@ -139,41 +139,35 @@ function checkHierarchy(leaves, totals) {
  * @returns {import('./types').CalcResult}
  */
 export function runCalculation(config) {
-  const result = { leaves:null, totals:null, validationErrors:[], calcErrors:[], warnings:[] };
+  const result = { leaves: null, totals: null, validationErrors: [], calcErrors: [], warnings: [] };
 
-  // Pass 1 — structural
   const structErrors = validateStructure(config.cabinet.layout);
   if (structErrors.length) { result.validationErrors = structErrors; return result; }
 
-  // Backward compatibility
   if (config.schemaVersion === '1.0' || (!config.cabinet.geometry && config.cabinet.external)) {
     config = upgradeConfig(config);
   }
 
   const { geometry, layout } = config.cabinet;
-
-  // Derive volume format and validate cabinet dimensions
   const volumeGeom = toVolumeFormat(geometry);
   const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
   if (cabinetErrors.length) { result.validationErrors = cabinetErrors; return result; }
 
   const rootSpace = deriveRootSpace(volumeGeom, layout);
 
-  // Pass 2
+  // Pass 2 – now only returns gross volumes
   const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
   result.validationErrors = dimErrors;
   result.warnings = warnings;
-  result.leaves = leaves;
+  result.leaves = leaves.map(l => ({ leafId: l.leafId, gross: l.gross }));
 
   if (leaves.length > 0) {
-    const totals = aggregateTotals(leaves);
-    result.totals = totals;
-    result.calcErrors = checkHierarchy(leaves, totals);
+    const totalGross = leaves.reduce((sum, l) => sum + l.gross, 0);
+    result.totals = { gross: totalGross };
   }
 
   return result;
 }
-
-export { deriveRootSpace, aggregateTotals } from './calc.js';
-export { validateStructure }               from './validationPass1.js';
-export { traverseAndCompute }              from './traversal.js';
+export { deriveRootSpace }    from './calc.js';
+export { validateStructure } from './validationPass1.js';
+export { traverseAndCompute } from './traversal.js';

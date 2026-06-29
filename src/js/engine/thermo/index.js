@@ -101,7 +101,11 @@ export function runThermoAnalysis(config) {
         coolingCapacity: result.compressor.coolingCapacity,
         inputPower: result.compressor.inputPower,
         etaV: result.compressor.etaV,
+        Pe: result.compressor.Pe,      // ← added
+        Pc: result.compressor.Pc,      // ← added
       },
+      fan: result.fan,
+      electrical: result.electrical,
       iterations: {
         outer: result.outerIterations,
         innerTotal: result.innerTotalIterations,

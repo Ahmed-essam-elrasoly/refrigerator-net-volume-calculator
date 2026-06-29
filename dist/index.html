@@ -1,115 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Refrigerator Net Storage Volume Calculator</title>
-    <link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Refrigerator Net Storage Volume Calculator</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="page">
-        <!-- LEFT PANEL: Calculator -->
-        <div class="left-panel">
-            <h1>Refrigerator Net Storage Volume Calculator</h1>
-            <p>ES 3794 / IEC 62552 compliant</p>
-            <div class="sticky-buttons">
-                <button id="settingsBtn">⚙️ Settings</button>
-                <button id="calculateBtn">Calculate</button>
-                <button id="saveBtn">Save Configuration (JSON)</button>
-                <button id="loadBtn">Load Configuration (JSON)</button>
-                <button id="exportBtn">Export Results (CSV)</button>
-                <button id="resetAllBtn">🔄 Reset All</button>
-                                <!-- slot storage buttons (hidden until a config exists) -->
-                <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
-                <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
-                <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
+  <div class="page">
+    <!-- LEFT PANEL: Calculator -->
+    <div class="left-panel">
+      <h1>Refrigerator Volume &amp; Thermal Design</h1>
+      <p>Gross &amp; Usable Volume – Concept Design Tool</p>
 
-            </div>
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <button id="tabVolume" class="tab active">Volume</button>
+        <button id="tabThermal" class="tab">Thermal</button>
+      </div>
 
-            <!-- External Dimensions -->
-            <fieldset>
-                <legend>External Cabinet Dimensions</legend>
-                <label>Height (mm): <input type="number" id="extHeight" min="1" step="any" required></label>
-                <label>Width (mm): <input type="number" id="extWidth" min="1" step="any" required></label>
-                <label>Depth (mm): <input type="number" id="extDepth" min="1" step="any" required></label>
-            </fieldset>
-
-            <!-- Per‑Type Wall Thicknesses -->
-            <fieldset>
-                <legend>Wall/Insulation Thickness (mm) – per type</legend>
-                <div id="wallThicknessPerType"></div>
-                <button type="button" id="copyToAllTypesBtn">📋 Copy Fresh Food → all types</button>
-            </fieldset>
-            <!-- Partition Divider Thickness -->
-            <fieldset>
-                <legend>Partition Divider Thickness (mm)</legend>
-                <label>Horizontal: <input type="number" id="divHoriz" value="20" step="any" required></label>
-                <label>Vertical: <input type="number" id="divVert" value="20" step="any" required></label>
-            </fieldset>
-
-            <!-- Air Gap / Door Seal Offset -->
-            <fieldset>
-                <legend>Air Gap / Door Seal Offset (mm)</legend>
-                <label>Clearance: <input type="number" id="sealOffset" value="5" step="any" required></label>
-            </fieldset>
-
-            <!-- Compartments -->
-            <fieldset>
-                <legend>Compartments (max 8)</legend>
-                <label>Number of compartments (1–8): <input type="number" id="numCompartments" min="1" max="8" value="2" required></label>
-                <div id="compartmentBuilder"></div>
-            </fieldset>
-
-            <!-- Results -->
-            <fieldset>
-                <legend>Calculated Volumes</legend>
-                <div id="results">
-                    <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
-                    <p>Egyptian Net (ES 3794): <span id="egNetVol">--</span> L (<span id="egNetVolCuft">--</span> cu. ft.)</p>
-                    <p>IEC Net (IEC 62552): <span id="iecNetVol">--</span> L (<span id="iecNetVolCuft">--</span> cu. ft.)</p>
-                </div>
-            </fieldset>
-
-            <fieldset id="messagesFieldset" style="display:none;">
-                <legend>Messages</legend>
-                <div id="messages"></div>
-            </fieldset>
-
+      <!-- Volume Panel -->
+      <div id="panelVolume" class="tab-panel active">
+        <div class="sticky-buttons">
+          <button id="settingsBtn">⚙️ Settings</button>
+          <button id="calculateBtn">Calculate</button>
+          <button id="saveBtn">Save Configuration (JSON)</button>
+          <button id="loadBtn">Load Configuration (JSON)</button>
+          <button id="exportBtn">Export Results (CSV)</button>
+          <button id="resetAllBtn">🔄 Reset All</button>
+          <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
+          <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
+          <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
         </div>
+      <!-- CABINET GEOMETRY -->
+      <fieldset>
+        <legend>Cabinet Geometry</legend>
+        <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
+        <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
+        <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
 
-        <!-- RIGHT PANEL: Schematic -->
-        <div class="right-panel">
-            <canvas id="schematicCanvas" width="600" height="800"></canvas>
-            <!-- Overlay indicator when schematic is outdated -->
-            <div id="schematicOverlay" class="schematic-overlay hidden">
-                Schematic not updated – click Calculate
-            </div>
-            <!-- Tooltip -->
-            <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
+        <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
+        <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
+        <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
+
+        <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
+        <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label><br>
+
+        <fieldset>
+          <legend>Bottom Insulation (stepped floor)</legend>
+          <label>t.Bottom1 (mm): <input type="number" id="geom-bottom1" step="any"></label>
+          <label>t.Bottom2 (mm): <input type="number" id="geom-bottom2" step="any"></label>
+          <label>t.Bottom3 (mm): <input type="number" id="geom-bottom3" step="any"></label>
+        </fieldset>
+      </fieldset>
+
+      <!-- COMPARTMENTS -->
+      <fieldset>
+        <legend>Compartments</legend>
+        <label>Number of compartments (1–2):
+          <input type="number" id="numCompartments" min="1" max="2" value="2" required>
+        </label>
+        <label id="dividerLabel">Partition Divider Thickness (mm):
+          <input type="number" id="divHoriz" value="20" step="any">
+        </label>
+        <div id="compartmentBuilder"></div>
+      </fieldset>
+
+      <!-- USABLE FACTOR -->
+      <fieldset>
+        <legend>Usable Volume Factor</legend>
+        <label>Usable volume factor (%): <input type="number" id="usableFactor" value="97" step="any" min="0" max="100"></label>
+      </fieldset>
+
+      <!-- RESULTS -->
+      <fieldset>
+        <legend>Calculated Volumes</legend>
+        <div id="results">
+          <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
+          <p>Usable Volume: <span id="usableVol">--</span> L (<span id="usableVolCuft">--</span> cu. ft.)</p>
         </div>
-    <!-- Settings Modal -->
-<div id="settingsModal" class="modal hidden">
-  <div class="modal-content">
-    <span class="close-btn" id="closeSettings">&times;</span>
-    <h2>Settings</h2>
-    <div id="settingsForm"></div>
-    <div class="settings-actions">
-      <button id="settingsSave">Save &amp; Close</button>
-      <button id="settingsExport">Export Settings</button>
-      <button id="settingsImport">Import Settings</button>
-      <button id="settingsReset">Reset Defaults</button>
+      </fieldset>
+
+      <fieldset id="messagesFieldset" style="display:none;">
+        <legend>Messages</legend>
+        <div id="messages"></div>
+      </fieldset>
+    </div>
+
+    <!-- Thermal Panel -->
+    <div id="panelThermal" class="tab-panel hidden">
+      <!-- ThermUI will be initialised here by thermoUI.js -->
+    </div>
+  </div>   <!-- ← CLOSE the left-panel here -->
+
+  <!-- SPLITTER -->
+  <div class="splitter" id="splitter"></div>
+
+  <!-- RIGHT PANEL: Schematics -->
+  <div class="right-panel">
+    <canvas id="schematicFront"></canvas>
+    <canvas id="schematicSide"></canvas>
+    <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated – click Calculate</div>
+    <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
+    <div id="thermoRightPanel" class="thermo-results-panel hidden"></div>
+  </div>
+</div>   <!-- this closes the .page div -->
+  <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close-btn" id="closeSettings">&times;</span>
+        <h2>Settings</h2>
+        <div class="tab-bar settings-tabs">
+          <button class="stab active" data-tab="stabGeneral">General</button>
+        </div>
+        <div id="stabGeneral" class="stab-panel active"></div>
+        <div class="settings-actions">
+          <button id="settingsSave">Save &amp; Close</button>
+          <button id="settingsExport">Export Settings</button>
+          <button id="settingsImport">Import Settings</button>
+          <button id="settingsReset">Reset Defaults</button>
+        </div>
+      </div>
+    </div>
+  <!-- Comparison Modal -->
+  <div id="comparisonModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-btn" id="closeComparison">&times;</span>
+      <h2>Side‑by‑Side Comparison</h2>
+      <div id="comparisonContent"></div>
+    </div>
+  </div>
+
+  <script src="bundle.js"></script>
+    <!-- Thermal Advanced Parameters Modal -->
+  <div id="thermalSettingsModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-btn" id="closeThermalSettings">&times;</span>
+      <h2>Advanced Thermal Parameters</h2>
+      <fieldset>
+        <legend>Subcool &amp; Discharge</legend>
+        <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+        <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Fan</legend>
+        <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Defrost</legend>
+        <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+        <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
+      </fieldset>
+      <div class="settings-actions">
+        <button id="saveThermalSettings">Save & Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Compressor Modal -->
+<div id="addCompressorModal" class="modal hidden">
+  <div class="modal-content" style="max-width: 700px;">
+    <span class="close-btn" id="closeAddCompressor">&times;</span>
+    <h2>Add Custom Compressor</h2>
+    <div id="addCompressorContent">
+      <!-- Will be built by thermoUI.js -->
     </div>
   </div>
 </div>
-    </div>
-            <div id="comparisonModal" class="modal hidden">
-              <div class="modal-content">
-                <span class="close-btn" id="closeComparison">&times;</span>
-                <h2>Side‑by‑Side Comparison</h2>
-                <div id="comparisonContent"></div>
-              </div>
-            </div>
-
-    <script src="bundle.js"></script>
 </body>
 </html>

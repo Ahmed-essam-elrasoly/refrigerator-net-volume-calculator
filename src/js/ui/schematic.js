@@ -135,9 +135,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
 
   // Build the inner cavity polygon (stepped if left/right differ)
   ctx.beginPath();
-  // outer clockwise
   ctx.rect(0, 0, W * scale, H * scale);
-  // inner cavity counter‑clockwise
   let y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
     const h = compHeights[i];
@@ -147,14 +145,13 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     if (i === 0) {
       ctx.moveTo(leftX, y * scale);
     } else {
-      ctx.lineTo(leftX, y * scale);   // step left if thickness changed
+      ctx.lineTo(leftX, y * scale);
     }
     ctx.lineTo(rightX, y * scale);
     y += h;
     ctx.lineTo(rightX, y * scale);
     if (i < compHeights.length - 1) {
-      // only close the bottom side after last compartment
-      // just continue to next
+      // gap for divider will be handled below
     }
   }
   ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
@@ -193,7 +190,57 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // Dimension lines (left side – compartment heights & divider)
+  // -------------------- Fittings drawing (if provided) --------------------
+  if (options.fittings && leaves) {
+    const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
+    let yOffset = effectiveWalls.top;   // start from top of internal space
+
+    for (let i = 0; i < compHeights.length; i++) {
+      const compH = compHeights[i];
+      const fittingsForLeaf = options.fittings.find(f => f.leafId === leaves[i]?.leafId);
+      if (!fittingsForLeaf) {
+        yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+        continue;
+      }
+
+      const compY = yOffset * scale;
+      const compHeightPx = compH * scale;
+
+      // Draw shelves
+      const shelfCount = fittingsForLeaf.shelves.length;
+      if (shelfCount > 0) {
+        const shelfGap = compHeightPx / (shelfCount + 1);
+        for (let s = 0; s < shelfCount; s++) {
+          const yy = compY + shelfGap * (s + 1);
+          ctx.fillStyle = '#bbbbbb';
+          ctx.fillRect((effectiveWalls.left + 10) * scale, yy - 1,
+                       (internalWidth - 20) * scale, 3);
+        }
+      }
+
+      // Draw drawers
+      const drawerCount = fittingsForLeaf.drawers.length;
+      if (drawerCount > 0) {
+        const drawerWidth = internalWidth * 0.8 * scale;
+        const drawerHeight = 30;
+        const drawerGap = (compHeightPx - drawerCount * drawerHeight) / (drawerCount + 1);
+        for (let d = 0; d < drawerCount; d++) {
+          const yy = compY + drawerGap * (d + 1) + drawerHeight * d;
+          const xx = (effectiveWalls.left + (internalWidth - drawerWidth / scale) / 2) * scale;
+          ctx.strokeStyle = '#555';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(xx, yy, drawerWidth, drawerHeight);
+          ctx.fillStyle = '#e0e0e0';
+          ctx.fillRect(xx, yy, drawerWidth, drawerHeight);
+        }
+      }
+
+      yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+    }
+  }
+
+  // -------------------- Dimension lines (always drawn) --------------------
+  // Left side – compartment heights & divider
   const dimX = -35;
   y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
@@ -213,12 +260,9 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
   // Right thickness for top compartment
   drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
-  // If second compartment has different left/right, draw additional dimensions?
-  // For simplicity, we only show the top compartment's – can be improved later.
 
   ctx.restore();
 }
-
 // ──────────────────────────────────────────────────────────────────
 // Side view – per‑compartment rear thicknesses
 // ──────────────────────────────────────────────────────────────────

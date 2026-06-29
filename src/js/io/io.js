@@ -4,7 +4,7 @@
  * No DOM dependencies. Works in browser (File API) and Node.js.
  */
 
-import { formatLeafDisplay, formatTotalsDisplay, toCuft, roundForDisplay } from '../engine/calc.js';
+import { toCuft, roundForDisplay } from '../engine/calc.js';
 
 const SCHEMA_VERSION = '2.0';
 const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
@@ -123,44 +123,45 @@ export function loadConfigFromFile(file) {
  * @param {string} [configName]
  * @returns {string} CSV string
  */
+export function formatLeafDisplay(leaf) {
+  return {
+    gross:     roundForDisplay(leaf.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
+  };
+}
+
+export function formatTotalsDisplay(totals) {
+  return {
+    gross:     roundForDisplay(totals.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
+  };
+}
 export function resultToCSV(result, configName) {
   if (!result.leaves || !result.totals) {
     return '# No results available (calculation produced errors)\n';
   }
 
   const rows = [];
-
-  // Header block
   rows.push(`# Refrigerator Net Storage Volume Calculator`);
   rows.push(`# Configuration: ${configName ?? 'Unnamed'}`);
   rows.push(`# Generated: ${new Date().toISOString()}`);
   rows.push('');
 
-  // Column headers
+  // Column headers – only gross volumes
   rows.push([
     'Compartment',
-    'Type',
     'Gross (L)',
-    'EG Net (L)',
-    'IEC Net (L)',
     'Gross (cu.ft)',
-    'EG Net (cu.ft)',
-    'IEC Net (cu.ft)',
   ].join(','));
 
-  // Per-leaf rows
+  // Per‑leaf rows
   for (let i = 0; i < result.leaves.length; i++) {
     const leaf = result.leaves[i];
     const d    = formatLeafDisplay(leaf);
     rows.push([
       `Compartment ${i + 1}`,
-      leaf.leafType,
       d.gross,
-      d.egNet,
-      d.iecNet,
       d.grossCuft,
-      d.egNetCuft,
-      d.iecNetCuft,
     ].join(','));
   }
 
@@ -168,13 +169,8 @@ export function resultToCSV(result, configName) {
   const t = formatTotalsDisplay(result.totals);
   rows.push([
     'TOTAL',
-    '',
     t.gross,
-    t.egNet,
-    t.iecNet,
     t.grossCuft,
-    t.egNetCuft,
-    t.iecNetCuft,
   ].join(','));
 
   // Warnings block
@@ -188,7 +184,6 @@ export function resultToCSV(result, configName) {
 
   return rows.join('\n');
 }
-
 /**
  * Triggers a browser file download of the results CSV.
  * No-op in Node.js environments.
