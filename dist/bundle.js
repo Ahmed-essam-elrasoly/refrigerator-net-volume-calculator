@@ -2609,10 +2609,13 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       compressor
     });
     if (compressor) {
-      config.compressor.wCoeffs = compressor.wCoeffs;
-      config.compressor.etaCoeffs = compressor.etaCoeffs;
-      config.compressor.cylinderVolumeCm3 = compressor.cylinderVolumeCm3;
-      config.compressor.speedRpm = compressor.speedRpm;
+      config.compParams = {
+        name: compressor.name,
+        cylinderVolumeCm3: compressor.cylinderVolumeCm3,
+        speedRpm: compressor.speedRpm,
+        wCoeffs: compressor.wCoeffs,
+        etaCoeffs: compressor.etaCoeffs
+      };
     }
     const result = runThermoAnalysis(config);
     console.log("results.compressor keys:", Object.keys(result.results.compressor));

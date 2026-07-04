@@ -27,6 +27,7 @@ import {
 import { computeCompressorCoefficients } from '../engine/thermo/CompressorPerformance.js';
 import { EnergyConsumption } from '../engine/thermo/solver.js';   // adjust path if needed
 import { settings, updateSettings } from '../settings.js';
+import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
 
 // Store advanced parameters globally, initialised from defaults
 let thermalAdvanced = {
@@ -103,9 +104,27 @@ function openThermalSettings() {
 
       <fieldset>
         <legend>Evaporator</legend>
-        <p><i>Evaporator parameters – TBD</i></p>
+        <label>Width (mm): <input id="evapWidth" type="number" step="any"></label>
+        <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
+        <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
+        <label>Rows: <input id="evapRows" type="number" step="any"></label>
+        <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
+        <label>Fin Pitch (mm): <input id="evapFinPitch" type="number" step="any"></label>
+        <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
+        <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
+        <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
+        <label>Side Plates: <input id="evapSidePlateNo" type="number" step="any"></label>
       </fieldset>
+      <fieldset>
+        <legend>Fan Parameters</legend>
+        <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
+        <label>RPM: <input id="fanRPM" type="number" step="any"></label>
+        <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
+        <label>Input power (W):
+          <input type="number" id="thermoFanInputPower" value="${thermalAdvanced.fanInputPower}" step="any" min="0">
+        </label>
 
+      </fieldset>
       <fieldset>
         <legend>Compressor</legend>
         <label>Current Compressor:
@@ -114,6 +133,7 @@ function openThermalSettings() {
           </select>
         </label>
         <button id="thermoAddCompressorBtn" type="button">Add Compressor</button>
+        <button id="thermoEditCompressorBtn" type="button">Edit Selected</button>
         <button id="thermoDeleteCompressorBtn" type="button">Delete Selected</button>
         <div id="thermoCompressorList"></div>  <!-- can be used for detailed info later -->
       </fieldset>
@@ -128,14 +148,6 @@ function openThermalSettings() {
         </label>
       </fieldset>
 
-      <fieldset>
-        <legend>Fan</legend>
-        <label>Input power (W):
-          <input type="number" id="thermoFanInputPower" value="${thermalAdvanced.fanInputPower}" step="any" min="0">
-        </label>
-      </fieldset>
-
-      <fieldset>
         <legend>Defrost</legend>
         <label>Heater (W):
           <input type="number" id="thermoDefHeater" value="${thermalAdvanced.defHeater}" step="any">
@@ -150,7 +162,22 @@ function openThermalSettings() {
       </div>
     </div>
   `;
+  const evap = settings.evaporator || {};
+  document.getElementById('evapWidth').value       = evap.width_mm ?? 460;
+  document.getElementById('evapHeight').value      = evap.height_mm ?? 150;
+  document.getElementById('evapDepth').value       = evap.depth_mm ?? 60;
+  document.getElementById('evapRows').value        = evap.rows ?? 2;
+  document.getElementById('evapTubeOD').value      = evap.tubeOD_mm ?? 8;
+  document.getElementById('evapFinPitch').value    = evap.finPitch_mm ?? 4;
+  document.getElementById('evapFinHeight').value   = evap.finHeight_mm ?? 150;
+  document.getElementById('evapFinLength').value   = evap.finLength_mm ?? 460;
+  document.getElementById('evapNumFins').value     = evap.numFins ?? 32;
+  document.getElementById('evapSidePlateNo').value = evap.sidePlateNo ?? 0;
 
+  const fanP = settings.fanParam || {};
+  document.getElementById('fanDiam').value  = fanP.fanDiam ?? 100;
+  document.getElementById('fanRPM').value   = fanP.fanRPM ?? 2200;
+  document.getElementById('fanThick').value = fanP.fanThick ?? 25;
   modal.classList.remove('hidden');
 
   // Attach event listeners
@@ -160,7 +187,9 @@ function openThermalSettings() {
 document.getElementById('thermoAddCompressorBtn').onclick = () => {
   openAddCompressorModal();
 };
-
+document.getElementById('thermoEditCompressorBtn').onclick = () => {
+  openEditCompressorModal();
+};
   document.getElementById('thermoDeleteCompressorBtn').onclick = () => {
     const sel = document.getElementById('thermoCompressorSelect');
     if (confirm('Delete the selected compressor?')) {
@@ -181,6 +210,26 @@ document.getElementById('thermoAddCompressorBtn').onclick = () => {
     settings.condenser = {
       sidePipePitch_mm: sidePitch,
       backPipePitch_mm: backPitch,
+    };
+        // Read evaporator fields
+    settings.evaporator = {
+      width_mm:       parseFloat(document.getElementById('evapWidth').value) || 460,
+      height_mm:      parseFloat(document.getElementById('evapHeight').value) || 150,
+      depth_mm:       parseFloat(document.getElementById('evapDepth').value) || 60,
+      rows:           parseInt(document.getElementById('evapRows').value) || 2,
+      tubeOD_mm:      parseFloat(document.getElementById('evapTubeOD').value) || 8,
+      finPitch_mm:    parseFloat(document.getElementById('evapFinPitch').value) || 4,
+      finHeight_mm:   parseFloat(document.getElementById('evapFinHeight').value) || 150,
+      finLength_mm:   parseFloat(document.getElementById('evapFinLength').value) || 460,
+      numFins:        parseInt(document.getElementById('evapNumFins').value) || 32,
+      sidePlateNo:    parseInt(document.getElementById('evapSidePlateNo').value) || 0,
+    };
+
+    // Read fan parameters
+    settings.fanParam = {
+      fanDiam:  parseFloat(document.getElementById('fanDiam').value) || 100,
+      fanRPM:   parseFloat(document.getElementById('fanRPM').value) || 2200,
+      fanThick: parseFloat(document.getElementById('fanThick').value) || 25,
     };
     updateSettings(settings);   // persist & fire event
 
@@ -229,70 +278,106 @@ function handleRun() {
 
   const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
   const fanFlow = parseFloat(document.getElementById('thermoFanFlow')?.value) || SJ54H_COMPONENTS.fan.totalAirflow_m3h;
-
-  loadCompressors();
-  const compressor = getCurrentCompressor();
-
+  
   const config = buildDefaultConfig({
     geom,
     freezerPosition: cabinetGeom._compartments?.[0]?.type === 'freezer' ? 'top' : 'bottom',
     refrigerant,
     subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp,
-    fixedTemps: {
-      T0, TF, TR,
-      TE: SJ54H_COMPONENTS.initialTE,
-    },
-    fan: {
-      totalAirflow: fanFlow,
-      inputPower_W: thermalAdvanced.fanInputPower,
-    },
-    electrical: {
-      defrostHeater_W: thermalAdvanced.defHeater,
-      defrostOn_min: thermalAdvanced.defOnMin,
-    },
-    compressor,
+    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
   });
+  config.evapGeom = settings.evaporator || {};
+  config.fanParam = settings.fanParam || {};
+  // Keep a reference to the default (working) coefficients
+  const defaultCompParams = config.compParams;
 
+  loadCompressors();
+  const compressor = getCurrentCompressor();   // single declaration
+  console.log('Loaded compressor object:', JSON.stringify(compressor, null, 2));
+    // Replace compParams only if the selected compressor provides valid arrays
   if (compressor) {
-    config.compressor.wCoeffs          = compressor.wCoeffs;
-    config.compressor.etaCoeffs        = compressor.etaCoeffs;
-    config.compressor.cylinderVolumeCm3 = compressor.cylinderVolumeCm3;
-    config.compressor.speedRpm         = compressor.speedRpm;
+      // Helper: ensure coefficients are a flat array
+      const toArray = (coeffs, keys) => {
+          if (Array.isArray(coeffs)) return coeffs;
+          if (coeffs && typeof coeffs === 'object') {
+              return keys.map(k => coeffs[k]).filter(v => v !== undefined);
+          }
+          return null;
+      };
+
+      const wArr = toArray(compressor.wCoeffs, ['AW','BW','CW','DW','EW']);
+      const etaArr = toArray(compressor.etaCoeffs, ['A','B','C']);
+
+      if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
+          config.compParams = {
+              name: compressor.name,
+              cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
+              speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
+              wCoeffs: wArr,
+              etaCoeffs: etaArr,
+          };
+      } else {
+          console.warn('Selected compressor missing coefficients – using default.', compressor);
+      }
   }
 
-  const result = runThermoAnalysis(config);   // returns { success, errors, warnings, results }
-  console.log('results.compressor keys:', Object.keys(result.results.compressor));
-console.log('results.compressor.Pe:', result.results.compressor.Pe);
-console.log('results.compressor.Pc:', result.results.compressor.Pc);
-console.log('Full solver result:', JSON.parse(JSON.stringify(result)));
-
+  // Now it’s safe to run
+  const result = runThermoAnalysis(config);
   if (!result.success) {
     showError(result.errors.join('; '));
     return;
   }
 
   // Compute energy consumption
-  let energy = null;3
-  console.log('results.converged:', result.results?.converged);
-  console.log('results.fan:', result.results?.fan);
-  console.log('results.electrical:', result.results?.electrical);
+  let energy = null;
   if (result.results && result.results.converged) {
     try {
-      energy = EnergyConsumption(result.results);   // returns { EnergyConsumption_W, EnergyConsumption_kWhMonth }
+      energy = EnergyConsumption(result.results);
     } catch (e) {
       console.warn('EnergyConsumption calculation failed:', e);
     }
   }
-// Fallback: if converged flag is missing, assume converged if PR is present
-if (result.results && (result.results.converged !== false)) {
-  try {
-    energy = EnergyConsumption(result.results);
-    console.log('Energy result:', energy);
-  } catch (e) {
-    console.error('EnergyConsumption threw:', e);
+  // Fallback: if converged flag is missing, assume converged if PR is present
+  if (result.results && (result.results.converged !== false)) {
+    try {
+      energy = EnergyConsumption(result.results);
+    } catch (e) {
+      console.error('EnergyConsumption threw:', e);
+    }
   }
-}
+  // Compute evaporator performance if settings exist
+  let evapDetails = null;
+  const evap = settings.evaporator;
+  const fanP = settings.fanParam;
+  if (evap && fanP && result.results && result.results.converged !== false) {
+    try {
+      const area = computeEvaporatorArea(evap);
+      const v = airSpeed(fanP, evap);
+      const alpha = evaporatorAlpha(v);
+      const TF = parseFloat(document.getElementById('thermoTF')?.value) || -18;
+      const TR = parseFloat(document.getElementById('thermoTR')?.value) || 3;
+      const MR = result.results.MR || 0;
+      const MF = result.results.MF || 0;
+      const totalFlow = MR + MF;
+      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T2 = result.results.T2;
+      const TE = result.results.TE;
+      const LMTD = lmtd(T1, T2, TE);
+      const Qevap = evaporatorCapacity(alpha, area, LMTD);
+      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+    } catch (e) {
+      console.warn('Evaporator calculation failed:', e);
+    }
+  }
+
+  // Attach to results so displayResults can use it
+  if (evapDetails) {
+    result.results.evapDetails = evapDetails;
+  }
+
   displayResults(result.results, energy);
   if (result.warnings.length) showWarnings(result.warnings);
 }
@@ -466,7 +551,184 @@ function openAddCompressorModal() {
   };
 }
 
+function openEditCompressorModal() {
+  const modal = document.getElementById('addCompressorModal');
+  if (!modal) return;
 
+  loadCompressors();
+  const comp = getCurrentCompressor();
+  if (!comp) {
+    alert('No compressor selected.');
+    return;
+  }
+
+  // Preset values from the selected compressor
+  const name = comp.name || '';
+  const cyl  = comp.cylinderVolumeCm3 || 10.17;
+  const rpm  = comp.speedRpm || 2220;
+  const refIdx = comp.refrigerantIndex || 2;   // we don't store refrigerant index, default R‑600a
+
+  // We can't recover original test data, so we show empty matrix
+  const defaultTE = [-34.4, -23.3, -12.2];
+  const defaultTC = [37.8, 46.1, 54.4];
+  const Q_matrix = [['','',''],['','',''],['','','']];
+  const W_matrix = [['','',''],['','',''],['','','']];
+  // Build the modal content – note the title says "Edit Compressor"
+  const headerCells = defaultTC.map((tc, j) => `
+    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
+  `).join('');
+  const bodyRows = defaultTE.map((te, i) => `
+    <tr>
+      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
+      ${defaultTC.map((_, j) => `
+        <td>
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+        </td>
+      `).join('')}
+    </tr>
+  `).join('');
+
+  document.getElementById('addCompressorContent').innerHTML = `
+    <h2>Edit Compressor</h2>
+    <style>
+      .matrix-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+      .matrix-table th, .matrix-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+      .matrix-table input { width: 80px; }
+      .error-msg { color: #d32f2f; font-weight: bold; margin-top: 10px; }
+    </style>
+
+    <fieldset>
+      <legend>Basic Data</legend>
+      <label>Name: <input id="acName" type="text" value="${name}"></label>
+      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${cyl}"></label>
+      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${rpm}"></label>
+      <label>Refrigerant:
+        <select id="acRef">
+          <option value="1" ${refIdx === 1 ? 'selected' : ''}>R-134a</option>
+          <option value="2" ${refIdx === 2 ? 'selected' : ''}>R-600a</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test Data (optional – fill at least 5 cells to recompute)</legend>
+      <table class="matrix-table">
+        <thead><tr><th></th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      <p><small>Leave cells empty to keep existing coefficients. Fill at least 5 data points to recompute.</small></p>
+    </fieldset>
+
+    <div id="acError" class="error-msg"></div>
+    <div class="settings-actions">
+      <button id="fitAndSaveBtn">Fit & Save</button>
+      <button id="cancelEditCompressor">Cancel</button>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+
+  document.getElementById('cancelEditCompressor').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  document.getElementById('fitAndSaveBtn').onclick = () => {
+    const errorDiv = document.getElementById('acError');
+    errorDiv.textContent = '';
+
+    const newName = document.getElementById('acName').value.trim();
+    const newCyl  = parseFloat(document.getElementById('acCyl').value);
+    const newRpm  = parseFloat(document.getElementById('acRpm').value);
+    const newRefIdx = parseInt(document.getElementById('acRef').value);
+
+    if (!newName) { errorDiv.textContent = 'Name is required.'; return; }
+    if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
+    if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
+
+    // Read TE and TC from headers
+    const TE_vals = [];
+    const TC_vals = [];
+    for (let i = 0; i < 3; i++) {
+      const te = parseFloat(document.getElementById(`te_${i}`).value);
+      if (isNaN(te)) { errorDiv.textContent = `Invalid TE in row ${i+1}.`; return; }
+      TE_vals.push(te);
+    }
+    for (let j = 0; j < 3; j++) {
+      const tc = parseFloat(document.getElementById(`tc_${j}`).value);
+      if (isNaN(tc)) { errorDiv.textContent = `Invalid TC in col ${j+1}.`; return; }
+      TC_vals.push(tc);
+    }
+
+    // Build data points from filled cells
+    const dataPoints = [];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        const q = parseFloat(document.getElementById(`q_${i}_${j}`).value);
+        const w = parseFloat(document.getElementById(`w_${i}_${j}`).value);
+        if (!isNaN(q) && !isNaN(w)) {
+          dataPoints.push({ TE: TE_vals[i], TC: TC_vals[j], Q: q, W: w });
+        }
+      }
+    }
+
+    let wCoeffs, etaCoeffs;
+    // After the loop that builds dataPoints:
+    const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
+    if (dataPoints.length >= 5 && nonZeroCount === 0) {
+        errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
+        return;
+    }
+        if (dataPoints.length >= 5) {
+          try {
+            const coeffs = computeCompressorCoefficients({
+              cylinderVolumeCm3: newCyl,
+              speedRpm: newRpm,
+              refrigerantIndex: newRefIdx,
+              dataPoints,
+            });
+            wCoeffs = coeffs.wCoeffs;
+            etaCoeffs = coeffs.etaCoeffs;
+          } catch (err) {
+            errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
+            return;
+          }
+        } else {
+          // Keep existing coefficients, but must be valid
+          if (!comp.wCoeffs || !comp.etaCoeffs || comp.wCoeffs.length !== 5 || comp.etaCoeffs.length !== 3) {
+            errorDiv.textContent = 'No valid existing coefficients. Please enter at least 5 test data points.';
+            return;
+          }
+      wCoeffs = comp.wCoeffs;
+      etaCoeffs = comp.etaCoeffs;
+    }
+
+    // Build the updated compressor object
+    const updatedComp = {
+      id: newName.replace(/\s/g, ''),
+      name: newName,
+      model: newName,
+      voltage: comp.voltage || 100,
+      frequency: comp.frequency || 50,
+      cylinderVolumeCm3: newCyl,
+      speedRpm: newRpm,
+      wCoeffs,
+      etaCoeffs,
+    };
+
+    // Replace the old compressor with the updated one
+    deleteCompressor(comp.id);
+    addCompressor(updatedComp);
+    setSelectedCompressor(updatedComp.id);
+
+    modal.classList.add('hidden');
+    openThermalSettings();   // refresh the compressor dropdown
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  };
+}
 // ─── Results display ───────────────────────────────────────────────────────
 
 function displayResults(res, energy) {
@@ -475,7 +737,6 @@ function displayResults(res, energy) {
   const resultsDiv = document.getElementById('thermoRightPanel');
   if (!resultsDiv) return;
 
-  // Show the right panel results, hide the schematics
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   const overlay     = document.getElementById('schematicOverlay');
@@ -528,7 +789,17 @@ function displayResults(res, energy) {
         <tr><td>QEV — Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
         <tr><td>Fan load</td><td>${fmt(res.heatLoads.fanLoad)}</td></tr>
         <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
-
+        ${
+          res.evapDetails ? `
+          <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
+          <tr><td>Surface area</td><td>${fmt(res.evapDetails.area, 4)} m²</td></tr>
+          <tr><td>Air speed</td><td>${fmt(res.evapDetails.v, 3)} m/s</td></tr>
+          <tr><td>Heat transfer coeff α</td><td>${fmt(res.evapDetails.alpha, 2)} kcal/h·m²·°C</td></tr>
+          <tr><td>LMTD</td><td>${fmt(res.evapDetails.LMTD, 2)} °C</td></tr>
+          <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
+          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} kcal/h</td></tr>
+          ` : ''
+        }
         <tr class="section-header"><td colspan="2">Solver</td></tr>
         <tr><td>Outer iterations</td><td>${res.outerIterations ?? res.iterations?.outer ?? '—'}</td></tr>
         <tr><td>Inner iterations (total)</td><td>${res.innerTotalIterations ?? res.iterations?.innerTotal ?? '—'}</td></tr>
