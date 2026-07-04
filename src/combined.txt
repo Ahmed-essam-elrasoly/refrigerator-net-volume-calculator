@@ -1,0 +1,4067 @@
+===== D:\refrigerator-volume-calculator\src\css\style.css =====
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #f8f9fa;
+    color: #333;
+    height: 100vh;
+    overflow: hidden;      /* prevent page-level scrolling */
+}
+
+.page {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.left-panel {
+  flex: 0 0 450px;           /* initial width; overridden by JS */
+  overflow-y: auto;
+  padding: 10px 15px;
+  box-sizing: border-box;
+}
+
+.splitter {
+  flex: 0 0 5px;
+  background: #ccc;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.right-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  padding: 15px;
+  overflow: hidden;
+}
+
+.right-panel canvas {
+  flex: 0 0 auto;
+  border: 1px solid #ddd;
+  background: #fff;
+}
+canvas {
+    max-width: 100%;
+    max-height: 100%;
+    border: 1px solid #ddd;
+    background: #fff;
+}
+
+fieldset {
+    margin-bottom: 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 6px 10px;
+}
+
+legend {
+    font-weight: bold;
+    padding: 0 5px;
+    font-size: 14px;
+}
+
+label {
+    display: inline-block;
+    margin: 3px 8px 3px 0;
+    font-size: 13px;
+}
+
+input[type="number"] {
+    width: 70px;
+    font-size: 13px;
+    padding: 2px;
+}
+
+button {
+    margin: 4px 8px 4px 0;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#results p {
+    font-weight: bold;
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.error { color: red; }
+.warning { color: orange; }
+#messages { margin-top: 5px; font-size: 13px; }
+
+.verticalSubContainer fieldset {
+    margin-left: 10px;
+    border-color: #aaa;
+}
+
+/* Sticky buttons */
+.sticky-buttons {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 10;
+    padding: 6px 0;
+    margin-top: 8px;
+}
+
+/* Separator lines between fittings */
+.shelfContainer > div,
+.drawerContainer > div,
+.binContainer > div {
+    border-bottom: 1px dashed #ccc;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
+}
+
+/* Schematic overlay (dirty indicator) */
+.schematic-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    pointer-events: none;
+    z-index: 20;
+}
+.schematic-overlay.hidden {
+    display: none;
+}
+
+/* Tooltip */
+.schematic-tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 30;
+    white-space: pre-line;
+    max-width: 220px;
+}
+.schematic-tooltip.hidden {
+    display: none;
+}
+
+/* ---- Settings Modal ---- */
+.modal {
+  display: block;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: rgba(0,0,0,0.5);
+}
+.modal.hidden {
+  display: none;
+}
+.modal-content {
+  background: #fff;
+  margin: 5% auto;
+  padding: 20px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+}
+.close-btn {
+  position: absolute;
+  right: 15px;
+  top: 10px;
+  font-size: 24px;
+  font-weight: bold;
+  cursor: pointer;
+  color: #aaa;
+}
+.close-btn:hover { color: #000; }
+.modal h2 { margin-top: 0; }
+.modal fieldset { margin-bottom: 12px; }
+.modal label { display: block; margin: 6px 0; }
+.settings-actions { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-actions button { flex: 1; min-width: 80px; }
+.remove-fitting-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    margin-left: 6px;
+}
+.remove-fitting-btn:hover {
+    background: #c0392b;
+}
+/* ---- Thermal analysis results table --------------------------------- */
+.thermo-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.thermo-results-table thead tr {
+    background: #2c3e50;
+    color: #fff;
+}
+
+.thermo-results-table thead th {
+    padding: 6px 8px;
+    text-align: left;
+    font-size: 13px;
+}
+
+/* Section sub-headers (Operating Points / Compressor / Heat Loads / Solver) */
+.thermo-results-table tr.section-header td {
+    background: #ecf0f1;
+    color: #2c3e50;
+    font-weight: bold;
+    padding: 4px 8px;
+    border-top: 1px solid #bdc3c7;
+}
+
+.thermo-results-table tbody tr td {
+    padding: 3px 8px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* Right-align the value column */
+.thermo-results-table tbody tr td:last-child {
+    text-align: right;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: nowrap;
+}
+
+/* Alternating row shading within data rows */
+.thermo-results-table tbody tr:not(.section-header):nth-child(even) {
+    background: #f8f9fa;
+}
+
+#thermoResults {
+    margin-top: 6px;
+}
+/* Tabs for volume/thermal */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.tab {
+  padding: 6px 14px;
+  background: #e0e0e0;
+  border: 1px solid #999;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.tab.active {
+  background: #fff;
+  border-bottom: 1px solid #fff;
+}
+.tab-panel {
+  display: block;
+}
+.tab-panel.hidden {
+  display: none;
+}
+
+/* Settings tabs */
+.settings-tabs {
+  margin-bottom: 10px;
+}
+.stab {
+  padding: 4px 10px;
+  background: #eee;
+  border: 1px solid #bbb;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+}
+.stab.active {
+  background: #fff;
+  border-bottom: 1px solid #fff;
+  font-weight: bold;
+}
+.stab-panel {
+  padding: 10px 0;
+}
+.stab-panel.hidden { display: none; }
+
+/* Compressor list in settings */
+.compressor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.compressor-row select {
+  width: 200px;
+}
+.thermo-results-panel {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\calc.js =====
+import { settings } from '../settings.js';
+
+// ---------------------------------------------------------------------------
+// Boundary walker (unchanged)
+// ---------------------------------------------------------------------------
+
+export function deriveRootSpace(cabinet, layout) {
+  const { external, wallThicknessesByType, airGap } = cabinet;
+
+  const boundaryTypes = {
+    top: new Set(),
+    bottom: new Set(),
+    left: new Set(),
+    right: new Set(),
+  };
+  walkBoundaries(layout, boundaryTypes, true, true, true, true);
+
+  const allTypes = ['fresh','freezer','flex'];
+  const effective = {};
+  for (const face of ['top','bottom','left','right']) {
+    const typesForFace = boundaryTypes[face];
+    let maxVal = 0;
+    for (const type of typesForFace) {
+      const val = wallThicknessesByType[type]?.[face] ?? 0;
+      if (val > maxVal) maxVal = val;
+    }
+    if (typesForFace.size === 0) {
+      for (const type of allTypes) {
+        const val = wallThicknessesByType[type]?.[face] ?? 0;
+        if (val > maxVal) maxVal = val;
+      }
+    }
+    effective[face] = maxVal;
+  }
+  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
+  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
+
+  return {
+    width:  external.width  - effective.left - effective.right,
+    height: external.height - effective.top  - effective.bottom,
+    depth:  external.depth  - effective.rear - effective.door,
+  };
+}
+
+export function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
+  if (node.nodeType === 'leaf') {
+    if (topMost) boundary.top.add(node.type);
+    if (bottomMost) boundary.bottom.add(node.type);
+    if (leftMost) boundary.left.add(node.type);
+    if (rightMost) boundary.right.add(node.type);
+  } else if (node.nodeType === 'horizontal') {
+    const children = node.children;
+    for (let i = 0; i < children.length; i++) {
+      const isFirst = (i === 0);
+      const isLast = (i === children.length - 1);
+      walkBoundaries(
+        children[i].node,
+        boundary,
+        topMost && isFirst,
+        bottomMost && isLast,
+        leftMost,
+        rightMost
+      );
+    }
+  } else if (node.nodeType === 'vertical') {
+    walkBoundaries(node.left,  boundary, topMost, bottomMost, true, false);
+    walkBoundaries(node.right, boundary, topMost, bottomMost, false, true);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Leaf volume – gross only
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {object} leaf  – the leaf node (with `id`, `type`, `fittings` – unused for gross)
+ * @param {object} space – { width, height, depth } in mm
+ * @returns {{ leafId: string, gross: number }}
+ */
+export function calcLeafGross(leaf, space) {
+  const gross = space.width * space.height * space.depth * settings.mm3ToL;
+  return {
+    leafId: leaf.id,
+    gross,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Display helpers (keep interface compatible, only gross used)
+// ---------------------------------------------------------------------------
+
+export function formatLeafDisplay(leaf) {
+  return {
+    gross:     roundForDisplay(leaf.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
+  };
+}
+
+export function formatTotalsDisplay(totals) {
+  return {
+    gross:     roundForDisplay(totals.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
+  };
+}
+
+export function toCuft(litres) {
+  return litres * settings.lToCuft;
+}
+
+export function roundForDisplay(val, unit) {
+  const precision = unit === 'cuft' ? settings.displayPrecisionCuft : settings.displayPrecisionL;
+  return Math.round(val * Math.pow(10, precision)) / Math.pow(10, precision);
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\geometry.js =====
+// src/js/engine/geometry.js
+
+// src/js/engine/geometry.js
+
+export const DEFAULT_CABINET = Object.freeze({
+  H: 1680,  W: 800,  D: 630,
+  Hb: 260, Db1: 210, Db2: 230,
+  doorGap: 10, packingPos: 15, airGap: 5,
+  walls: {
+    freezer: {
+      top:    59.4, bottom: 70, left:   59.4,
+      right:  59.4, door:   59.4, rear:  60,
+    },
+    refrigerator: {
+      top:     70, bottom1: 40, bottom2: 40, bottom3: 40,
+      left:    40, right:   40, door:    40, rear:    60,
+    },
+  },
+});
+export function toVolumeFormat(geom) {
+  const { H, W, D, walls } = geom;
+  const t = {
+    fresh: {
+      top: walls.refrigerator.top,
+      bottom: walls.refrigerator.bottom1,
+      left: walls.refrigerator.left,
+      right: walls.refrigerator.right,
+      rear: walls.refrigerator.rear,
+      door: walls.refrigerator.door
+    },
+    freezer: {
+      top: walls.freezer.top,
+      bottom: walls.freezer.bottom,
+      left: walls.freezer.left,
+      right: walls.freezer.right,
+      rear: walls.freezer.rear,
+      door: walls.freezer.door
+    },
+    flex: {
+      top: walls.refrigerator.top,
+      bottom: walls.refrigerator.bottom1,
+      left: walls.refrigerator.left,
+      right: walls.refrigerator.right,
+      rear: walls.refrigerator.rear,
+      door: walls.refrigerator.door
+    }
+  };
+  return {
+    external: { height: H, width: W, depth: D },
+    wallThicknessesByType: t,
+    airGap: 0
+  };
+}
+
+export function toThermalFormat(geom) {
+  const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
+  return {
+    H, W, D,
+    Hf, Hr,
+    Hb, Db1, Db2,
+    doorGap, packingPos,
+    tFtop:    walls.freezer.top,
+    tFleft:   walls.freezer.left,
+    tFright:  walls.freezer.right,
+    tFbottom: walls.freezer.bottom,
+    tFdoor:   walls.freezer.door,
+    tFback:   walls.freezer.rear,  
+    tEvaBack: walls.freezer.rear,
+    tRtop:    walls.refrigerator.top,
+    tRleft:   walls.refrigerator.left,
+    tRright:  walls.refrigerator.right,
+    tRback:   walls.refrigerator.rear,
+    tRbottom1:walls.refrigerator.bottom1,
+    tRbottom2:walls.refrigerator.bottom2,
+    tRbottom3:walls.refrigerator.bottom3,
+    tRdoor:   walls.refrigerator.door,
+  };
+}
+
+/**
+ * Upgrade an old configuration (v1.0) to the new unified format.
+ * Old config: { schemaVersion:"1.0", meta:{...}, cabinet:{ external, wallThicknessesByType, airGap, layout } }
+ * Returns a valid v2.0 config.
+ */
+export function upgradeConfig(oldConfig) {
+  if (!oldConfig?.cabinet) throw new Error('Invalid old config');
+
+  const { external, wallThicknessesByType, airGap, layout } = oldConfig.cabinet;
+  const def = DEFAULT_CABINET;
+
+  const walls = {
+    freezer: {
+      top:    wallThicknessesByType?.freezer?.top    ?? def.walls.freezer.top,
+      bottom: wallThicknessesByType?.freezer?.bottom ?? def.walls.freezer.bottom,
+      left:   wallThicknessesByType?.freezer?.left   ?? def.walls.freezer.left,
+      right:  wallThicknessesByType?.freezer?.right  ?? def.walls.freezer.right,
+      door:   wallThicknessesByType?.freezer?.door   ?? def.walls.freezer.door,
+      rear:   def.walls.freezer.rear   // old format had no "rear" for freezer
+    },
+    refrigerator: {
+      top:    wallThicknessesByType?.fresh?.top    ?? def.walls.refrigerator.top,
+      bottom1:wallThicknessesByType?.fresh?.bottom ?? def.walls.refrigerator.bottom1,
+      bottom2:def.walls.refrigerator.bottom2,
+      bottom3:def.walls.refrigerator.bottom3,
+      left:   wallThicknessesByType?.fresh?.left   ?? def.walls.refrigerator.left,
+      right:  wallThicknessesByType?.fresh?.right  ?? def.walls.refrigerator.right,
+      door:   wallThicknessesByType?.fresh?.door   ?? def.walls.refrigerator.door,
+      rear:   def.walls.refrigerator.rear
+    }
+  };
+
+  const geom = {
+    H: external.height,
+    W: external.width,
+    D: external.depth,
+    Hf: def.Hf,
+    Hr: def.Hr,
+    Hb: def.Hb,
+    Db1: def.Db1,
+    Db2: def.Db2,
+    doorGap: def.doorGap,
+    packingPos: def.packingPos,
+    airGap: airGap ?? def.airGap,
+    walls
+  };
+
+  return {
+    schemaVersion: '2.0',
+    meta: {
+      ...oldConfig.meta,
+      updatedAt: new Date().toISOString(),
+      upgradedFrom: oldConfig.schemaVersion
+    },
+    cabinet: {
+      geometry: geom,
+      layout
+    }
+  };
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\index.js =====
+/**
+ * @file index.js
+ * Main engine entry point.
+ * Orchestrates Pass 1 → cabinet-level pre-checks → Pass 2 → post-calc hierarchy check.
+ *
+ * Public API:
+ *   runCalculation(config) → CalcResult
+ */
+
+import { deriveRootSpace, walkBoundaries } from './calc.js';
+import { validateStructure }                                from './validationPass1.js';
+import { traverseAndCompute }                               from './traversal.js';
+import { upgradeConfig, toVolumeFormat } from './geometry.js';
+
+// ---------------------------------------------------------------------------
+// Cabinet-level pre-checks (run before Pass 2 tree traversal)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates cabinet external dims, wall thicknesses, and derived internal space.
+ * These are not tree-node checks — they guard the root space derivation.
+ *
+ * @param {import('./types').CabinetConfig['cabinet']} cabinet
+ * @returns {import('./types').ValidationError[]}
+ */
+function validateCabinet(cabinet) {
+  const errors = [];
+  const { external, wallThicknessesByType, layout, airGap } = cabinet;
+
+  // Positive external dimensions
+  for (const [key, val] of Object.entries(external)) {
+    if (val <= 0) {
+      errors.push({ rule: 'positiveValues', message: `external.${key} must be > 0, got ${val}` });
+    }
+  }
+
+  // Compute effective wall thicknesses (same logic as deriveRootSpace)
+  const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
+  walkBoundaries(layout, boundaryTypes, true, true, true, true);
+  const effective = {};
+  const allTypes = ['fresh','freezer','flex'];
+  for (const face of ['top','bottom','left','right']) {
+    let max = 0;
+    for (const t of boundaryTypes[face]) {
+      const val = wallThicknessesByType[t]?.[face] ?? 0;
+      if (val > max) max = val;
+    }
+    if (boundaryTypes[face].size === 0) {
+      for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
+    }
+    effective[face] = max;
+  }
+  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
+  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
+
+  // Wall ratio checks using effective thicknesses
+  const pairs = [
+    ['top',    external.height, 'height'],
+    ['bottom', external.height, 'height'],
+    ['left',   external.width,  'width'],
+    ['right',  external.width,  'width'],
+    ['rear',   external.depth,  'depth'],
+    ['door',   external.depth,  'depth'],
+  ];
+  for (const [face, extDim, dimName] of pairs) {
+    const thickness = effective[face];
+    if (thickness >= extDim * 0.5) {
+      errors.push({
+        rule:    'wallRatio',
+        message: `${face} wall (${thickness} mm) exceeds 50% of external ${dimName} (${extDim * 0.5} mm)`,
+      });
+    }
+  }
+
+
+  // Internal dimensions positive
+  if (errors.length === 0) {
+    const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
+    for (const [dim, val] of Object.entries(rootSpace)) {
+      if (val <= 0) {
+        errors.push({
+          rule:    'internalPositive',
+          message: `Derived internal ${dim} (${val} mm) is ≤ 0 after wall subtraction`,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Post-calc hierarchy check
+// ---------------------------------------------------------------------------
+
+/**
+ * Asserts Gross ≥ EG_Net ≥ IEC_Net per leaf and on totals.
+ * Returns CalcError[]. Non-empty means a formula regression — should never
+ * fire under correct formulas.
+ *
+ * @param {import('./types').LeafResult[]} leaves
+ * @param {import('./types').Totals}       totals
+ * @returns {import('./types').CalcError[]}
+ */
+function checkHierarchy(leaves, totals) {
+  const errors = [];
+
+  for (const leaf of leaves) {
+    if (leaf.gross < leaf.egNet - 1e-9) {
+      errors.push({ rule: 'hierarchyCheck_leaf',
+        message: `Gross (${leaf.gross}) < EG_Net (${leaf.egNet}) on leaf ${leaf.leafId}` });
+    }
+    if (leaf.egNet < leaf.iecNet - 1e-9) {
+      errors.push({ rule: 'hierarchyCheck_leaf',
+        message: `EG_Net (${leaf.egNet}) < IEC_Net (${leaf.iecNet}) on leaf ${leaf.leafId}` });
+    }
+  }
+
+  if (totals.gross < totals.egNet - 1e-9) {
+    errors.push({ rule: 'hierarchyCheck_total',
+      message: `Total Gross (${totals.gross}) < Total EG_Net (${totals.egNet})` });
+  }
+  if (totals.egNet < totals.iecNet - 1e-9) {
+    errors.push({ rule: 'hierarchyCheck_total',
+      message: `Total EG_Net (${totals.egNet}) < Total IEC_Net (${totals.iecNet})` });
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs the full calculation pipeline on a cabinet configuration.
+ *
+ * @param {import('./types').CabinetConfig} config
+ * @returns {import('./types').CalcResult}
+ */
+export function runCalculation(config) {
+  const result = { leaves: null, totals: null, validationErrors: [], calcErrors: [], warnings: [] };
+
+  const structErrors = validateStructure(config.cabinet.layout);
+  if (structErrors.length) { result.validationErrors = structErrors; return result; }
+
+  if (config.schemaVersion === '1.0' || (!config.cabinet.geometry && config.cabinet.external)) {
+    config = upgradeConfig(config);
+  }
+
+  const { geometry, layout } = config.cabinet;
+  const volumeGeom = toVolumeFormat(geometry);
+  const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
+  if (cabinetErrors.length) { result.validationErrors = cabinetErrors; return result; }
+
+  const rootSpace = deriveRootSpace(volumeGeom, layout);
+
+  // Pass 2 – now only returns gross volumes
+  const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
+  result.validationErrors = dimErrors;
+  result.warnings = warnings;
+  result.leaves = leaves.map(l => ({ leafId: l.leafId, gross: l.gross }));
+
+  if (leaves.length > 0) {
+    const totalGross = leaves.reduce((sum, l) => sum + l.gross, 0);
+    result.totals = { gross: totalGross };
+  }
+
+  return result;
+}
+export { deriveRootSpace }    from './calc.js';
+export { validateStructure } from './validationPass1.js';
+export { traverseAndCompute } from './traversal.js';
+
+===== D:\refrigerator-volume-calculator\src\js\engine\traversal.js =====
+import { calcLeafGross } from './calc.js';
+import { settings } from '../settings.js';
+
+const DIM_TOL   = 0.01;
+const RATIO_TOL = 0.001;
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export function traverseAndCompute(rootNode, rootSpace) {
+  const errors   = [];
+  const warnings = [];
+  const leaves   = [];
+
+  traverseNode(rootNode, rootSpace, errors, warnings, leaves);
+
+  return { leaves, errors, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Recursive node traversal
+// ---------------------------------------------------------------------------
+
+function traverseNode(node, space, errors, warnings, leaves) {
+  switch (node.nodeType) {
+    case 'leaf':
+      processLeaf(node, space, errors, warnings, leaves);
+      break;
+    case 'horizontal':
+      processHorizontal(node, space, errors, warnings, leaves);
+      break;
+    case 'vertical':
+      processVertical(node, space, errors, warnings, leaves);
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Horizontal split
+// ---------------------------------------------------------------------------
+
+function processHorizontal(node, space, errors, warnings, leaves) {
+  const { children, dividers, id } = node;
+  const mode = children[0].heightMode;
+
+  let childHeights;
+  if (mode === 'ratio') {
+    const totalDividerH = dividers.reduce((s, d) => s + d.thickness, 0);
+    const usableH = space.height - totalDividerH;
+    childHeights = children.map(c => usableH * c.heightValue);
+  } else {
+    const sumHeights   = children.reduce((s, c) => s + c.heightValue, 0);
+    const sumDividers  = dividers.reduce((s, d) => s + d.thickness, 0);
+    const total        = sumHeights + sumDividers;
+
+    if (Math.abs(total - space.height) > DIM_TOL) {
+      errors.push({
+        rule:           'heightBalance_explicit',
+        nodeId:         id,
+        message:        `Sum of heights (${sumHeights}) + dividers (${sumDividers}) = ${total} ≠ availableHeight (${space.height})`,
+        childrenSkipped: true,
+      });
+      return;
+    }
+    childHeights = children.map(c => c.heightValue);
+  }
+
+  for (let i = 0; i < children.length; i++) {
+    const childSpace = {
+      width:  space.width,
+      height: childHeights[i],
+      depth:  space.depth,
+    };
+    traverseNode(children[i].node, childSpace, errors, warnings, leaves);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vertical split
+// ---------------------------------------------------------------------------
+
+function processVertical(node, space, errors, warnings, leaves) {
+  const { dividerThickness, leftWidthRatio, left, right, id } = node;
+
+  if (dividerThickness >= space.width) {
+    errors.push({
+      rule:           'verticalDividerBounds',
+      nodeId:         id,
+      message:        `dividerThickness (${dividerThickness}) ≥ availableWidth (${space.width})`,
+      childrenSkipped: true,
+    });
+    return;
+  }
+
+  const usableW  = space.width - dividerThickness;
+  const leftW    = usableW * leftWidthRatio;
+  const rightW   = usableW * (1 - leftWidthRatio);
+
+  traverseNode(left,  { width: leftW,  height: space.height, depth: space.depth }, errors, warnings, leaves);
+  traverseNode(right, { width: rightW, height: space.height, depth: space.depth }, errors, warnings, leaves);
+}
+
+// ---------------------------------------------------------------------------
+// Leaf: keep fitting dimension validation, but compute only gross
+// ---------------------------------------------------------------------------
+
+function processLeaf(node, space, errors, warnings, leaves) {
+  const { fittings, id } = node;
+
+  // Validate fittings (dimensions only – no volume deduction needed)
+  for (const shelf of fittings.shelves ?? []) {
+    errors.push(...validateShelf(shelf, space, id));
+  }
+  for (const drawer of fittings.drawers ?? []) {
+    errors.push(...validateDrawer(drawer, space, id));
+  }
+  for (const bin of fittings.doorBins ?? []) {
+    errors.push(...validateDoorBin(bin, space, id));
+  }
+
+  // Soft warning: door bin depth vs shelf depth (still useful)
+  const binDepthWarning = checkDoorBinDepth(fittings, space, id);
+  if (binDepthWarning) warnings.push(binDepthWarning);
+
+  // Compute only gross volume
+  const leafResult = calcLeafGross(node, space);
+  leaves.push(leafResult);
+}
+
+// ---------------------------------------------------------------------------
+// Fitting validators (unchanged, except we don't need excludedFittingIds)
+// ---------------------------------------------------------------------------
+
+function validateShelf(shelf, space, nodeId) {
+  const errs = [];
+  const topEdge = shelf.positionFromFloor + shelf.thickness;
+
+  if (shelf.positionFromFloor <= 0) {
+    errs.push({ rule: 'shelfPosition', nodeId,
+      message: `Shelf positionFromFloor must be > 0, got ${shelf.positionFromFloor}` });
+  } else if (topEdge >= space.height) {
+    errs.push({ rule: 'shelfPosition', nodeId,
+      message: `Shelf top (${topEdge} mm) exceeds compartment height (${space.height} mm)` });
+  }
+
+  if (shelf.depth > space.depth) {
+    errs.push({ rule: 'shelfDepth', nodeId,
+      message: `Shelf depth (${shelf.depth}) exceeds availableDepth (${space.depth})` });
+  }
+
+  if (shelf.width != null && shelf.width > space.width) {
+    errs.push({ rule: 'shelfWidth', nodeId,
+      message: `Shelf width (${shelf.width}) exceeds availableWidth (${space.width})` });
+  }
+
+  return errs;
+}
+
+function validateDrawer(drawer, space, nodeId) {
+  const errs = [];
+  const { outerWidth: oW, outerDepth: oD, outerHeight: oH, wallThickness: t } = drawer;
+
+  if (oW > space.width) {
+    errs.push({ rule: 'drawerBounds', nodeId,
+      message: `Drawer outerWidth (${oW}) exceeds availableWidth (${space.width})` });
+  }
+  if (oD > space.depth) {
+    errs.push({ rule: 'drawerBounds', nodeId,
+      message: `Drawer outerDepth (${oD}) exceeds availableDepth (${space.depth})` });
+  }
+  if (oH >= space.height) {
+    errs.push({ rule: 'drawerBounds', nodeId,
+      message: `Drawer outerHeight (${oH}) must be < compartment height (${space.height})` });
+  }
+
+  const minOuter = Math.min(oW, oD, oH);
+  if (t >= minOuter * 0.5) {
+    errs.push({ rule: 'drawerWall', nodeId,
+      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
+  }
+
+  const innerW = oW - 2 * t;
+  const innerD = oD - 2 * t;
+  const innerH = oH - t;
+  if (innerW <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
+  if (innerD <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
+  if (innerH <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
+
+  return errs;
+}
+
+function validateDoorBin(bin, space, nodeId) {
+  const errs = [];
+  const { outerWidth: oW, outerHeight: oH, outerDepth: oD, wallThickness: t } = bin;
+
+  const minOuter = Math.min(oW, oH, oD);
+  if (t >= minOuter * 0.5) {
+    errs.push({ rule: 'doorBinWall', nodeId,
+      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
+  }
+
+  const innerW = oW - 2 * t;
+  const innerH = oH - 2 * t;
+  const innerD = oD - t;
+  if (innerW <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
+  if (innerH <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
+  if (innerD <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
+
+  return errs;
+}
+
+function checkDoorBinDepth(fittings, space, nodeId) {
+  const bins    = fittings.doorBins ?? [];
+  const shelves = fittings.shelves ?? [];
+  if (!bins.length) return null;
+
+  const totalBinDepth = bins.reduce((s, b) => s + b.outerDepth, 0);
+  const minShelfDepth = shelves.length
+    ? Math.min(...shelves.map(s => s.depth))
+    : 0;
+
+  const threshold = space.depth - minShelfDepth;
+
+  if (totalBinDepth > threshold) {
+    return {
+      rule:    'doorBinDepth',
+      nodeId,
+      message: `Σ bin depths (${totalBinDepth} mm) exceeds availableDepth − minShelfDepth (${threshold} mm)`,
+    };
+  }
+  return null;
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\types.js =====
+/**
+ * @file types.js
+ * JSDoc type definitions shared across the calculation and validation engines.
+ * No runtime code — import this file for IDE type hints only.
+ */
+
+/**
+ * @typedef {Object} ExternalDims
+ * @property {number} height - mm
+ * @property {number} width  - mm
+ * @property {number} depth  - mm
+ */
+
+/**
+ * Available space passed down the node tree.
+ * All values in mm. Derived once per node from parent context.
+ * @typedef {Object} Space
+ * @property {number} width
+ * @property {number} height
+ * @property {number} depth
+ */
+
+/**
+ * @typedef {Object} Shelf
+ * @property {string} id
+ * @property {number} positionFromFloor - mm
+ * @property {number} thickness         - mm
+ * @property {number} depth             - mm
+ * @property {number|null} width        - mm; null = full availableWidth
+ */
+
+/**
+ * @typedef {Object} Drawer
+ * @property {string} id
+ * @property {number} outerWidth
+ * @property {number} outerDepth
+ * @property {number} outerHeight
+ * @property {number} wallThickness
+ */
+
+/**
+ * @typedef {Object} DoorBin
+ * @property {string} id
+ * @property {number} outerWidth
+ * @property {number} outerHeight
+ * @property {number} outerDepth
+ * @property {number} wallThickness
+ */
+
+/**
+ * @typedef {Object} HousingVolume
+ * @property {number|null} volume - L; null = not present
+ */
+
+/**
+ * @typedef {Object} FittingConfig
+ * @property {Shelf[]}       shelves
+ * @property {Drawer[]}      drawers
+ * @property {DoorBin[]}     doorBins
+ * @property {HousingVolume} iceMakerHousing
+ * @property {HousingVolume} lightHousing
+ */
+
+/**
+ * @typedef {Object} LeafNode
+ * @property {'leaf'}       nodeType
+ * @property {string}       id
+ * @property {'fresh'|'freezer'|'flex'} type
+ * @property {FittingConfig} fittings
+ */
+
+/**
+ * @typedef {Object} HorizontalChild
+ * @property {'ratio'|'explicit'} heightMode
+ * @property {number}             heightValue
+ * @property {Node}               node
+ */
+
+/**
+ * @typedef {Object} Divider
+ * @property {number} afterChildIndex
+ * @property {number} thickness
+ */
+
+/**
+ * @typedef {Object} HorizontalSplitNode
+ * @property {'horizontal'}    nodeType
+ * @property {string}          id
+ * @property {HorizontalChild[]} children
+ * @property {Divider[]}       dividers
+ */
+
+/**
+ * @typedef {Object} VerticalSplitNode
+ * @property {'vertical'} nodeType
+ * @property {string}     id
+ * @property {number}     dividerThickness
+ * @property {number}     leftWidthRatio
+ * @property {Node}       left
+ * @property {Node}       right
+ */
+
+/**
+ * @typedef {LeafNode|HorizontalSplitNode|VerticalSplitNode} Node
+ */
+
+/**
+ * @typedef {Object} CabinetConfig
+ * @property {string}         schemaVersion
+ * @property {{ name: string, createdAt: string, updatedAt: string }} meta
+  * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
+ */
+
+/**
+ * @typedef {Object} WallThicknessesByType
+ * @property {Object} fresh - {top, bottom, left, right, rear, door}
+ * @property {Object} freezer
+ * @property {Object} flex
+ */
+/**
+ * Per-leaf volume result. All volumes in L at full precision.
+ * Rounded values are derived at display time only.
+ * @typedef {Object} LeafResult
+ * @property {string}  leafId
+ * @property {string}  leafType
+ * @property {Space}   space        - resolved available space (mm)
+ * @property {number}  gross        - L, full precision
+ * @property {number}  egNet        - L, full precision
+ * @property {number}  iecNet       - L, full precision
+ * @property {string[]} fittingErrors - ids of fittings excluded due to validation failure
+ */
+
+/**
+ * @typedef {Object} Totals
+ * @property {number} gross  - L
+ * @property {number} egNet  - L
+ * @property {number} iecNet - L
+ */
+
+/**
+ * @typedef {Object} ValidationError
+ * @property {string}  rule
+ * @property {string}  [nodeId]
+ * @property {string}  message
+ * @property {boolean} [childrenSkipped]
+ */
+
+/**
+ * @typedef {Object} CalcError
+ * @property {string} rule
+ * @property {string} message
+ */
+
+/**
+ * @typedef {Object} Warning
+ * @property {string} rule
+ * @property {string} message
+ */
+
+/**
+ * Top-level result returned by runCalculation().
+ * errors[] is always present; non-empty means output should be flagged.
+ * @typedef {Object} CalcResult
+ * * @property {FittingConfig} fittings    
+ * @property {Totals|null}          totals
+ * @property {ValidationError[]}    validationErrors
+ * @property {CalcError[]}          calcErrors
+ * @property {Warning[]}            warnings
+ */
+
+===== D:\refrigerator-volume-calculator\src\js\io\io.js =====
+/**
+ * @file src/io/io.js
+ * I/O layer — JSON config save/load and CSV export.
+ * No DOM dependencies. Works in browser (File API) and Node.js.
+ */
+
+import { toCuft, roundForDisplay } from '../engine/calc.js';
+
+const SCHEMA_VERSION = '2.0';
+const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
+
+// ---------------------------------------------------------------------------
+// JSON — Save
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialises a CabinetConfig to a JSON string ready for download.
+ * Stamps updatedAt; preserves createdAt from original if present.
+ *
+ * @param {import('../engine/types').CabinetConfig} config
+ * @param {string} [name] - optional label to set in meta.name
+ * @returns {string} JSON string
+ */
+export function configToJSON(config, name) {
+  const now = new Date().toISOString();
+  const out = {
+    ...config,
+    schemaVersion: SCHEMA_VERSION,
+    meta: {
+      name:      name ?? config.meta?.name ?? 'Untitled',
+      createdAt: config.meta?.createdAt ?? now,
+      updatedAt: now,
+    },
+  };
+  return JSON.stringify(out, null, 2);
+}
+
+/**
+ * Triggers a browser file download of the config JSON.
+ * No-op in Node.js environments.
+ *
+ * @param {import('../engine/types').CabinetConfig} config
+ * @param {string} [filename]
+ */
+export function downloadConfigJSON(config, filename) {
+  if (typeof document === 'undefined') return;
+  const json = configToJSON(config);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename ?? `${config.meta?.name ?? 'config'}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// JSON — Load
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses a JSON string into a CabinetConfig.
+ * Validates schemaVersion. Throws on parse error or version mismatch.
+ *
+ * @param {string} jsonString
+ * @returns {import('../engine/types').CabinetConfig}
+ * @throws {Error}
+ */
+export function configFromJSON(jsonString) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonString);
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${e.message}`);
+  }
+
+  if (!parsed.schemaVersion) {
+    throw new Error('Missing schemaVersion in config file.');
+  }
+  if (!ACCEPTED_VERSIONS.has(parsed.schemaVersion)) {
+    throw new Error(
+      `Unsupported schema version v${parsed.schemaVersion}. ` +
+      `Accepted: ${[...ACCEPTED_VERSIONS].join(', ')}.`
+    );
+  }
+  if (!parsed.cabinet?.layout) {
+    throw new Error('Config file is missing cabinet.layout.');
+  }
+
+  return parsed;
+}
+
+/**
+ * Reads a File object and resolves with a parsed CabinetConfig.
+ * Browser only.
+ *
+ * @param {File} file
+ * @returns {Promise<import('../engine/types').CabinetConfig>}
+ */
+export function loadConfigFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = e => {
+      try { resolve(configFromJSON(e.target.result)); }
+      catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('File read error'));
+    reader.readAsText(file);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// CSV — Export
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a CSV string from a CalcResult.
+ * Columns: Compartment, Type, Gross (L), EG Net (L), IEC Net (L),
+ *          Gross (cu.ft), EG Net (cu.ft), IEC Net (cu.ft)
+ * Final row: TOTAL.
+ *
+ * @param {import('../engine/types').CalcResult} result
+ * @param {string} [configName]
+ * @returns {string} CSV string
+ */
+export function formatLeafDisplay(leaf) {
+  return {
+    gross:     roundForDisplay(leaf.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
+  };
+}
+
+export function formatTotalsDisplay(totals) {
+  return {
+    gross:     roundForDisplay(totals.gross, 'L'),
+    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
+  };
+}
+export function resultToCSV(result, configName) {
+  if (!result.leaves || !result.totals) {
+    return '# No results available (calculation produced errors)\n';
+  }
+
+  const rows = [];
+  rows.push(`# Refrigerator Net Storage Volume Calculator`);
+  rows.push(`# Configuration: ${configName ?? 'Unnamed'}`);
+  rows.push(`# Generated: ${new Date().toISOString()}`);
+  rows.push('');
+
+  // Column headers – only gross volumes
+  rows.push([
+    'Compartment',
+    'Gross (L)',
+    'Gross (cu.ft)',
+  ].join(','));
+
+  // Per‑leaf rows
+  for (let i = 0; i < result.leaves.length; i++) {
+    const leaf = result.leaves[i];
+    const d    = formatLeafDisplay(leaf);
+    rows.push([
+      `Compartment ${i + 1}`,
+      d.gross,
+      d.grossCuft,
+    ].join(','));
+  }
+
+  // Totals row
+  const t = formatTotalsDisplay(result.totals);
+  rows.push([
+    'TOTAL',
+    t.gross,
+    t.grossCuft,
+  ].join(','));
+
+  // Warnings block
+  if (result.warnings.length > 0) {
+    rows.push('');
+    rows.push('# Warnings');
+    for (const w of result.warnings) {
+      rows.push(`# [${w.rule}] ${w.message}`);
+    }
+  }
+
+  return rows.join('\n');
+}
+/**
+ * Triggers a browser file download of the results CSV.
+ * No-op in Node.js environments.
+ *
+ * @param {import('../engine/types').CalcResult} result
+ * @param {string} [configName]
+ * @param {string} [filename]
+ */
+export function downloadResultsCSV(result, configName, filename) {
+  if (typeof document === 'undefined') return;
+  const csv  = resultToCSV(result, configName);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename ?? `${configName ?? 'results'}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+===== D:\refrigerator-volume-calculator\src\js\ui\schematic.js =====
+/**
+ * Draw a dimension line with extension lines, arrows, and label.
+ * Styled to standard CAD drafting representation.
+ */
+function drawDim(ctx, x1, y1, x2, y2, offset, label, {
+  color = '#2980b9',
+  lineWidth = 1,
+  arrowSize = 5,
+  font = 'bold 11px "Segoe UI", Arial, sans-serif',
+  textOffsetX = 0,
+  textOffsetY = 0,
+  drawExtLines = true
+} = {}) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len === 0) return;
+  const nx = -dy / len;
+  const ny =  dx / len;
+
+  const p1x = x1 + nx * offset;
+  const p1y = y1 + ny * offset;
+  const p2x = x2 + nx * offset;
+  const p2y = y2 + ny * offset;
+
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+
+  if (drawExtLines && offset !== 0) {
+    ctx.beginPath();
+    const extStart = Math.sign(offset) * 2;
+    const extEnd = offset + Math.sign(offset) * 4; // Slightly past the dim line
+    ctx.moveTo(x1 + nx * extStart, y1 + ny * extStart);
+    ctx.lineTo(x1 + nx * extEnd, y1 + ny * extEnd);
+    ctx.moveTo(x2 + nx * extStart, y2 + ny * extStart);
+    ctx.lineTo(x2 + nx * extEnd, y2 + ny * extEnd);
+    ctx.stroke();
+  }
+
+  // Draw main dimension line
+  ctx.beginPath();
+  ctx.moveTo(p1x, p1y);
+  ctx.lineTo(p2x, p2y);
+  ctx.stroke();
+
+  const angle = Math.atan2(dy, dx);
+  ctx.fillStyle = color;
+  for (const [px, py, sign] of [[p1x, p1y, 1], [p2x, p2y, -1]]) {
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(
+      px - arrowSize * Math.cos(angle - Math.PI / 6.5) * sign,
+      py - arrowSize * Math.sin(angle - Math.PI / 6.5) * sign
+    );
+    ctx.lineTo(
+      px - arrowSize * Math.cos(angle + Math.PI / 6.5) * sign,
+      py - arrowSize * Math.sin(angle + Math.PI / 6.5) * sign
+    );
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  if (label) {
+    const midX = (p1x + p2x) / 2 + textOffsetX;
+    const midY = (p1y + p2y) / 2 + textOffsetY;
+    
+    ctx.translate(midX, midY);
+
+    // Keep text upright and readable (Standard CAD behavior)
+    let textAngle = angle;
+    if (textAngle > Math.PI / 2 + 0.01) {
+        textAngle -= Math.PI;
+    } else if (textAngle < -Math.PI / 2 + 0.01) {
+        textAngle += Math.PI;
+    }
+    // Force vertical lines to read bottom-to-top strictly
+    if (Math.abs(textAngle - Math.PI / 2) < 0.01) {
+        textAngle = -Math.PI / 2;
+    }
+
+    ctx.rotate(textAngle);
+
+    ctx.font = font;
+    const metrics = ctx.measureText(label);
+    const tw = metrics.width;
+    const th = 12; // Approximate font height
+    const gap = 4; // Separation from the dimension line
+
+    // Semi-transparent background box to prevent overlap with model lines
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4, 3);
+    } else {
+      ctx.fillRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4);
+    }
+    ctx.fill();
+
+    // Render dimension value completely off the line
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, 0, -gap);
+  }
+  ctx.restore();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Front view
+// ──────────────────────────────────────────────────────────────────
+export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
+  const ctx = canvas.getContext('2d');
+  const { H, W } = geometry;
+  const { dividerThickness = 0, compHeights = [], compartments = [] } = options;
+
+  const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
+  const drawW = canvas.width - PAD.left - PAD.right;
+  const drawH = canvas.height - PAD.top - PAD.bottom;
+  const scale = Math.min(drawW / W, drawH / H);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(PAD.left, PAD.top);
+
+  // Outer cabinet
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, W * scale, H * scale);
+
+  // Per‑compartment inner boundaries
+  const innerLeft  = compartments.map(c => c.left);
+  const innerRight = compartments.map(c => W - c.right);
+  const intTop     = effectiveWalls.top;
+  const intBottom  = H - effectiveWalls.bottom;
+
+  // Build the inner cavity polygon (stepped if left/right differ)
+  ctx.beginPath();
+  ctx.rect(0, 0, W * scale, H * scale);
+  let y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const leftX  = innerLeft[i]  * scale;
+    const rightX = innerRight[i] * scale;
+
+    if (i === 0) {
+      ctx.moveTo(leftX, y * scale);
+    } else {
+      ctx.lineTo(leftX, y * scale);
+    }
+    ctx.lineTo(rightX, y * scale);
+    y += h;
+    ctx.lineTo(rightX, y * scale);
+    if (i < compHeights.length - 1) {
+      // gap for divider will be handled below
+    }
+  }
+  ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
+  ctx.closePath();
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fill();
+
+  // Draw individual compartments
+  const types = leaves ? leaves.map(l => l.leafType) : [];
+  y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    const leftX  = innerLeft[i]  * scale;
+    const rightX = innerRight[i] * scale;
+    const compY = y * scale;
+    const compH = h * scale;
+
+    ctx.fillStyle = i === 0 ? '#e8f0e8' : '#ffffff';
+    ctx.fillRect(leftX, compY, rightX - leftX, compH);
+    ctx.strokeStyle = '#999';
+    ctx.strokeRect(leftX, compY, rightX - leftX, compH);
+    ctx.fillStyle = '#000'; ctx.font = '12px Arial';
+    if (types[i]) ctx.fillText(types[i], leftX + 4, compY + 16);
+
+    y += h;
+
+    // divider after this compartment if there is a next one
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      const dividerY = y * scale;
+      const dividerH = dividerThickness * scale;
+      ctx.fillStyle = '#aaa';
+      ctx.fillRect(leftX, dividerY, rightX - leftX, dividerH);
+      ctx.strokeStyle = '#666';
+      ctx.strokeRect(leftX, dividerY, rightX - leftX, dividerH);
+      y += dividerThickness;
+    }
+  }
+
+  // -------------------- Fittings drawing (if provided) --------------------
+  if (options.fittings && leaves) {
+    const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
+    let yOffset = effectiveWalls.top;   // start from top of internal space
+
+    for (let i = 0; i < compHeights.length; i++) {
+      const compH = compHeights[i];
+      const fittingsForLeaf = options.fittings.find(f => f.leafId === leaves[i]?.leafId);
+      if (!fittingsForLeaf) {
+        yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+        continue;
+      }
+
+      const compY = yOffset * scale;
+      const compHeightPx = compH * scale;
+
+      // Draw shelves
+      const shelfCount = fittingsForLeaf.shelves.length;
+      if (shelfCount > 0) {
+        const shelfGap = compHeightPx / (shelfCount + 1);
+        for (let s = 0; s < shelfCount; s++) {
+          const yy = compY + shelfGap * (s + 1);
+          ctx.fillStyle = '#bbbbbb';
+          ctx.fillRect((effectiveWalls.left + 10) * scale, yy - 1,
+                       (internalWidth - 20) * scale, 3);
+        }
+      }
+
+      // Draw drawers
+      const drawerCount = fittingsForLeaf.drawers.length;
+      if (drawerCount > 0) {
+        const drawerWidth = internalWidth * 0.8 * scale;
+        const drawerHeight = 30;
+        const drawerGap = (compHeightPx - drawerCount * drawerHeight) / (drawerCount + 1);
+        for (let d = 0; d < drawerCount; d++) {
+          const yy = compY + drawerGap * (d + 1) + drawerHeight * d;
+          const xx = (effectiveWalls.left + (internalWidth - drawerWidth / scale) / 2) * scale;
+          ctx.strokeStyle = '#555';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(xx, yy, drawerWidth, drawerHeight);
+          ctx.fillStyle = '#e0e0e0';
+          ctx.fillRect(xx, yy, drawerWidth, drawerHeight);
+        }
+      }
+
+      yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+    }
+  }
+
+  // -------------------- Dimension lines (always drawn) --------------------
+  // Left side – compartment heights & divider
+  const dimX = -35;
+  y = intTop;
+  for (let i = 0; i < compHeights.length; i++) {
+    const h = compHeights[i];
+    drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `[h= ${h.toFixed(0)}]`);
+    y += h;
+    if (i < compHeights.length - 1 && dividerThickness > 0) {
+      const dividerBottom = y + dividerThickness;
+      drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `[div= ${dividerThickness}]`);
+      y = dividerBottom;
+    }
+  }
+
+  // Horizontal dimensions at bottom
+  drawDim(ctx, 0, H * scale, W * scale, H * scale, 35, `[W= ${W.toFixed(0)}]`);
+  // Left thickness for top compartment
+  drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
+  // Right thickness for top compartment
+  drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
+
+  ctx.restore();
+}
+// ──────────────────────────────────────────────────────────────────
+// Side view – per‑compartment rear thicknesses
+// ──────────────────────────────────────────────────────────────────
+export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
+  const ctx = canvas.getContext('2d');
+  const { H, D, Hb, Db1, Db2, walls } = geometry;
+  const { dividerThickness = 0, compHeights = [], doorGap = 0, compartments = [] } = options;
+
+  const tTop      = effectiveWalls.top;
+  const tDoor     = effectiveWalls.door;
+  const tRear     = effectiveWalls.rear;            // global rear for compressor box
+  const tRbottom1 = walls.refrigerator.bottom1;
+  const tRbottom2 = walls.refrigerator.bottom2;
+  const tRbottom3 = walls.refrigerator.bottom3;
+
+  const compRear = compartments.map(c => c.rear);   // per‑compartment
+
+  const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
+  const drawW = canvas.width - PAD.left - PAD.right;
+  const drawH = canvas.height - PAD.top - PAD.bottom;
+  const scale = Math.min(drawW / D, drawH / H);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(PAD.left, PAD.top);
+
+  // Outer cabinet
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, D * scale, H * scale);
+
+  const innerDoor = D - tDoor;
+  const innerTop  = tTop;
+  const floorLowerY  = H - tRbottom3;
+  const floorRaisedY = H - Hb - tRbottom1;
+  // Use bottom compartment’s rear (or the only compartment) for the stepped floor
+  const bottomRear = compRear.length === 2 ? compRear[1] : compRear[0];
+  const slopeStartX = bottomRear + Db1;
+  const slopeEndX   = bottomRear + Db2;  
+  // ---- 1. Insulation bands (per compartment, non‑overlapping) ----
+  // Top compartment
+  const topH = compHeights[0];
+  const topRearX = compRear[0] * scale;
+  const topY = innerTop * scale;
+  const topCompH = topH * scale;
+  ctx.beginPath();
+  ctx.rect(0, 0, D * scale, topY + topCompH);                     // outer slice
+  ctx.moveTo(topRearX, topCompH);
+  ctx.lineTo(innerDoor * scale, topY);
+  ctx.lineTo(innerDoor * scale, topY + topCompH);
+  ctx.lineTo(topRearX, topY + topCompH);
+  ctx.closePath();
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fill();
+
+  // If two compartments, bottom compartment insulation
+  if (compHeights.length === 2) {
+    const bottomH = compHeights[1];
+    const bottomRearX = compRear[1] * scale;
+    const bottomY = (innerTop + topH + dividerThickness) * scale;
+    const bottomCompH = bottomH * scale;
+    ctx.beginPath();
+    ctx.rect(0, bottomY, D * scale, bottomCompH);             // outer slice
+    // inner cutout follows the stepped floor
+    ctx.moveTo(bottomRearX, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
+    ctx.lineTo(innerDoor * scale, floorLowerY * scale);       // down to lower floor (should be same as bottom bottom)
+    ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+    ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+    ctx.lineTo(bottomRearX, floorRaisedY * scale);            // back to rear at raised floor
+    ctx.closePath();
+    ctx.fillStyle = '#f0f0f0';
+    ctx.fill();
+  }
+
+  // ---- 2. Compressor box ----
+  // (same as before, using global tRear)
+  const slopeDx = slopeEndX - slopeStartX;
+  const slopeDy = floorLowerY - floorRaisedY;
+  const slopeLen = Math.sqrt(slopeDx*slopeDx + slopeDy*slopeDy);
+  let nx =  slopeDy / slopeLen;
+  let ny = -slopeDx / slopeLen;
+  if (ny < 0) { nx = -nx; ny = -ny; }
+
+  const yTopCB = floorRaisedY + tRbottom1;
+  const sTop = slopeDy !== 0 ? (yTopCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
+  const xTopCB = slopeStartX + sTop * slopeDx + nx * tRbottom2;
+
+  const yBottomCB = H;
+  const sBottom = slopeDy !== 0 ? (yBottomCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
+  const xBottomCB = slopeStartX + sBottom * slopeDx + nx * tRbottom2;
+
+  ctx.beginPath();
+  ctx.moveTo(0, H * scale);
+  ctx.lineTo(0, yTopCB * scale);
+  ctx.lineTo(xTopCB * scale, yTopCB * scale);
+  ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
+  ctx.closePath();
+  ctx.fillStyle = '#ddd';
+  ctx.fill();
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#555'; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('Comp.', 6, yTopCB * scale + 14);
+
+  // ---- 3. White inner cavity (two separate shapes) ----
+  // Top compartment
+  ctx.beginPath();
+  ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // bottom compartment
+  if (compHeights.length === 2) {
+    const bottomRearX = compRear[1] * scale;
+    const bottomY = (innerTop + topH + dividerThickness) * scale;
+    const bottomCompH = compHeights[1] * scale;
+    ctx.beginPath();
+    ctx.moveTo(bottomRearX, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY);
+    ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
+    ctx.lineTo(innerDoor * scale, floorLowerY * scale);
+    ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+    ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+    ctx.lineTo(bottomRearX, floorRaisedY * scale);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // ---- 4. Divider & doors ----
+  let drawnDoors = [];
+  if (compHeights.length === 2 && dividerThickness > 0) {
+    const dividerY = innerTop + topH;
+    const dividerH = dividerThickness;
+
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(0, dividerY * scale,
+                 (innerDoor) * scale, dividerH * scale);
+    ctx.strokeStyle = '#666';
+    ctx.strokeRect(0, dividerY * scale,
+                  (innerDoor) * scale, dividerH * scale);
+
+    const doorLeftX = innerDoor * scale;
+    const doorWidth = (D - innerDoor) * scale;
+    const topDoorTop = 0;
+    const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
+    const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
+    const bottomDoorBottom = H * scale;
+
+    ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+    ctx.fillRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
+    ctx.fillRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
+    ctx.strokeStyle = '#555';
+    ctx.strokeRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
+    ctx.strokeRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
+
+    drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
+    drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
+
+    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
+            `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
+  } else {
+    drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
+  }
+
+  // ---- Dimensions ----
+  drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
+  drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
+  drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
+  drawDim(ctx, bottomRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
+  drawDim(ctx, bottomRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+  const topMidX = (tRear + innerDoor) / 2 * scale;
+  drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
+
+  drawnDoors.forEach(door => {
+    const doorMidY = (door.top + door.bottom) / 2.5;
+    drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
+  });
+
+  // Rear dimensions – per compartment
+  for (let i = 0; i < compHeights.length; i++) {
+    if (i === 0 || compRear[i] !== compRear[i-1]) {
+      let compY = innerTop;
+      for (let j = 0; j < i; j++) compY += compHeights[j];
+      if (i > 0) compY += dividerThickness;
+      const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
+      drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `[tRear= ${compartments[i].rear.toFixed(0)}]`);
+    }
+  }
+
+  const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
+  drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
+
+  const midSlopeX = (slopeStartX + slopeEndX) / 2;
+  const midSlopeY = (floorRaisedY + floorLowerY) / 2;
+  const innerPX = midSlopeX * scale;
+  const innerPY = midSlopeY * scale;
+  const outerPX = innerPX + nx * (tRbottom2 * scale);
+  const outerPY = innerPY + ny * (tRbottom2 * scale);
+  drawDim(ctx, innerPX, innerPY, outerPX, outerPY, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
+
+  // Compartment height dimensions (right side)
+  if (compHeights.length === 2) {
+    const dimX = D * scale + 20;
+    let yPos = innerTop;
+    compHeights.forEach((h, idx) => {
+      const bottomY = yPos + h;
+      drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
+      yPos = bottomY;
+      if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
+    });
+  } else if (compHeights.length === 1) {
+    drawDim(ctx, D * scale + 20, innerTop * scale, D * scale + 20, (innerTop + compHeights[0]) * scale, 0,
+            `[h= ${compHeights[0].toFixed(0)}]`);
+  }
+
+  ctx.restore();
+}
+
+===== D:\refrigerator-volume-calculator\src\js\ui\settingsModal.js =====
+// js/ui/settingsModal.js
+
+import { settings, updateSettings } from '../settings.js';
+
+export function initSettingsModal() {
+  const modal    = document.getElementById('settingsModal');
+  const closeBtn = document.getElementById('closeSettings');
+  const saveBtn  = document.getElementById('settingsSave');
+  const exportBtn = document.getElementById('settingsExport');
+  const importBtn = document.getElementById('settingsImport');
+  const resetBtn  = document.getElementById('settingsReset');
+  const gearBtn   = document.getElementById('settingsBtn');
+
+  // Show modal
+  gearBtn.addEventListener('click', () => {
+    renderSettingsTabs();
+    modal.classList.remove('hidden');
+  });
+
+  // Hide modal
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+  window.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+
+  // Save & Close
+  saveBtn.addEventListener('click', () => {
+    collectSettingsFromTabs();
+    updateSettings(settings);
+    modal.classList.add('hidden');
+  });
+
+  // Export / Import / Reset
+  exportBtn.addEventListener('click', exportSettings);
+  importBtn.addEventListener('click', importSettings);
+  resetBtn.addEventListener('click', () => {
+    if (confirm('Reset all settings to factory defaults?')) {
+      resetToDefaults();
+      updateSettings(settings);
+      renderSettingsTabs();
+      modal.classList.add('hidden');
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tab rendering
+// ---------------------------------------------------------------------------
+
+function renderSettingsTabs() {
+  // Only the General tab exists now
+  document.getElementById('stabGeneral').innerHTML = `
+    <label>
+      <input type="checkbox" id="autoCalculate" ${settings.autoCalculate ? 'checked' : ''}>
+      Auto‑calculate
+    </label>
+    <label>
+      <input type="checkbox" id="showDirtyOverlay" ${settings.showDirtyOverlay ? 'checked' : ''}>
+      Show “schematic outdated” overlay
+    </label>
+    <label>mm³ → L: <input type="number" id="mm3ToL" value="${settings.mm3ToL}" step="1e-9"></label>
+    <label>L → cu.ft: <input type="number" id="lToCuft" value="${settings.lToCuft}" step="1e-7"></label>
+    <label>Decimal places (L): <input type="number" id="displayPrecisionL" value="${settings.displayPrecisionL}" min="0" max="5"></label>
+    <label>Decimal places (cu.ft): <input type="number" id="displayPrecisionCuft" value="${settings.displayPrecisionCuft}" min="0" max="5"></label>
+    <label>Canvas width: <input type="number" id="canvasWidth" value="${settings.canvasWidth}" step="10" min="200"></label>
+    <label>Canvas height: <input type="number" id="canvasHeight" value="${settings.canvasHeight}" step="10" min="200"></label>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Collect values
+// ---------------------------------------------------------------------------
+
+function collectSettingsFromTabs() {
+  settings.autoCalculate       = document.getElementById('autoCalculate').checked;
+  settings.showDirtyOverlay    = document.getElementById('showDirtyOverlay').checked;
+  settings.mm3ToL              = parseFloat(document.getElementById('mm3ToL').value) || 1e-6;
+  settings.lToCuft            = parseFloat(document.getElementById('lToCuft').value) || 0.0353147;
+  settings.displayPrecisionL  = parseInt(document.getElementById('displayPrecisionL').value) || 2;
+  settings.displayPrecisionCuft = parseInt(document.getElementById('displayPrecisionCuft').value) || 3;
+  settings.canvasWidth         = parseInt(document.getElementById('canvasWidth').value) || 600;
+  settings.canvasHeight        = parseInt(document.getElementById('canvasHeight').value) || 800;
+}
+
+// ---------------------------------------------------------------------------
+// Export / Import / Reset helpers – unchanged, they still export everything
+// ---------------------------------------------------------------------------
+
+function exportSettings() {
+  const data = { ...settings, compressors: getCompressorList() };
+  // ... (exactly as before)
+}
+
+function importSettings() {
+  // ... (same as before but no loadCompressors call needed here)
+}
+
+function resetToDefaults() {
+  const defaults = {
+    autoCalculate: true,
+    showDirtyOverlay: true,
+    mm3ToL: 1e-6,
+    lToCuft: 0.0353147,
+    displayPrecisionL: 2,
+    displayPrecisionCuft: 3,
+    canvasWidth: 600,
+    canvasHeight: 800,
+  };
+  Object.assign(settings, defaults);
+}
+
+===== D:\refrigerator-volume-calculator\src\js\ui\thermoUI.js =====
+// ──────────────────────────────────────────────────────────────────────────────
+// thermoUI.js — Thermal analysis panel
+//
+// Changes from original:
+//   • Removed unused `runThermalAnalysisDynamic` import (wrong API shape).
+//   • initThermoUI: initialises the new thermoFanInputPower field.
+//   • handleRun: uses buildDefaultConfig() so compParams (wCoeffs/etaCoeffs
+//     arrays) and condenserConfig (sidePipePitch_mm / backPipePitch_mm keys)
+//     are correctly formatted for solver.js.  Then calls runThermoAnalysis()
+//     whose return shape { success, errors, warnings, results } matches the
+//     existing handler logic.
+//   • displayResults: shows all result fields (TE, etaV, fanLoad, defrostLoad,
+//     iteration counts) that were previously missing.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
+import { toThermalFormat } from '../engine/geometry.js';
+import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
+import {
+  loadCompressors,
+  getCompressorList,
+  getCurrentCompressor,
+  setSelectedCompressor,
+  addCompressor,
+  deleteCompressor
+} from '../compressorManager.js';
+import { computeCompressorCoefficients } from '../engine/thermo/CompressorPerformance.js';
+import { EnergyConsumption } from '../engine/thermo/solver.js';   // adjust path if needed
+import { settings, updateSettings } from '../settings.js';
+import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
+
+// Store advanced parameters globally, initialised from defaults
+let thermalAdvanced = {
+  subcool: SJ54H_COMPONENTS.subcool_K,
+  dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
+  fanInputPower: SJ54H_COMPONENTS.fan.inputPower_W,
+  defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
+  defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
+};
+let getGeometryFn = null;
+
+export function initThermoUI(getGeometry) {
+  getGeometryFn = getGeometry;
+
+  const panel = document.getElementById('panelThermal');
+  if (!panel) return;
+
+  panel.innerHTML = `
+    <button id="thermoRunBtn">Run Thermal Analysis</button>
+    <div id="thermoErrors"></div>   <!-- keep errors in the left panel -->
+    <fieldset>
+      <legend>Design Inputs</legend>
+      <label>Ambient T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
+      <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
+      <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
+      <label>Refrigerant:
+        <select id="thermoRefrigerant">
+          <option value="R-600a">R-600a</option>
+          <option value="R-134a">R-134a</option>
+        </select>
+      </label>
+      <label>Fan airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
+      <button id="thermoAdvancedBtn" type="button">⚙️ Advanced</button>
+    </fieldset>
+  `;
+  // Set default values
+  document.getElementById('thermoFanFlow').value = SJ54H_COMPONENTS.fan.totalAirflow_m3h;
+
+  // Load advanced values from localStorage (if any)
+  const saved = localStorage.getItem('thermoAdvanced');
+  if (saved) thermalAdvanced = { ...thermalAdvanced, ...JSON.parse(saved) };
+
+  document.getElementById('thermoAdvancedBtn').addEventListener('click', openThermalSettings);
+  document.getElementById('thermoRunBtn').addEventListener('click', handleRun);
+}
+
+function openThermalSettings() {
+  const modal = document.getElementById('thermalSettingsModal');
+  if (!modal) return;
+
+  // Ensure compressor list is fresh
+  loadCompressors();
+  const compressors = getCompressorList();
+  const currentComp = getCurrentCompressor();
+
+  // Read condenser settings from the main settings object (with fallback)
+  const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
+
+  // Build the full modal content
+  modal.innerHTML = `
+    <div class="modal-content">
+      <span class="close-btn" id="closeThermalSettings">&times;</span>
+      <h2>Thermal Design Parameters</h2>
+
+      <fieldset>
+        <legend>Condenser</legend>
+        <label>Side pipe pitch (mm):
+          <input type="number" id="thermoCondSidePitch" value="${cond.sidePipePitch_mm}" step="any">
+        </label>
+        <label>Back pipe pitch (mm):
+          <input type="number" id="thermoCondBackPitch" value="${cond.backPipePitch_mm}" step="any">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Evaporator</legend>
+        <label>Width (mm): <input id="evapWidth" type="number" step="any"></label>
+        <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
+        <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
+        <label>Rows: <input id="evapRows" type="number" step="any"></label>
+        <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
+        <label>Fin Pitch (mm): <input id="evapFinPitch" type="number" step="any"></label>
+        <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
+        <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
+        <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
+        <label>Side Plates: <input id="evapSidePlateNo" type="number" step="any"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Fan Parameters</legend>
+        <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
+        <label>RPM: <input id="fanRPM" type="number" step="any"></label>
+        <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
+        <label>Input power (W):
+          <input type="number" id="thermoFanInputPower" value="${thermalAdvanced.fanInputPower}" step="any" min="0">
+        </label>
+
+      </fieldset>
+      <fieldset>
+        <legend>Compressor</legend>
+        <label>Current Compressor:
+          <select id="thermoCompressorSelect">
+            ${compressors.map(c => `<option value="${c.id}" ${c.id === currentComp.id ? 'selected' : ''}>${c.name}</option>`).join('')}
+          </select>
+        </label>
+        <button id="thermoAddCompressorBtn" type="button">Add Compressor</button>
+        <button id="thermoEditCompressorBtn" type="button">Edit Selected</button>
+        <button id="thermoDeleteCompressorBtn" type="button">Delete Selected</button>
+        <div id="thermoCompressorList"></div>  <!-- can be used for detailed info later -->
+      </fieldset>
+
+      <fieldset>
+        <legend>Subcool &amp; Discharge</legend>
+        <label>Subcool (K):
+          <input type="number" id="thermoSubcool" value="${thermalAdvanced.subcool}" step="any">
+        </label>
+        <label>Discharge temp (°C):
+          <input type="number" id="thermoDiscTemp" value="${thermalAdvanced.dischargeTemp}" step="any">
+        </label>
+      </fieldset>
+
+        <legend>Defrost</legend>
+        <label>Heater (W):
+          <input type="number" id="thermoDefHeater" value="${thermalAdvanced.defHeater}" step="any">
+        </label>
+        <label>On time (min/24h):
+          <input type="number" id="thermoDefOn" value="${thermalAdvanced.defOnMin}" step="any">
+        </label>
+      </fieldset>
+
+      <div class="settings-actions">
+        <button id="saveThermalSettings">Save &amp; Close</button>
+      </div>
+    </div>
+  `;
+  const evap = settings.evaporator || {};
+  document.getElementById('evapWidth').value       = evap.width_mm ?? 460;
+  document.getElementById('evapHeight').value      = evap.height_mm ?? 150;
+  document.getElementById('evapDepth').value       = evap.depth_mm ?? 60;
+  document.getElementById('evapRows').value        = evap.rows ?? 2;
+  document.getElementById('evapTubeOD').value      = evap.tubeOD_mm ?? 8;
+  document.getElementById('evapFinPitch').value    = evap.finPitch_mm ?? 4;
+  document.getElementById('evapFinHeight').value   = evap.finHeight_mm ?? 150;
+  document.getElementById('evapFinLength').value   = evap.finLength_mm ?? 460;
+  document.getElementById('evapNumFins').value     = evap.numFins ?? 32;
+  document.getElementById('evapSidePlateNo').value = evap.sidePlateNo ?? 0;
+
+  const fanP = settings.fanParam || {};
+  document.getElementById('fanDiam').value  = fanP.fanDiam ?? 100;
+  document.getElementById('fanRPM').value   = fanP.fanRPM ?? 2200;
+  document.getElementById('fanThick').value = fanP.fanThick ?? 25;
+  modal.classList.remove('hidden');
+
+  // Attach event listeners
+  document.getElementById('closeThermalSettings').onclick = () => modal.classList.add('hidden');
+
+  // Compressor management
+document.getElementById('thermoAddCompressorBtn').onclick = () => {
+  openAddCompressorModal();
+};
+document.getElementById('thermoEditCompressorBtn').onclick = () => {
+  openEditCompressorModal();
+};
+  document.getElementById('thermoDeleteCompressorBtn').onclick = () => {
+    const sel = document.getElementById('thermoCompressorSelect');
+    if (confirm('Delete the selected compressor?')) {
+      deleteCompressor(sel.value);
+      openThermalSettings(); // refresh
+    }
+  };
+
+  document.getElementById('thermoCompressorSelect').onchange = (e) => {
+    setSelectedCompressor(e.target.value);
+  };
+
+  // Save button
+  document.getElementById('saveThermalSettings').onclick = () => {
+    // Read condenser fields
+    const sidePitch = parseFloat(document.getElementById('thermoCondSidePitch').value) || 50;
+    const backPitch = parseFloat(document.getElementById('thermoCondBackPitch').value) || 50;
+    settings.condenser = {
+      sidePipePitch_mm: sidePitch,
+      backPipePitch_mm: backPitch,
+    };
+        // Read evaporator fields
+    settings.evaporator = {
+      width_mm:       parseFloat(document.getElementById('evapWidth').value) || 460,
+      height_mm:      parseFloat(document.getElementById('evapHeight').value) || 150,
+      depth_mm:       parseFloat(document.getElementById('evapDepth').value) || 60,
+      rows:           parseInt(document.getElementById('evapRows').value) || 2,
+      tubeOD_mm:      parseFloat(document.getElementById('evapTubeOD').value) || 8,
+      finPitch_mm:    parseFloat(document.getElementById('evapFinPitch').value) || 4,
+      finHeight_mm:   parseFloat(document.getElementById('evapFinHeight').value) || 150,
+      finLength_mm:   parseFloat(document.getElementById('evapFinLength').value) || 460,
+      numFins:        parseInt(document.getElementById('evapNumFins').value) || 32,
+      sidePlateNo:    parseInt(document.getElementById('evapSidePlateNo').value) || 0,
+    };
+
+    // Read fan parameters
+    settings.fanParam = {
+      fanDiam:  parseFloat(document.getElementById('fanDiam').value) || 100,
+      fanRPM:   parseFloat(document.getElementById('fanRPM').value) || 2200,
+      fanThick: parseFloat(document.getElementById('fanThick').value) || 25,
+    };
+    updateSettings(settings);   // persist & fire event
+
+    // Save the advanced thermal values to localStorage
+    thermalAdvanced.subcool       = parseFloat(document.getElementById('thermoSubcool').value) || SJ54H_COMPONENTS.subcool_K;
+    thermalAdvanced.dischargeTemp = parseFloat(document.getElementById('thermoDiscTemp').value) || SJ54H_COMPONENTS.dischargeTemp_C;
+    thermalAdvanced.fanInputPower = parseFloat(document.getElementById('thermoFanInputPower').value) || SJ54H_COMPONENTS.fan.inputPower_W;
+    thermalAdvanced.defHeater     = parseFloat(document.getElementById('thermoDefHeater').value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
+    thermalAdvanced.defOnMin      = parseFloat(document.getElementById('thermoDefOn').value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
+    localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
+
+    // Compressor selection already saved by onchange, but ensure it's set
+    const compSelect = document.getElementById('thermoCompressorSelect');
+    if (compSelect) setSelectedCompressor(compSelect.value);
+
+    modal.classList.add('hidden');
+  };
+
+  // Close when clicking outside modal
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  };
+}
+
+
+function handleRun() {
+  clearMessages();
+  if (!getGeometryFn) { showError('Geometry source not available.'); return; }
+  const cabinetGeom = getGeometryFn();
+
+  if (
+    cabinetGeom._compartments &&
+    cabinetGeom._compartments.length > 1 &&
+    cabinetGeom._compartments[0].type !== 'freezer'
+  ) {
+    showError('Thermal analysis currently supports only freezer-top configurations.');
+    return;
+  }
+
+  const geom = toThermalFormat(cabinetGeom);
+
+  const T0 = parseFloat(document.getElementById('thermoT0')?.value);
+  const TF = parseFloat(document.getElementById('thermoTF')?.value);
+  const TR = parseFloat(document.getElementById('thermoTR')?.value);
+  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) { showError('Please fill all temperatures.'); return; }
+
+  const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
+  const fanFlow = parseFloat(document.getElementById('thermoFanFlow')?.value) || SJ54H_COMPONENTS.fan.totalAirflow_m3h;
+  
+  const config = buildDefaultConfig({
+    geom,
+    freezerPosition: cabinetGeom._compartments?.[0]?.type === 'freezer' ? 'top' : 'bottom',
+    refrigerant,
+    subcool: thermalAdvanced.subcool,
+    dischargeTemp: thermalAdvanced.dischargeTemp,
+    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+  });
+  config.evapGeom = settings.evaporator || {};
+  config.fanParam = settings.fanParam || {};
+  // Keep a reference to the default (working) coefficients
+  const defaultCompParams = config.compParams;
+
+  loadCompressors();
+  const compressor = getCurrentCompressor();   // single declaration
+  console.log('Loaded compressor object:', JSON.stringify(compressor, null, 2));
+    // Replace compParams only if the selected compressor provides valid arrays
+  if (compressor) {
+      // Helper: ensure coefficients are a flat array
+      const toArray = (coeffs, keys) => {
+          if (Array.isArray(coeffs)) return coeffs;
+          if (coeffs && typeof coeffs === 'object') {
+              return keys.map(k => coeffs[k]).filter(v => v !== undefined);
+          }
+          return null;
+      };
+
+      const wArr = toArray(compressor.wCoeffs, ['AW','BW','CW','DW','EW']);
+      const etaArr = toArray(compressor.etaCoeffs, ['A','B','C']);
+
+      if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
+          config.compParams = {
+              name: compressor.name,
+              cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
+              speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
+              wCoeffs: wArr,
+              etaCoeffs: etaArr,
+          };
+      } else {
+          console.warn('Selected compressor missing coefficients – using default.', compressor);
+      }
+  }
+
+  // Now it’s safe to run
+  const result = runThermoAnalysis(config);
+  if (!result.success) {
+    showError(result.errors.join('; '));
+    return;
+  }
+
+  // Compute energy consumption
+  let energy = null;
+  if (result.results && result.results.converged) {
+    try {
+      energy = EnergyConsumption(result.results);
+    } catch (e) {
+      console.warn('EnergyConsumption calculation failed:', e);
+    }
+  }
+  // Fallback: if converged flag is missing, assume converged if PR is present
+  if (result.results && (result.results.converged !== false)) {
+    try {
+      energy = EnergyConsumption(result.results);
+    } catch (e) {
+      console.error('EnergyConsumption threw:', e);
+    }
+  }
+  // Compute evaporator performance if settings exist
+  let evapDetails = null;
+  const evap = settings.evaporator;
+  const fanP = settings.fanParam;
+  if (evap && fanP && result.results && result.results.converged !== false) {
+    try {
+      const area = computeEvaporatorArea(evap);
+      const v = airSpeed(fanP, evap);
+      const alpha = evaporatorAlpha(v);
+      const TF = parseFloat(document.getElementById('thermoTF')?.value) || -18;
+      const TR = parseFloat(document.getElementById('thermoTR')?.value) || 3;
+      const MR = result.results.MR || 0;
+      const MF = result.results.MF || 0;
+      const totalFlow = MR + MF;
+      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T2 = result.results.T2;
+      const TE = result.results.TE;
+      const LMTD = lmtd(T1, T2, TE);
+      const Qevap = evaporatorCapacity(alpha, area, LMTD);
+      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+    } catch (e) {
+      console.warn('Evaporator calculation failed:', e);
+    }
+  }
+
+  // Attach to results so displayResults can use it
+  if (evapDetails) {
+    result.results.evapDetails = evapDetails;
+  }
+
+  displayResults(result.results, energy);
+  if (result.warnings.length) showWarnings(result.warnings);
+}
+
+// ---------------------------------------------------------------------------
+// Add Compressor Modal – builds the 3×3 matrix, fits coefficients, adds to list
+// ---------------------------------------------------------------------------
+function openAddCompressorModal() {
+  const modal = document.getElementById('addCompressorModal');
+  if (!modal) return;
+
+  // Default values to pre‑fill the editable matrix
+  const defaultComp = {
+    name: 'EGX80CLC',
+    cylinderVolumeCm3: 10.17,
+    speedRpm: 2220,
+  };
+
+  const defaultTE = [-34.4, -23.3, -12.2];
+  const defaultTC = [37.8, 46.1, 54.4];
+  const Q_matrix = [
+    [ 70.554507,  67.112824,  61.950299],
+    [129.063122, 126.481860, 121.319335],
+    [215.105204, 210.803100, 203.919733],
+  ];
+  const W_matrix = [
+    [ 49.7,  51.3,  72.0],
+    [ 67.6,  72.4, 141.0],
+    [ 86.2,  93.5, 237.0],
+  ];
+
+  // Build table rows with editable TE values at the start of each row
+  const headerCells = defaultTC.map((tc, j) => `
+    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
+  `).join('');
+
+  const bodyRows = defaultTE.map((te, i) => `
+    <tr>
+      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
+      ${defaultTC.map((tc, j) => `
+        <td>
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+        </td>
+      `).join('')}
+    </tr>
+  `).join('');
+
+  document.getElementById('addCompressorContent').innerHTML = `
+    <style>
+      .matrix-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+      .matrix-table th, .matrix-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+      .matrix-table input { width: 80px; }
+      .error-msg { color: #d32f2f; font-weight: bold; margin-top: 10px; }
+    </style>
+
+    <fieldset>
+      <legend>Basic Data</legend>
+      <label>Name: <input id="acName" type="text" value="${defaultComp.name}"></label>
+      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${defaultComp.cylinderVolumeCm3}"></label>
+      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${defaultComp.speedRpm}"></label>
+      <label>Refrigerant:
+        <select id="acRef">
+          <option value="1">R-134a</option>
+          <option value="2" selected>R-600a</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test Data (edit TE / TC and fill Q & W)</legend>
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th></th>
+            ${headerCells}
+          </tr>
+        </thead>
+        <tbody>
+          ${bodyRows}
+        </tbody>
+      </table>
+      <p><small>Pre‑filled with example data. Change TE and TC values as needed. At least 5 data points required.</small></p>
+    </fieldset>
+
+    <div id="acError" class="error-msg"></div>
+    <div class="settings-actions">
+      <button id="fitCompressorBtn">Fit & Add</button>
+      <button id="cancelAddCompressor">Cancel</button>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+
+  document.getElementById('cancelAddCompressor').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  document.getElementById('fitCompressorBtn').onclick = () => {
+    const errorDiv = document.getElementById('acError');
+    errorDiv.textContent = '';
+    const name = document.getElementById('acName').value.trim();
+    const cyl = parseFloat(document.getElementById('acCyl').value);
+    const rpm = parseFloat(document.getElementById('acRpm').value);
+    const refIdx = parseInt(document.getElementById('acRef').value);
+
+    if (!name) { errorDiv.textContent = 'Name is required.'; return; }
+    if (isNaN(cyl) || cyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
+    if (isNaN(rpm) || rpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
+
+    // Read TE and TC values from the editable headers
+    const TE_vals = [];
+    const TC_vals = [];
+    for (let i = 0; i < 3; i++) {
+      const te = parseFloat(document.getElementById(`te_${i}`).value);
+      if (isNaN(te)) { errorDiv.textContent = `Invalid TE value in row ${i+1}.`; return; }
+      TE_vals.push(te);
+    }
+    for (let j = 0; j < 3; j++) {
+      const tc = parseFloat(document.getElementById(`tc_${j}`).value);
+      if (isNaN(tc)) { errorDiv.textContent = `Invalid TC value in column ${j+1}.`; return; }
+      TC_vals.push(tc);
+    }
+
+    // Build dataPoints from all filled-in cells
+    const dataPoints = [];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        const q = parseFloat(document.getElementById(`q_${i}_${j}`).value);
+        const w = parseFloat(document.getElementById(`w_${i}_${j}`).value);
+        if (!isNaN(q) && !isNaN(w)) {
+          dataPoints.push({ TE: TE_vals[i], TC: TC_vals[j], Q: q, W: w });
+        }
+      }
+    }
+
+    if (dataPoints.length < 5) {
+      errorDiv.textContent = `At least 5 data points required. Only ${dataPoints.length} provided.`;
+      return;
+    }
+
+    try {
+      const { etaCoeffs, wCoeffs } = computeCompressorCoefficients({
+        cylinderVolumeCm3: cyl,
+        speedRpm: rpm,
+        refrigerantIndex: refIdx,
+        dataPoints,
+      });
+
+      addCompressor({
+        id: name.replace(/\s/g, ''),
+        name,
+        model: name,
+        voltage: 100,
+        frequency: 50,
+        cylinderVolumeCm3: cyl,
+        speedRpm: rpm,
+        wCoeffs,
+        etaCoeffs,
+      });
+
+      modal.classList.add('hidden');
+      openThermalSettings(); // refresh compressor list
+    } catch (err) {
+      errorDiv.textContent = err.message;
+    }
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  };
+}
+
+function openEditCompressorModal() {
+  const modal = document.getElementById('addCompressorModal');
+  if (!modal) return;
+
+  loadCompressors();
+  const comp = getCurrentCompressor();
+  if (!comp) {
+    alert('No compressor selected.');
+    return;
+  }
+
+  // Preset values from the selected compressor
+  const name = comp.name || '';
+  const cyl  = comp.cylinderVolumeCm3 || 10.17;
+  const rpm  = comp.speedRpm || 2220;
+  const refIdx = comp.refrigerantIndex || 2;   // we don't store refrigerant index, default R‑600a
+
+  // We can't recover original test data, so we show empty matrix
+  const defaultTE = [-34.4, -23.3, -12.2];
+  const defaultTC = [37.8, 46.1, 54.4];
+  const Q_matrix = [['','',''],['','',''],['','','']];
+  const W_matrix = [['','',''],['','',''],['','','']];
+  // Build the modal content – note the title says "Edit Compressor"
+  const headerCells = defaultTC.map((tc, j) => `
+    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
+  `).join('');
+  const bodyRows = defaultTE.map((te, i) => `
+    <tr>
+      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
+      ${defaultTC.map((_, j) => `
+        <td>
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+        </td>
+      `).join('')}
+    </tr>
+  `).join('');
+
+  document.getElementById('addCompressorContent').innerHTML = `
+    <h2>Edit Compressor</h2>
+    <style>
+      .matrix-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+      .matrix-table th, .matrix-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+      .matrix-table input { width: 80px; }
+      .error-msg { color: #d32f2f; font-weight: bold; margin-top: 10px; }
+    </style>
+
+    <fieldset>
+      <legend>Basic Data</legend>
+      <label>Name: <input id="acName" type="text" value="${name}"></label>
+      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${cyl}"></label>
+      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${rpm}"></label>
+      <label>Refrigerant:
+        <select id="acRef">
+          <option value="1" ${refIdx === 1 ? 'selected' : ''}>R-134a</option>
+          <option value="2" ${refIdx === 2 ? 'selected' : ''}>R-600a</option>
+        </select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test Data (optional – fill at least 5 cells to recompute)</legend>
+      <table class="matrix-table">
+        <thead><tr><th></th>${headerCells}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      <p><small>Leave cells empty to keep existing coefficients. Fill at least 5 data points to recompute.</small></p>
+    </fieldset>
+
+    <div id="acError" class="error-msg"></div>
+    <div class="settings-actions">
+      <button id="fitAndSaveBtn">Fit & Save</button>
+      <button id="cancelEditCompressor">Cancel</button>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+
+  document.getElementById('cancelEditCompressor').onclick = () => {
+    modal.classList.add('hidden');
+  };
+
+  document.getElementById('fitAndSaveBtn').onclick = () => {
+    const errorDiv = document.getElementById('acError');
+    errorDiv.textContent = '';
+
+    const newName = document.getElementById('acName').value.trim();
+    const newCyl  = parseFloat(document.getElementById('acCyl').value);
+    const newRpm  = parseFloat(document.getElementById('acRpm').value);
+    const newRefIdx = parseInt(document.getElementById('acRef').value);
+
+    if (!newName) { errorDiv.textContent = 'Name is required.'; return; }
+    if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
+    if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
+
+    // Read TE and TC from headers
+    const TE_vals = [];
+    const TC_vals = [];
+    for (let i = 0; i < 3; i++) {
+      const te = parseFloat(document.getElementById(`te_${i}`).value);
+      if (isNaN(te)) { errorDiv.textContent = `Invalid TE in row ${i+1}.`; return; }
+      TE_vals.push(te);
+    }
+    for (let j = 0; j < 3; j++) {
+      const tc = parseFloat(document.getElementById(`tc_${j}`).value);
+      if (isNaN(tc)) { errorDiv.textContent = `Invalid TC in col ${j+1}.`; return; }
+      TC_vals.push(tc);
+    }
+
+    // Build data points from filled cells
+    const dataPoints = [];
+    for (let i = 0; i < 3; i++) {
+      for (let j = 0; j < 3; j++) {
+        const q = parseFloat(document.getElementById(`q_${i}_${j}`).value);
+        const w = parseFloat(document.getElementById(`w_${i}_${j}`).value);
+        if (!isNaN(q) && !isNaN(w)) {
+          dataPoints.push({ TE: TE_vals[i], TC: TC_vals[j], Q: q, W: w });
+        }
+      }
+    }
+
+    let wCoeffs, etaCoeffs;
+    // After the loop that builds dataPoints:
+    const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
+    if (dataPoints.length >= 5 && nonZeroCount === 0) {
+        errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
+        return;
+    }
+        if (dataPoints.length >= 5) {
+          try {
+            const coeffs = computeCompressorCoefficients({
+              cylinderVolumeCm3: newCyl,
+              speedRpm: newRpm,
+              refrigerantIndex: newRefIdx,
+              dataPoints,
+            });
+            wCoeffs = coeffs.wCoeffs;
+            etaCoeffs = coeffs.etaCoeffs;
+          } catch (err) {
+            errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
+            return;
+          }
+        } else {
+          // Keep existing coefficients, but must be valid
+          if (!comp.wCoeffs || !comp.etaCoeffs || comp.wCoeffs.length !== 5 || comp.etaCoeffs.length !== 3) {
+            errorDiv.textContent = 'No valid existing coefficients. Please enter at least 5 test data points.';
+            return;
+          }
+      wCoeffs = comp.wCoeffs;
+      etaCoeffs = comp.etaCoeffs;
+    }
+
+    // Build the updated compressor object
+    const updatedComp = {
+      id: newName.replace(/\s/g, ''),
+      name: newName,
+      model: newName,
+      voltage: comp.voltage || 100,
+      frequency: comp.frequency || 50,
+      cylinderVolumeCm3: newCyl,
+      speedRpm: newRpm,
+      wCoeffs,
+      etaCoeffs,
+    };
+
+    // Replace the old compressor with the updated one
+    deleteCompressor(comp.id);
+    addCompressor(updatedComp);
+    setSelectedCompressor(updatedComp.id);
+
+    modal.classList.add('hidden');
+    openThermalSettings();   // refresh the compressor dropdown
+  };
+
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  };
+}
+// ─── Results display ───────────────────────────────────────────────────────
+
+function displayResults(res, energy) {
+  if (!res) return;
+
+  const resultsDiv = document.getElementById('thermoRightPanel');
+  if (!resultsDiv) return;
+
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  const overlay     = document.getElementById('schematicOverlay');
+  if (frontCanvas) frontCanvas.style.display = 'none';
+  if (sideCanvas)  sideCanvas.style.display  = 'none';
+  if (overlay)     overlay.classList.add('hidden');
+  resultsDiv.classList.remove('hidden');
+
+  const fmt  = (v, dp = 2)  => (isFinite(v) ? v.toFixed(dp) : '—');
+  const fmtP = (v, dp = 1)  => (isFinite(v) ? (v * 100).toFixed(dp) + ' %' : '—');
+
+  const comp = res.compressor || {};
+  const pe = (comp.Pe !== undefined ? comp.Pe : res.Pe)?.toFixed(4) ?? '—';
+  const pc = (comp.Pc !== undefined ? comp.Pc : res.Pc)?.toFixed(4) ?? '—';
+  const etaV = comp.etaV !== undefined ? fmtP(comp.etaV) : '—';
+  const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';
+  const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';
+  const mFlow= comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
+
+  const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
+  const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
+
+  const html = `
+    <table class="thermo-results-table">
+      <thead>
+        <tr><th colspan="2">Thermal Analysis Results</th></tr>
+      </thead>
+      <tbody>
+        <tr class="section-header"><td colspan="2">Operating Points</td></tr>
+        <tr><td>Condensing temp TC</td><td>${fmt(res.TC)} °C</td></tr>
+        <tr><td>Evaporating temp TE</td><td>${fmt(res.TE)} °C</td></tr>
+        <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>
+        <tr><td>Running ratio PR</td><td>${fmtP(res.PR)}</td></tr>
+
+        <tr class="section-header"><td colspan="2">Compressor Details</td></tr>
+        <tr><td>Evap. pressure Pe</td><td>${pe} bar</td></tr>
+        <tr><td>Cond. pressure Pc</td><td>${pc} bar</td></tr>
+        <tr><td>Vol. efficiency η<sub>v</sub></td><td>${etaV}</td></tr>
+        <tr><td>Cooling capacity</td><td>${qComp} kcal/h</td></tr>
+        <tr><td>Input power</td><td>${pComp} W</td></tr>
+        <tr><td>Mass flow</td><td>${mFlow} kg/h</td></tr>
+
+        <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
+        <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
+        <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
+
+        <tr class="section-header"><td colspan="2">Heat Loads (kcal/h)</td></tr>
+        <tr><td>QF — Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>
+        <tr><td>QR — Refrigerator compartment</td><td>${fmt(res.heatLoads.QR)}</td></tr>
+        <tr><td>QEV — Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
+        <tr><td>Fan load</td><td>${fmt(res.heatLoads.fanLoad)}</td></tr>
+        <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
+        ${
+          res.evapDetails ? `
+          <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
+          <tr><td>Surface area</td><td>${fmt(res.evapDetails.area, 4)} m²</td></tr>
+          <tr><td>Air speed</td><td>${fmt(res.evapDetails.v, 3)} m/s</td></tr>
+          <tr><td>Heat transfer coeff α</td><td>${fmt(res.evapDetails.alpha, 2)} kcal/h·m²·°C</td></tr>
+          <tr><td>LMTD</td><td>${fmt(res.evapDetails.LMTD, 2)} °C</td></tr>
+          <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
+          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} kcal/h</td></tr>
+          ` : ''
+        }
+        <tr class="section-header"><td colspan="2">Solver</td></tr>
+        <tr><td>Outer iterations</td><td>${res.outerIterations ?? res.iterations?.outer ?? '—'}</td></tr>
+        <tr><td>Inner iterations (total)</td><td>${res.innerTotalIterations ?? res.iterations?.innerTotal ?? '—'}</td></tr>
+      </tbody>
+    </table>
+  `;
+  resultsDiv.innerHTML = html;
+}
+
+// ─── Message helpers ───────────────────────────────────────────────────────
+
+function clearMessages() {
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const thermoErrors = document.getElementById('thermoErrors');
+  if (thermoRight) thermoRight.innerHTML = '';
+  if (thermoErrors) thermoErrors.innerHTML = '';
+}
+
+function showError(msg) {
+  const e = document.getElementById('thermoErrors');
+  if (e) e.innerHTML = `<p class="error">❌ ${msg}</p>`;
+}
+
+function showWarnings(warnings) {
+  const e = document.getElementById('thermoErrors');
+  if (!e) return;
+  const ul = document.createElement('ul');
+  warnings.forEach(w => {
+    const li = document.createElement('li');
+    li.textContent = w;
+    li.className = 'warning';
+    ul.appendChild(li);
+  });
+  e.appendChild(ul);
+}
+
+===== D:\refrigerator-volume-calculator\src\js\compressorManager.js =====
+// js/compressorManager.js
+
+import { SJ54H_COMPONENTS } from './engine/thermo/defaultComponents.js';
+
+// Default compressor – store coefficients as arrays from the start
+const DEFAULT_COMPRESSORS = [
+  {
+    id: 'EGX80CLC',
+    name: 'EGX80CLC 100V 50Hz',
+    model: 'EGX80CLC',
+    voltage: 100,
+    frequency: 50,
+    cylinderVolumeCm3: SJ54H_COMPONENTS.compressor.cylinderVolumeCm3,
+    speedRpm:         SJ54H_COMPONENTS.compressor.speedRpm,
+    wCoeffs: [
+      SJ54H_COMPONENTS.compressor.powerCoeffs.AW,
+      SJ54H_COMPONENTS.compressor.powerCoeffs.BW,
+      SJ54H_COMPONENTS.compressor.powerCoeffs.CW,
+      SJ54H_COMPONENTS.compressor.powerCoeffs.DW,
+      SJ54H_COMPONENTS.compressor.powerCoeffs.EW,
+    ],
+    etaCoeffs: [
+      SJ54H_COMPONENTS.compressor.volEffCoeffs.A,
+      SJ54H_COMPONENTS.compressor.volEffCoeffs.B,
+      SJ54H_COMPONENTS.compressor.volEffCoeffs.C,
+    ],
+  }
+];
+
+let compressorList = [];
+let selectedCompressorId = 'EGX80CLC';
+
+/** Helper: ensures coefficient fields are flat arrays (handles legacy objects) */
+function ensureArrays(comp) {
+  const toArray = (val, keys) => {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === 'object') return keys.map(k => val[k]).filter(v => v !== undefined);
+    return null;
+  };
+  return {
+    ...comp,
+    wCoeffs:   toArray(comp.wCoeffs,   ['AW','BW','CW','DW','EW']),
+    etaCoeffs: toArray(comp.etaCoeffs, ['A','B','C']),
+  };
+}
+
+export function loadCompressors() {
+  const saved = localStorage.getItem('compressorList');
+  if (saved) {
+    compressorList = JSON.parse(saved);
+    // Repair any compressor missing essential fields, and convert objects → arrays
+    compressorList = compressorList.map(comp => {
+      if (comp.id === 'EGX80CLC') {
+        return {
+          ...DEFAULT_COMPRESSORS[0],
+          ...comp,
+          cylinderVolumeCm3: comp.cylinderVolumeCm3 ?? DEFAULT_COMPRESSORS[0].cylinderVolumeCm3,
+          speedRpm:         comp.speedRpm         ?? DEFAULT_COMPRESSORS[0].speedRpm,
+          wCoeffs:          ensureArrays(comp).wCoeffs   || DEFAULT_COMPRESSORS[0].wCoeffs,
+          etaCoeffs:        ensureArrays(comp).etaCoeffs || DEFAULT_COMPRESSORS[0].etaCoeffs,
+        };
+      }
+      return ensureArrays(comp);   // also convert any other compressor that may have objects
+    });
+    localStorage.setItem('compressorList', JSON.stringify(compressorList));
+  } else {
+    compressorList = [...DEFAULT_COMPRESSORS];
+  }
+  selectedCompressorId = localStorage.getItem('selectedCompressorId') || 'EGX80CLC';
+}
+
+export function saveCompressors() {
+  localStorage.setItem('compressorList', JSON.stringify(compressorList));
+  localStorage.setItem('selectedCompressorId', selectedCompressorId);
+}
+
+export function getCompressorList() {
+  return compressorList;
+}
+
+export function getCurrentCompressor() {
+  return compressorList.find(c => c.id === selectedCompressorId) || compressorList[0];
+}
+
+export function setSelectedCompressor(id) {
+  selectedCompressorId = id;
+  saveCompressors();
+}
+
+export function addCompressor(comp) {
+  // Always store coefficients as arrays
+  compressorList.push(ensureArrays(comp));
+  saveCompressors();
+}
+
+export function deleteCompressor(id) {
+  compressorList = compressorList.filter(c => c.id !== id);
+  if (selectedCompressorId === id) selectedCompressorId = compressorList[0]?.id || '';
+  saveCompressors();
+}
+
+// Initial load
+loadCompressors();
+
+===== D:\refrigerator-volume-calculator\src\js\main.js =====
+import { runCalculation } from './engine/index.js';
+import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
+import { drawFrontView, drawSideView } from './ui/schematic.js';
+import { initSettingsModal } from './ui/settingsModal.js';    // no showModal
+import { settings, updateSettings } from './settings.js';    // from the core settings
+import { formatTotalsDisplay, roundForDisplay } from './engine/calc.js'; // no walkBoundaries unused
+import { initThermoUI } from './ui/thermoUI.js';
+import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
+
+// Load settings from localStorage on startup
+updateSettings(settings);  // this triggers the event and refreshes display if needed
+// ---- DOM references ---------------------------------------------------
+const divHorizInput       = document.getElementById('divHoriz');
+const usableFactorInput   = document.getElementById('usableFactor');
+const numCompartmentsInput= document.getElementById('numCompartments');
+const compartmentBuilder  = document.getElementById('compartmentBuilder');
+const calculateBtn        = document.getElementById('calculateBtn');
+const saveBtn             = document.getElementById('saveBtn');
+const loadBtn             = document.getElementById('loadBtn');
+const exportBtn           = document.getElementById('exportBtn');
+const messagesDiv         = document.getElementById('messages');
+const messagesFieldset    = document.getElementById('messagesFieldset');
+const schematicOverlay    = document.getElementById('schematicOverlay');
+const schematicTooltip    = document.getElementById('schematicTooltip');
+const settingsBtn         = document.getElementById('settingsBtn');
+const resetAllBtn         = document.getElementById('resetAllBtn');
+const storeSlotABtn       = document.getElementById('storeSlotABtn');
+const storeSlotBBtn       = document.getElementById('storeSlotBBtn');
+const compareSlotsBtn     = document.getElementById('compareSlotsBtn');
+const comparisonModal     = document.getElementById('comparisonModal');
+const closeComparison     = document.getElementById('closeComparison');
+const comparisonContent   = document.getElementById('comparisonContent');
+const splitter            = document.getElementById('splitter');
+const leftPanel           = document.querySelector('.left-panel');
+
+let configSlotA = null;
+let configSlotB = null;
+let currentConfig = null;
+let dirtySchematic = false;
+let isResizing = false;
+let startX, startWidth;
+
+// Splitter logic
+splitter.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  startX = e.clientX;
+  startWidth = leftPanel.getBoundingClientRect().width;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+  const delta = e.clientX - startX;
+  const newWidth = Math.max(300, Math.min(800, startWidth + delta));
+  leftPanel.style.flex = `0 0 ${newWidth}px`;
+});
+document.addEventListener('mouseup', () => {
+  isResizing = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+});
+
+// ---- Shared cabinet geometry ------------------------------------------
+let currentGeometry = { ...DEFAULT_CABINET };
+
+// ---- Compartment reactive state ---------------------------------------
+let compartmentsData = [];
+
+fillGeometryDefaults();
+
+// Dedicated listeners for geometry fields that affect internal height
+['geom-H', 'geom-bottom3'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    syncConstraints();
+    syncDisplay();
+    markDirty();
+  });
+});
+
+// Divider thickness changes also affect compartment heights
+divHorizInput.addEventListener('input', () => {
+  syncConstraints();
+  syncDisplay();
+  markDirty();
+});
+
+initCompartments();
+
+function initCompartments() {
+  const count = parseInt(numCompartmentsInput.value) || 1;
+  compartmentsData = [];
+  const defaultWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
+  for (let i = 0; i < count; i++) {
+    compartmentsData.push({
+      type: i === 0 ? 'freezer' : 'fresh',
+      ...defaultWalls,
+      height: 0,
+      ratio: i === 0 ? 0.4 : 0.6
+    });
+  }
+  syncConstraints();
+  buildCompartmentUI();
+}
+
+function syncConstraints() {
+  const count = compartmentsData.length;
+  const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const totalInsulTop = compartmentsData[0].top;
+  const totalInsulBottom = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+  let internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
+  if (internalH < 0) internalH = 0;
+  if (internalH === 0) {
+    compartmentsData[0].height = 0;
+    compartmentsData[1].height = 0;
+    compartmentsData[0].ratio = 0.5;
+    compartmentsData[1].ratio = 0.5;
+    return;
+  }
+  if (count === 1) {
+    compartmentsData[0].height = internalH;
+    compartmentsData[0].ratio = 1.0;
+    return;
+  }
+
+  // Two compartments
+  let h0 = compartmentsData[0].height;
+  let h1 = compartmentsData[1].height;
+
+  if (h0 === 0 && h1 === 0) {
+    const r0 = Math.max(0.1, Math.min(0.9, compartmentsData[0].ratio));
+    h0 = internalH * r0;
+    h1 = internalH * (1 - r0);
+  } else if (h0 !== 0 && h1 !== 0) {
+    const sum = h0 + h1;
+    if (Math.abs(sum - internalH) > 0.01) {
+      h0 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h0));
+      h1 = internalH - h0;
+    }
+  } else if (h0 !== 0) {
+    h0 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h0));
+    h1 = internalH - h0;
+  } else if (h1 !== 0) {
+    h1 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h1));
+    h0 = internalH - h1;
+  }
+
+  compartmentsData[0].height = h0;
+  compartmentsData[1].height = h1;
+  compartmentsData[0].ratio = h0 / internalH;
+  compartmentsData[1].ratio = h1 / internalH;
+}
+
+function onCompFieldChange(compIdx, field, value) {
+  if (isNaN(value)) return;
+  compartmentsData[compIdx][field] = value;
+
+  if (field === 'height' || field === 'ratio') {
+    const count = compartmentsData.length;
+    const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
+    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+    const topInsul = compartmentsData[0].top;
+    const bottomInsul = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+    const internalH = H - topInsul - bottomInsul - (count - 1) * dividerThick;
+
+    if (count === 1) {
+      compartmentsData[0].height = internalH;
+      compartmentsData[0].ratio = 1.0;
+    } else {
+      if (field === 'height') {
+        const minH = 0.1 * internalH;
+        const maxH = 0.9 * internalH;
+        let clamped = Math.max(minH, Math.min(maxH, value));
+        compartmentsData[compIdx].height = clamped;
+        const otherIdx = 1 - compIdx;
+        compartmentsData[otherIdx].height = internalH - clamped;
+        compartmentsData[0].ratio = compartmentsData[0].height / internalH;
+        compartmentsData[1].ratio = 1.0 - compartmentsData[0].ratio;
+      } else { // ratio changed (percentage)
+        let percent = Math.max(10, Math.min(count === 1 ? 100 : 90, value));
+        let clamped = percent / 100;
+        compartmentsData[compIdx].ratio = clamped;
+        compartmentsData[compIdx].height = internalH * clamped;
+        const otherIdx = 1 - compIdx;
+        compartmentsData[otherIdx].ratio = 1.0 - clamped;
+        compartmentsData[otherIdx].height = internalH - compartmentsData[compIdx].height;
+      }
+    }
+  }
+
+  if (field === 'type' && compartmentsData.length > 1) {
+    const otherIdx = 1 - compIdx;
+    compartmentsData[otherIdx].type = value === 'freezer' ? 'fresh' : 'freezer';
+  }
+
+  syncDisplay();
+
+  if (settings.autoCalculate) {
+    calculateBtn.click();
+  }
+}
+
+function syncDisplay() {
+  const count = compartmentsData.length;
+  for (let i = 0; i < count; i++) {
+    const d = compartmentsData[i];
+    const heightInput = document.getElementById(`comp-${i}-height`);
+    const ratioInput  = document.getElementById(`comp-${i}-ratio`);
+    const typeSelect  = document.getElementById(`comp-${i}-type`);
+    if (heightInput) heightInput.value = d.height.toFixed(1);
+    if (ratioInput) {
+      ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
+    }
+    if (typeSelect) typeSelect.value = d.type;
+  }
+}
+
+function buildCompartmentUI() {
+  const builder = document.getElementById('compartmentBuilder');
+  builder.innerHTML = '';
+
+  const count = compartmentsData.length;
+  const dividerLabel = document.getElementById('dividerLabel');
+  if (dividerLabel) dividerLabel.style.display = count > 1 ? '' : 'none';
+
+  for (let i = 0; i < count; i++) {
+    const d = compartmentsData[i];
+    const ratioMin = count === 1 ? 100 : 10;
+    const ratioMax = count === 1 ? 100 : 90;
+    const ratioVal = count === 1 ? 100 : Math.round(d.ratio * 100);
+
+    const fieldset = document.createElement('fieldset');
+    fieldset.innerHTML = `
+      <legend>Compartment ${i+1}</legend>
+      <label>Type:
+        <select id="comp-${i}-type">
+          <option value="freezer" ${d.type === 'freezer' ? 'selected' : ''}>Freezer</option>
+          <option value="fresh"  ${d.type === 'fresh'  ? 'selected' : ''}>Fresh</option>
+        </select>
+      </label>
+      <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
+      <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
+      <fieldset>
+        <legend>Wall Thicknesses (mm)</legend>
+        <label>Top:    <input type="number" id="comp-${i}-top"    value="${d.top}"    step="any"></label>
+        <label>Left:   <input type="number" id="comp-${i}-left"   value="${d.left}"   step="any"></label>
+        <label>Right:  <input type="number" id="comp-${i}-right"  value="${d.right}"  step="any"></label>
+        <label>Rear:   <input type="number" id="comp-${i}-rear"   value="${d.rear}"   step="any"></label>
+        <label>Door:   <input type="number" id="comp-${i}-door"   value="${d.door}"   step="any"></label>
+      </fieldset>
+    `;
+    builder.appendChild(fieldset);
+  }
+
+  // Attach listeners
+  for (let i = 0; i < count; i++) {
+    document.getElementById(`comp-${i}-type`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'type', e.target.value);
+    });
+    document.getElementById(`comp-${i}-height`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'height', parseFloat(e.target.value) || 0);
+    });
+    document.getElementById(`comp-${i}-ratio`).addEventListener('change', (e) => {
+      onCompFieldChange(i, 'ratio', parseFloat(e.target.value) || 10);
+    });
+    for (const face of ['top','left','right','rear','door']) {
+      document.getElementById(`comp-${i}-${face}`).addEventListener('input', (e) => {
+        compartmentsData[i][face] = parseFloat(e.target.value) || 0;
+        syncConstraints();
+        syncDisplay();
+        markDirty();
+      });
+    }
+  }
+}
+
+function fillGeometryDefaults() {
+  const def = DEFAULT_CABINET;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  set('geom-H', def.H);
+  set('geom-W', def.W);
+  set('geom-D', def.D);
+  set('geom-Hb', def.Hb);
+  set('geom-Db1', def.Db1);
+  set('geom-Db2', def.Db2);
+  set('geom-packingPos', def.packingPos);
+  set('geom-doorGap', def.doorGap);
+  set('geom-bottom1', 40);
+  set('geom-bottom2', 40);
+  set('geom-bottom3', 40);
+}
+
+// ---- Read geometry from panel -----------------------------------------
+function readGeometryFromPanel() {
+  const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
+  const comps = compartmentsData;
+  const count = comps.length;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+
+  let freezerComp = comps.find(c => c.type === 'freezer');
+  let freshComp   = comps.find(c => c.type === 'fresh');
+
+  const defWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
+
+  const walls = {
+    freezer: {
+      top:    freezerComp ? freezerComp.top    : defWalls.top,
+      bottom: freshComp   ? dividerThick       : 0,
+      left:   freezerComp ? freezerComp.left   : defWalls.left,
+      right:  freezerComp ? freezerComp.right  : defWalls.right,
+      door:   freezerComp ? freezerComp.door   : defWalls.door,
+      rear:   freezerComp ? freezerComp.rear   : defWalls.rear,
+    },
+    refrigerator: {
+      top:    freshComp ? (freezerComp ? dividerThick : freshComp.top) : defWalls.top,
+      bottom1: g('geom-bottom1') ?? 40,
+      bottom2: g('geom-bottom2') ?? 40,
+      bottom3: g('geom-bottom3') ?? 40,
+      left:   freshComp ? freshComp.left   : defWalls.left,
+      right:  freshComp ? freshComp.right  : defWalls.right,
+      door:   freshComp ? freshComp.door   : defWalls.door,
+      rear:   freshComp ? freshComp.rear   : defWalls.rear,
+    }
+  };
+
+  return {
+    H: g('geom-H') ?? DEFAULT_CABINET.H,
+    W: g('geom-W') ?? DEFAULT_CABINET.W,
+    D: g('geom-D') ?? DEFAULT_CABINET.D,
+    Hb: g('geom-Hb') ?? DEFAULT_CABINET.Hb,
+    Db1: g('geom-Db1') ?? DEFAULT_CABINET.Db1,
+    Db2: g('geom-Db2') ?? DEFAULT_CABINET.Db2,
+    doorGap: g('geom-doorGap') ?? DEFAULT_CABINET.doorGap,
+    packingPos: g('geom-packingPos') ?? DEFAULT_CABINET.packingPos,
+    airGap: 0,
+    Hf: freezerComp ? freezerComp.height : 0,
+    Hr: freshComp   ? freshComp.height   : 0,
+    walls,
+    _compartments: comps
+  };
+}
+
+function getEffectiveThicknesses() {
+  const comps = compartmentsData;
+  const topComp = comps[0];
+  const bottomComp = comps.length > 1 ? comps[1] : comps[0];
+  const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
+  const bottom2 = parseFloat(document.getElementById('geom-bottom2')?.value) || 40;
+  const bottom3 = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+
+  return {
+    top:    topComp.top,
+    bottom: Math.max(bottom1, bottom2, bottom3),
+    left:   Math.max(topComp.left, bottomComp.left),
+    right:  Math.max(topComp.right, bottomComp.right),
+    rear:   Math.max(topComp.rear, bottomComp.rear),
+    door:   Math.max(topComp.door, bottomComp.door),
+  };
+}
+
+// ---- Mark schematic dirty ---------------------------------------------
+function markDirty() {
+  dirtySchematic = true;
+  if (settings.showDirtyOverlay) {
+    schematicOverlay.classList.remove('hidden');
+  } else {
+    schematicOverlay.classList.add('hidden');
+  }
+}
+
+document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
+
+// ---- Compartment builder init -----------------------------------------
+numCompartmentsInput.addEventListener('input', () => {
+  markDirty();
+  initCompartments();
+});
+
+// ---- Volume calculation -----------------------------------------------
+function buildConfigFromForm() {
+  currentGeometry = readGeometryFromPanel();
+  const volumeGeom = toVolumeFormat(currentGeometry);
+
+  const count = compartmentsData.length;
+  const leaves = [];
+
+  for (let i = 0; i < count; i++) {
+    const comp = compartmentsData[i];
+    leaves.push({
+      heightMode: 'ratio',
+      heightValue: comp.ratio,
+      node: {
+        nodeType: 'leaf',
+        id: `comp${i}`,
+        type: comp.type,
+        fittings: {
+          shelves: [],
+          drawers: [],
+          doorBins: [],
+          iceMakerHousing: { volume: null },
+          lightHousing:    { volume: null },
+        },
+      },
+    });
+  }
+
+  const rootNode = {
+    nodeType: 'horizontal',
+    id: 'root',
+    children: leaves.map(l => ({ heightMode: l.heightMode, heightValue: l.heightValue, node: l.node })),
+    dividers: count > 1 ? [{ afterChildIndex: 0, thickness: parseFloat(divHorizInput.value) || 20 }] : [],
+  };
+
+  const cabinet = {
+    geometry: currentGeometry,
+    layout: rootNode
+  };
+
+  return {
+    config: {
+      schemaVersion: '2.0',
+      meta: { name: 'UI Config', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+      cabinet
+    },
+    layout: rootNode
+  };
+}
+
+// ---- Display messages -------------------------------------------------
+function showMessages(errors, warnings, calcErrors) {
+  messagesDiv.innerHTML = '';
+  const all = [
+    ...errors.map(e => `<p class="error">❌ ${e.message}</p>`),
+    ...warnings.map(w => `<p class="warning">⚠️ ${w.message}</p>`),
+    ...calcErrors.map(e => `<p class="error">🔧 ${e.message}</p>`),
+  ];
+  if (all.length) {
+    messagesDiv.innerHTML = all.join('');
+    messagesFieldset.style.display = 'block';
+  } else {
+    messagesFieldset.style.display = 'none';
+  }
+}
+function computeAccurateBottomVolume(geom, eff) {
+  const { H, D, Hb, Db1, Db2, walls } = geom;
+  const rearX = eff.rear;
+  const doorX = D - eff.door;
+  const innerTop = eff.top;
+
+  // y‑position of the top of the bottom compartment
+  const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
+  const divider  = compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const yTopBottom = innerTop + topCompH + divider;
+
+  const yBottomRear = H - Hb - walls.refrigerator.bottom1;   // raised floor (inner surface)
+  const yBottomDoor = H - walls.refrigerator.bottom3;        // lower floor (inner surface)
+
+  const slopeStartX = rearX + Db1;                           // top of slope
+  const slopeEndX   = rearX + Db2;                           // foot of slope
+
+  // Shoelace formula for the cavity cross‑section (mm²)
+  const points = [
+    [rearX,        yTopBottom],
+    [doorX,        yTopBottom],
+    [doorX,        yBottomDoor],
+    [slopeEndX,    yBottomDoor],
+    [slopeStartX,  yBottomRear],
+    [rearX,        yBottomRear]
+  ];
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  area = Math.abs(area) / 2;
+
+  const width = geom.W - eff.left - eff.right;
+  return area * width * settings.mm3ToL;   // litres
+}
+// ---- Calculate button -------------------------------------------------
+calculateBtn.addEventListener('click', () => {
+  const { config, layout } = buildConfigFromForm();
+  currentConfig = config;
+  if (currentConfig) {
+    storeSlotABtn.style.display = 'inline-block';
+    storeSlotBBtn.style.display = 'inline-block';
+    compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
+  }
+
+  const result = runCalculation(config);
+
+  if (result.leaves && result.totals) {
+    // Replace bottom leaf with accurate stepped-floor volume (still needed for gross)
+    const eff = getEffectiveThicknesses();
+    const bottomIdx = result.leaves.length - 1;
+    const bottomCompHeight = compartmentsData[bottomIdx].height;
+    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
+
+    const bottomLeaf = result.leaves[bottomIdx];
+    const oldBottomVol = bottomLeaf.gross;
+    bottomLeaf.gross = accurateBottomVol;
+    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+
+    // Format totals display (now only gross)
+    const disp = formatTotalsDisplay({ gross: result.totals.gross });
+    document.getElementById('grossVol').textContent      = disp.gross;
+    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    const usableL = result.totals.gross * (usableFactor / 100);
+    const usableCuft = usableL * settings.lToCuft;
+    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+  }
+  showMessages(result.validationErrors, result.warnings, result.calcErrors);
+
+  // Draw schematics
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (frontCanvas && sideCanvas) {
+    const rightPanel = document.querySelector('.right-panel');
+    const panelHeight = rightPanel.clientHeight - 30;
+    const panelWidth  = rightPanel.clientWidth - 20;
+    frontCanvas.height = panelHeight;
+    sideCanvas.height  = panelHeight;
+    frontCanvas.width  = panelWidth / 2 - 5;
+    sideCanvas.width   = panelWidth / 2 - 5;
+
+    const effectiveWalls = getEffectiveThicknesses();
+    // Gather fittings from the layout tree (all leaves)
+    const fittings = extractFittingsFromLayout(layout); // see below
+    const drawOptions = {
+      dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+      compHeights: compartmentsData.map(c => c.height),
+      doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+      compartments: compartmentsData.map(c => ({
+        left: c.left,
+        right: c.right,
+        rear: c.rear
+      })),
+      fittings  // <-- pass to schematic
+    };
+
+    drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
+    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+    dirtySchematic = false;
+    schematicOverlay.classList.add('hidden');
+  }
+});
+
+function extractFittingsFromLayout(node) {
+  const fittings = [];
+  function walk(n) {
+    if (n.nodeType === 'leaf' && n.fittings) {
+      fittings.push({
+        leafId: n.id,
+        type: n.type,
+        shelves: n.fittings.shelves || [],
+        drawers: n.fittings.drawers || [],
+        doorBins: n.fittings.doorBins || []
+      });
+    }
+    if (n.children) n.children.forEach(c => walk(c.node));
+  }
+  walk(node);
+  return fittings;
+}
+
+// ---- populateUIFromConfig ---------------------------------------------
+/**
+ * Restores all left-panel inputs and reactive state from a loaded config.
+ * Must run synchronously before the subsequent runCalculation() call so that
+ * compartmentsData, currentGeometry, and all DOM inputs are consistent.
+ *
+ * Supports:
+ *   v2.0 configs: cabinet.geometry  (produced by the current UI)
+ *   v1.0 configs: cabinet.external  (old format, geometry inputs only)
+ */
+function populateUIFromConfig(config) {
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && val != null) el.value = val;
+  };
+
+  const geometry = config.cabinet?.geometry;
+
+  if (geometry) {
+    // ── v2.0 format ─────────────────────────────────────────────────────────
+    set('geom-H',          geometry.H);
+    set('geom-W',          geometry.W);
+    set('geom-D',          geometry.D);
+    set('geom-Hb',         geometry.Hb);
+    set('geom-Db1',        geometry.Db1);
+    set('geom-Db2',        geometry.Db2);
+    set('geom-packingPos', geometry.packingPos);
+    set('geom-doorGap',    geometry.doorGap);
+
+    const rw = geometry.walls?.refrigerator;
+    if (rw) {
+      set('geom-bottom1', rw.bottom1);
+      set('geom-bottom2', rw.bottom2);
+      set('geom-bottom3', rw.bottom3);
+    }
+
+    // Restore compartment data from _compartments saved by readGeometryFromPanel().
+    // This field carries type, per-wall thicknesses, height, and ratio for each
+    // compartment — everything needed to rebuild the compartment UI cards.
+    const savedComps = geometry._compartments;
+    if (savedComps?.length > 0) {
+      numCompartmentsInput.value = savedComps.length;
+      compartmentsData = savedComps.map(c => ({ ...c }));
+
+      // Restore divider thickness from the layout node
+      const layout = config.cabinet.layout;
+      if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
+        divHorizInput.value = layout.dividers[0].thickness ?? 20;
+      }
+    } else {
+      // Manually-authored config with no _compartments — reset to UI defaults
+      initCompartments();
+    }
+
+    // Update the shared geometry reference used by the schematic renderer
+    currentGeometry = { ...geometry };
+
+  } else if (config.cabinet?.external) {
+    // ── v1.0 format (backward compat) ────────────────────────────────────────
+    const ext = config.cabinet.external;
+    set('geom-H', ext.height);
+    set('geom-W', ext.width);
+    set('geom-D', ext.depth);
+
+    const wtt = config.cabinet.wallThicknessesByType;
+    if (wtt?.fresh) {
+      set('geom-bottom1', wtt.fresh.bottom);
+      set('geom-bottom2', wtt.fresh.bottom);
+      set('geom-bottom3', wtt.fresh.bottom);
+    }
+
+    initCompartments();
+    currentGeometry = { ...DEFAULT_CABINET };
+
+  } else {
+    console.warn('populateUIFromConfig: unrecognised config structure — UI not restored.');
+    return;
+  }
+
+  buildCompartmentUI();
+  syncConstraints();
+  syncDisplay();
+}
+
+// ---- Save / Load / Export ---------------------------------------------
+saveBtn.addEventListener('click', () => {
+  if (!currentConfig) { alert('Calculate first'); return; }
+  downloadConfigJSON(currentConfig, currentConfig.meta.name);
+});
+
+loadBtn.addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const config = await loadConfigFromFile(file);
+      currentConfig = config;
+
+      storeSlotABtn.style.display = 'inline-block';
+      storeSlotBBtn.style.display = 'inline-block';
+      compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
+
+      // 1. Restore UI inputs and reactive state
+      populateUIFromConfig(config);
+
+      // 2. Run the calculation
+      const result = runCalculation(config);
+
+      // 3. Display results (with accurate bottom volume replacement)
+      if (result.leaves && result.totals) {
+        const eff = getEffectiveThicknesses();
+        const bottomIdx = result.leaves.length - 1;
+        const bottomCompHeight = compartmentsData[bottomIdx].height;
+        const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
+
+        const bottomLeaf = result.leaves[bottomIdx];
+        const oldBottomVol = bottomLeaf.gross;
+        bottomLeaf.gross = accurateBottomVol;
+        result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+
+        const disp = formatTotalsDisplay({ gross: result.totals.gross });
+        document.getElementById('grossVol').textContent      = disp.gross;
+        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+
+        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+        const usableL = result.totals.gross * (usableFactor / 100);
+        const usableCuft = usableL * settings.lToCuft;
+        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+      }
+
+      showMessages(result.validationErrors, result.warnings, result.calcErrors);
+
+      // 4. Draw schematics (once)
+      const frontCanvas = document.getElementById('schematicFront');
+      const sideCanvas  = document.getElementById('schematicSide');
+      if (frontCanvas && sideCanvas && result.leaves) {
+        const rightPanel = document.querySelector('.right-panel');
+        const panelHeight = rightPanel.clientHeight - 30;
+        const panelWidth  = rightPanel.clientWidth - 20;
+        frontCanvas.height = panelHeight;
+        sideCanvas.height  = panelHeight;
+        frontCanvas.width  = panelWidth / 2 - 5;
+        sideCanvas.width   = panelWidth / 2 - 5;
+
+        const effectiveWalls = getEffectiveThicknesses();
+        const fittings = extractFittingsFromLayout(config.cabinet.layout);
+        const drawOptions = {
+          dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+          compHeights: compartmentsData.map(c => c.height),
+          doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+          compartments: compartmentsData.map(c => ({
+            left: c.left,
+            right: c.right,
+            rear: c.rear
+          })),
+          fittings   // <-- correct placement at top level
+        };
+
+        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
+        drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+
+        dirtySchematic = false;
+        schematicOverlay.classList.add('hidden');
+      }
+
+      // alert('Configuration loaded and calculated.');   // optional, remove after testing
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+  input.click();
+});
+
+exportBtn.addEventListener('click', () => {
+  if (!currentConfig) { alert('Calculate first'); return; }
+  const result = runCalculation(currentConfig);
+  downloadResultsCSV(result, currentConfig.meta.name);
+});
+
+// ---- Settings Modal --------------------------------------------------
+initSettingsModal();
+
+// ---- Reset All ---------------------------------------------------------
+resetAllBtn.addEventListener('click', () => {
+  if (!confirm('Reset all fields to default values and clear results?')) return;
+
+  currentGeometry = { ...DEFAULT_CABINET };
+  document.getElementById('geom-H').value = DEFAULT_CABINET.H;
+  document.getElementById('geom-W').value = DEFAULT_CABINET.W;
+  document.getElementById('geom-D').value = DEFAULT_CABINET.D;
+  document.getElementById('geom-Hb').value = DEFAULT_CABINET.Hb;
+  document.getElementById('geom-Db1').value = DEFAULT_CABINET.Db1;
+  document.getElementById('geom-Db2').value = DEFAULT_CABINET.Db2;
+  document.getElementById('geom-packingPos').value = DEFAULT_CABINET.packingPos;
+  document.getElementById('geom-doorGap').value = DEFAULT_CABINET.doorGap;
+  document.getElementById('geom-bottom1').value = 40;
+  document.getElementById('geom-bottom2').value = 40;
+  document.getElementById('geom-bottom3').value = 40;
+  divHorizInput.value = 20;
+  numCompartmentsInput.value = 2;
+
+  initCompartments();
+
+  document.getElementById('grossVol').textContent      = '--';
+  document.getElementById('grossVolCuft').textContent  = '--';
+  document.getElementById('usableVol').textContent      = '--';
+  document.getElementById('usableVolCuft').textContent  = '--';
+
+  messagesDiv.innerHTML = '';
+  messagesFieldset.style.display = 'none';
+
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (frontCanvas) frontCanvas.getContext('2d').clearRect(0, 0, frontCanvas.width, frontCanvas.height);
+  if (sideCanvas) sideCanvas.getContext('2d').clearRect(0, 0, sideCanvas.width, sideCanvas.height);
+
+  schematicOverlay.classList.add('hidden');
+  dirtySchematic = false;
+  currentConfig = null;
+});
+
+// ---- Auto‑calculate & settings change handler ------------------------
+document.addEventListener('input', (e) => {
+  if (settings.autoCalculate && e.target.closest('.left-panel')) {
+    calculateBtn.click();
+  }
+});
+
+document.addEventListener('settings-changed', () => {
+  if (settings.autoCalculate && currentConfig) {
+    calculateBtn.click();
+  } else {
+    markDirty();
+  }
+});
+
+// ---- Slot storage -----------------------------------------------------
+storeSlotABtn.addEventListener('click', () => {
+  if (!currentConfig) return;
+  configSlotA = JSON.parse(JSON.stringify(currentConfig));
+  alert('Configuration stored in Slot A.');
+  compareSlotsBtn.style.display = 'inline-block';
+});
+
+storeSlotBBtn.addEventListener('click', () => {
+  if (!currentConfig) return;
+  configSlotB = JSON.parse(JSON.stringify(currentConfig));
+  alert('Configuration stored in Slot B.');
+  compareSlotsBtn.style.display = 'inline-block';
+});
+
+// ---- Compare Slots ----------------------------------------------------
+compareSlotsBtn.addEventListener('click', () => {
+  if (!configSlotA && !configSlotB) {
+    alert('No stored configurations to compare.');
+    return;
+  }
+  let resultA = null, resultB = null;
+  if (configSlotA) resultA = runCalculation(configSlotA);
+  if (configSlotB) resultB = runCalculation(configSlotB);
+  buildComparisonTable(resultA, resultB);
+  comparisonModal.classList.remove('hidden');
+});
+
+closeComparison.addEventListener('click', () => { comparisonModal.classList.add('hidden'); });
+window.addEventListener('click', (e) => { if (e.target === comparisonModal) comparisonModal.classList.add('hidden'); });
+
+function buildComparisonTable(resultA, resultB) {
+  if (!resultA && !resultB) { comparisonContent.innerHTML = '<p>No configurations stored.</p>'; return; }
+  const hasLeavesA = resultA && resultA.leaves && resultA.totals;
+  const hasLeavesB = resultB && resultB.leaves && resultB.totals;
+  const fmtTotals = (totals) => {
+    if (!totals) return { gross:'-', usable:'-', grossCuft:'-', usableCuft:'-' };
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    return {
+      gross: roundForDisplay(totals.gross, 'L'),
+      usable: roundForDisplay(totals.gross * (usableFactor / 100), 'L'),
+      grossCuft: roundForDisplay(totals.gross * settings.lToCuft, 'cuft'),
+      usableCuft: roundForDisplay(totals.gross * (usableFactor / 100) * settings.lToCuft, 'cuft'),
+    };
+  };
+  const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
+  const tB = fmtTotals(hasLeavesB ? resultB.totals : null);
+  let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
+      <thead><tr><th></th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
+      <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
+      <tbody>
+      <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
+      <tr><td><strong>Usable</strong></td><td>${tA.usable}</td><td>${tA.usableCuft}</td><td>${tB.usable}</td><td>${tB.usableCuft}</td></tr>
+      </tbody></table>`;
+  if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
+    html += `<h3>Per‑Compartment Breakdown</h3>`;
+    const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
+    html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
+      <tr><th>Compartment</th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
+      <tr><th></th><th>Gross</th><th>Usable</th><th>Gross</th><th>Usable</th></tr>`;
+    for (let i = 0; i < maxLeaves; i++) {
+      const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
+      const fmtA = leafA ? {
+        gross: roundForDisplay(leafA.gross, 'L'),
+        usable: roundForDisplay(leafA.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
+      } : { gross:'-', usable:'-' };
+      const fmtB = leafB ? {
+        gross: roundForDisplay(leafB.gross, 'L'),
+        usable: roundForDisplay(leafB.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
+      } : { gross:'-', usable:'-' };
+      html += `<tr><td>Comp ${i+1}</td><td>${fmtA.gross}</td><td>${fmtA.usable}</td><td>${fmtB.gross}</td><td>${fmtB.usable}</td></tr>`;
+    }
+    html += `</table>`;
+  }
+  comparisonContent.innerHTML = html;
+}
+// ---- Tab Switching ----
+document.getElementById('tabVolume').addEventListener('click', () => {
+  // Left panel switching
+  document.getElementById('panelVolume').classList.remove('hidden');
+  document.getElementById('panelThermal').classList.add('hidden');
+  document.getElementById('tabVolume').classList.add('active');
+  document.getElementById('tabThermal').classList.remove('active');
+
+  // Right panel: hide thermal results, show schematics
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (thermoRight) thermoRight.classList.add('hidden');
+  if (frontCanvas) frontCanvas.style.display = '';
+  if (sideCanvas)  sideCanvas.style.display  = '';
+  // If schematic is dirty, the overlay may be shown – handled by dirty flag
+});
+document.getElementById('tabThermal').addEventListener('click', () => {
+  document.getElementById('panelThermal').classList.remove('hidden');
+  document.getElementById('panelVolume').classList.add('hidden');
+  document.getElementById('tabThermal').classList.add('active');
+  document.getElementById('tabVolume').classList.remove('active');
+
+  // Right panel: hide schematics, show thermal results (if any)
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (thermoRight) thermoRight.classList.remove('hidden');
+  if (frontCanvas) frontCanvas.style.display = 'none';
+  if (sideCanvas)  sideCanvas.style.display = 'none';
+});
+// Thermo UI init with geometry provider
+initThermoUI(() => readGeometryFromPanel());
+
+===== D:\refrigerator-volume-calculator\src\js\settings.js =====
+// js/settings.js
+
+const DEFAULTS = {
+  mm3ToL: 1e-6,
+  lToCuft: 0.0353147,
+  displayPrecisionL: 2,
+  displayPrecisionCuft: 3,
+  canvasWidth: 600,
+  canvasHeight: 800,
+  autoCalculate: false,
+  showDirtyOverlay: true,
+  evaporator: {
+    width_mm: 460,
+    height_mm: 150,
+    depth_mm: 60,
+    rows: 2,
+    tubeOD_mm: 8,
+    finPitch_mm: 4,
+    finHeight_mm: 150,
+    finLength_mm: 460,
+    numFins: 32,
+    sidePlateNo: 0,
+  },
+  fanParam: {
+    fanDiam: 100,
+    fanRPM: 2200,
+    fanThick: 25,
+  },
+};
+
+const STORAGE_KEY = 'refrigerator-calc-settings';
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULTS, ...parsed };
+    }
+  } catch (e) { /* ignore */ }
+  return { ...DEFAULTS };
+}
+
+function saveToStorage(s) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+
+export const settings = loadSettings();
+
+export function updateSettings(newSettings) {
+  Object.assign(settings, newSettings);
+  saveToStorage(settings);
+  document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
+}
+
+export function resetSettings() {
+  Object.assign(settings, DEFAULTS);
+  saveToStorage(settings);
+  document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
+}
+
+export function getSettings() {
+  return { ...settings };
+}
+
+===== D:\refrigerator-volume-calculator\src\index.html =====
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Refrigerator Net Storage Volume Calculator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="page">
+    <!-- LEFT PANEL: Calculator -->
+    <div class="left-panel">
+      <h1>Refrigerator Volume &amp; Thermal Design</h1>
+      <p>Gross &amp; Usable Volume – Concept Design Tool</p>
+
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <button id="tabVolume" class="tab active">Volume</button>
+        <button id="tabThermal" class="tab">Thermal</button>
+      </div>
+
+      <!-- Volume Panel -->
+      <div id="panelVolume" class="tab-panel active">
+        <div class="sticky-buttons">
+          <button id="settingsBtn">⚙️ Settings</button>
+          <button id="calculateBtn">Calculate</button>
+          <button id="saveBtn">Save Configuration (JSON)</button>
+          <button id="loadBtn">Load Configuration (JSON)</button>
+          <button id="exportBtn">Export Results (CSV)</button>
+          <button id="resetAllBtn">🔄 Reset All</button>
+          <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
+          <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
+          <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
+        </div>
+      <!-- CABINET GEOMETRY -->
+      <fieldset>
+        <legend>Cabinet Geometry</legend>
+        <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
+        <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
+        <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
+
+        <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
+        <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
+        <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
+
+        <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
+        <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label><br>
+
+        <fieldset>
+          <legend>Bottom Insulation (stepped floor)</legend>
+          <label>t.Bottom1 (mm): <input type="number" id="geom-bottom1" step="any"></label>
+          <label>t.Bottom2 (mm): <input type="number" id="geom-bottom2" step="any"></label>
+          <label>t.Bottom3 (mm): <input type="number" id="geom-bottom3" step="any"></label>
+        </fieldset>
+      </fieldset>
+
+      <!-- COMPARTMENTS -->
+      <fieldset>
+        <legend>Compartments</legend>
+        <label>Number of compartments (1–2):
+          <input type="number" id="numCompartments" min="1" max="2" value="2" required>
+        </label>
+        <label id="dividerLabel">Partition Divider Thickness (mm):
+          <input type="number" id="divHoriz" value="20" step="any">
+        </label>
+        <div id="compartmentBuilder"></div>
+      </fieldset>
+
+      <!-- USABLE FACTOR -->
+      <fieldset>
+        <legend>Usable Volume Factor</legend>
+        <label>Usable volume factor (%): <input type="number" id="usableFactor" value="97" step="any" min="0" max="100"></label>
+      </fieldset>
+
+      <!-- RESULTS -->
+      <fieldset>
+        <legend>Calculated Volumes</legend>
+        <div id="results">
+          <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
+          <p>Usable Volume: <span id="usableVol">--</span> L (<span id="usableVolCuft">--</span> cu. ft.)</p>
+        </div>
+      </fieldset>
+
+      <fieldset id="messagesFieldset" style="display:none;">
+        <legend>Messages</legend>
+        <div id="messages"></div>
+      </fieldset>
+    </div>
+
+    <!-- Thermal Panel -->
+    <div id="panelThermal" class="tab-panel hidden">
+      <!-- ThermUI will be initialised here by thermoUI.js -->
+    </div>
+  </div>   <!-- ← CLOSE the left-panel here -->
+
+  <!-- SPLITTER -->
+  <div class="splitter" id="splitter"></div>
+
+  <!-- RIGHT PANEL: Schematics -->
+  <div class="right-panel">
+    <canvas id="schematicFront"></canvas>
+    <canvas id="schematicSide"></canvas>
+    <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated – click Calculate</div>
+    <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
+    <div id="thermoRightPanel" class="thermo-results-panel hidden"></div>
+  </div>
+</div>   <!-- this closes the .page div -->
+  <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <span class="close-btn" id="closeSettings">&times;</span>
+        <h2>Settings</h2>
+        <div class="tab-bar settings-tabs">
+          <button class="stab active" data-tab="stabGeneral">General</button>
+        </div>
+        <div id="stabGeneral" class="stab-panel active"></div>
+        <div class="settings-actions">
+          <button id="settingsSave">Save &amp; Close</button>
+          <button id="settingsExport">Export Settings</button>
+          <button id="settingsImport">Import Settings</button>
+          <button id="settingsReset">Reset Defaults</button>
+        </div>
+      </div>
+    </div>
+  <!-- Comparison Modal -->
+  <div id="comparisonModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-btn" id="closeComparison">&times;</span>
+      <h2>Side‑by‑Side Comparison</h2>
+      <div id="comparisonContent"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+    <!-- Thermal Advanced Parameters Modal -->
+  <div id="thermalSettingsModal" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-btn" id="closeThermalSettings">&times;</span>
+      <h2>Advanced Thermal Parameters</h2>
+      <fieldset>
+        <legend>Subcool &amp; Discharge</legend>
+        <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+        <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Fan</legend>
+        <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Defrost</legend>
+        <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+        <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
+      </fieldset>
+      <div class="settings-actions">
+        <button id="saveThermalSettings">Save & Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Compressor Modal -->
+<div id="addCompressorModal" class="modal hidden">
+  <div class="modal-content" style="max-width: 700px;">
+    <span class="close-btn" id="closeAddCompressor">&times;</span>
+    <h2>Add Custom Compressor</h2>
+    <div id="addCompressorContent">
+      <!-- Will be built by thermoUI.js -->
+    </div>
+  </div>
+</div>
+</body>
+</html>
+

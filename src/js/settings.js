@@ -9,6 +9,23 @@ const DEFAULTS = {
   canvasHeight: 800,
   autoCalculate: false,
   showDirtyOverlay: true,
+  evaporator: {
+    width_mm: 460,
+    height_mm: 150,
+    depth_mm: 60,
+    rows: 2,
+    tubeOD_mm: 8,
+    finPitch_mm: 4,
+    finHeight_mm: 150,
+    finLength_mm: 460,
+    numFins: 32,
+    sidePlateNo: 0,
+  },
+  fanParam: {
+    fanDiam: 100,
+    fanRPM: 2200,
+    fanThick: 25,
+  },
 };
 
 const STORAGE_KEY = 'refrigerator-calc-settings';
