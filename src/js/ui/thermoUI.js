@@ -260,14 +260,7 @@ function handleRun() {
   if (!getGeometryFn) { showError('Geometry source not available.'); return; }
   const cabinetGeom = getGeometryFn();
 
-  if (
-    cabinetGeom._compartments &&
-    cabinetGeom._compartments.length > 1 &&
-    cabinetGeom._compartments[0].type !== 'freezer'
-  ) {
-    showError('Thermal analysis currently supports only freezer-top configurations.');
-    return;
-  }
+  // ===== REMOVED the restrictive check entirely =====
 
   const geom = toThermalFormat(cabinetGeom);
 
@@ -278,10 +271,18 @@ function handleRun() {
 
   const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
   const fanFlow = parseFloat(document.getElementById('thermoFanFlow')?.value) || SJ54H_COMPONENTS.fan.totalAirflow_m3h;
-  
+
+  // Determine freezer position correctly for any configuration
+const comps = cabinetGeom._compartments;
+const nComps = comps?.length || 0;
+const hasFreezer = comps && comps[0].type === 'freezer';
+const freezerPosition =
+    nComps === 1 ? 'top' :                // single compartment always "top" (no other)
+    hasFreezer ? 'top' : 'bottom';
+
   const config = buildDefaultConfig({
     geom,
-    freezerPosition: cabinetGeom._compartments?.[0]?.type === 'freezer' ? 'top' : 'bottom',
+    freezerPosition,              // now always valid
     refrigerant,
     subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp,
@@ -323,7 +324,9 @@ function handleRun() {
           console.warn('Selected compressor missing coefficients – using default.', compressor);
       }
   }
-
+config.solverOptions = config.solverOptions || {};
+config.solverOptions.innerOptions = config.solverOptions.innerOptions || {};
+config.solverOptions.innerOptions.debug = true;
   // Now it’s safe to run
   const result = runThermoAnalysis(config);
   if (!result.success) {
@@ -377,10 +380,17 @@ function handleRun() {
   if (evapDetails) {
     result.results.evapDetails = evapDetails;
   }
+  console.log('Displaying results with QF:', result.results.heatLoads.QF, 'QR:', result.results.heatLoads.QR);
 
+  // Force the Thermal tab to show the new results
+  document.getElementById('tabThermal').click();
+  const thermoRight = document.getElementById('thermoRightPanel');
+  if (thermoRight) thermoRight.innerHTML = '';
+  result.results.configLabel = 
+    (comps && comps.length === 1 ? `Single ${comps[0].type}` : 
+     freezerPosition === 'top' ? 'Top Freezer' : 'Bottom Freezer');
   displayResults(result.results, energy);
-  if (result.warnings.length) showWarnings(result.warnings);
-}
+  if (result.warnings.length) showWarnings(result.warnings);}
 
 // ---------------------------------------------------------------------------
 // Add Compressor Modal – builds the 3×3 matrix, fits coefficients, adds to list
@@ -759,10 +769,11 @@ function displayResults(res, energy) {
   const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
 
+  const configLabel = res.configLabel || 'Unknown';
   const html = `
     <table class="thermo-results-table">
       <thead>
-        <tr><th colspan="2">Thermal Analysis Results</th></tr>
+        <tr><th colspan="2">Thermal Analysis Results — ${configLabel}</th></tr>
       </thead>
       <tbody>
         <tr class="section-header"><td colspan="2">Operating Points</td></tr>

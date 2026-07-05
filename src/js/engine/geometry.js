@@ -59,24 +59,37 @@ export function toThermalFormat(geom) {
     Hf, Hr,
     Hb, Db1, Db2,
     doorGap, packingPos,
+    // Freezer walls
     tFtop:    walls.freezer.top,
     tFleft:   walls.freezer.left,
     tFright:  walls.freezer.right,
     tFbottom: walls.freezer.bottom,
     tFdoor:   walls.freezer.door,
-    tFback:   walls.freezer.rear,  
+    tFback:   walls.freezer.rear,
     tEvaBack: walls.freezer.rear,
+
+    // Refrigerator walls
     tRtop:    walls.refrigerator.top,
     tRleft:   walls.refrigerator.left,
     tRright:  walls.refrigerator.right,
     tRback:   walls.refrigerator.rear,
-    tRbottom1:walls.refrigerator.bottom1,
-    tRbottom2:walls.refrigerator.bottom2,
-    tRbottom3:walls.refrigerator.bottom3,
+    tRbottom1: walls.refrigerator.bottom1,
+    tRbottom2: walls.refrigerator.bottom2,
+    tRbottom3: walls.refrigerator.bottom3,
     tRdoor:   walls.refrigerator.door,
+
+    // Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
+    // These are the same cabinet bottom‑insulation values as the refrigerator's,
+    // because the stepped floor exists regardless of compartment type.
+    tFfloor1: walls.refrigerator.bottom1,
+    tFfloor2: walls.refrigerator.bottom2,
+    tFfloor3: walls.refrigerator.bottom3,
+
+    // Refrigerator interior floor (used for partition in two‑compartment bottom‑freezer)
+    // In a single‑fresh configuration this is the exterior floor; value is still correct.
+    tRfloor:  walls.refrigerator.bottom1,  // or bottom1, whichever is the raised floor
   };
 }
-
 /**
  * Upgrade an old configuration (v1.0) to the new unified format.
  * Old config: { schemaVersion:"1.0", meta:{...}, cabinet:{ external, wallThicknessesByType, airGap, layout } }

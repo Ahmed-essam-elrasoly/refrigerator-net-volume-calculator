@@ -152,6 +152,20 @@ function syncConstraints() {
 }
 
 function onCompFieldChange(compIdx, field, value) {
+  // For non‑numeric fields (type), skip the numeric guard
+  if (field === 'type') {
+    compartmentsData[compIdx].type = value;
+    // If two compartments, force the other one to the opposite type
+    if (compartmentsData.length > 1) {
+      const otherIdx = 1 - compIdx;
+      compartmentsData[otherIdx].type = (value === 'freezer' ? 'fresh' : 'freezer');
+    }
+    syncDisplay();
+    if (settings.autoCalculate) calculateBtn.click();
+    return;
+  }
+
+  // Numeric fields – must be a valid number
   if (isNaN(value)) return;
   compartmentsData[compIdx][field] = value;
 
@@ -194,10 +208,7 @@ function onCompFieldChange(compIdx, field, value) {
   }
 
   syncDisplay();
-
-  if (settings.autoCalculate) {
-    calculateBtn.click();
-  }
+  if (settings.autoCalculate) calculateBtn.click();
 }
 
 function syncDisplay() {
