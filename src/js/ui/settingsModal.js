@@ -1,6 +1,14 @@
 // js/ui/settingsModal.js
 
-import { settings, updateSettings } from '../settings.js';
+import { settings, updateSettings, resetSettings } from '../settings.js';
+import {
+  loadCompressors,
+  getCompressorList,
+  getCurrentCompressor,
+  setSelectedCompressor,
+  addCompressor,
+  deleteCompressor
+} from '../compressorManager.js';
 
 export function initSettingsModal() {
   const modal    = document.getElementById('settingsModal');
@@ -11,44 +19,36 @@ export function initSettingsModal() {
   const resetBtn  = document.getElementById('settingsReset');
   const gearBtn   = document.getElementById('settingsBtn');
 
-  // Show modal
   gearBtn.addEventListener('click', () => {
     renderSettingsTabs();
     modal.classList.remove('hidden');
   });
 
-  // Hide modal
   closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   window.addEventListener('click', (e) => {
     if (e.target === modal) modal.classList.add('hidden');
   });
 
-  // Save & Close
   saveBtn.addEventListener('click', () => {
     collectSettingsFromTabs();
     updateSettings(settings);
     modal.classList.add('hidden');
   });
 
-  // Export / Import / Reset
   exportBtn.addEventListener('click', exportSettings);
   importBtn.addEventListener('click', importSettings);
   resetBtn.addEventListener('click', () => {
-    if (confirm('Reset all settings to factory defaults?')) {
-      resetToDefaults();
-      updateSettings(settings);
-      renderSettingsTabs();
-      modal.classList.add('hidden');
+    if (confirm('Reset all settings to factory defaults? This will also clear your compressor list.')) {
+      resetAllSettings();
     }
   });
 }
 
 // ---------------------------------------------------------------------------
-// Tab rendering
+// Tab rendering (General tab only)
 // ---------------------------------------------------------------------------
 
 function renderSettingsTabs() {
-  // Only the General tab exists now
   document.getElementById('stabGeneral').innerHTML = `
     <label>
       <input type="checkbox" id="autoCalculate" ${settings.autoCalculate ? 'checked' : ''}>
@@ -83,28 +83,63 @@ function collectSettingsFromTabs() {
 }
 
 // ---------------------------------------------------------------------------
-// Export / Import / Reset helpers – unchanged, they still export everything
+// Export / Import / Reset – full implementations
 // ---------------------------------------------------------------------------
 
 function exportSettings() {
-  const data = { ...settings, compressors: getCompressorList() };
-  // ... (exactly as before)
+  loadCompressors();
+  const exportData = {
+    settings: { ...settings },
+    compressorList: getCompressorList(),
+    selectedCompressorId: getCurrentCompressor()?.id ?? ''
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'refrigerator-calc-settings.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function importSettings() {
-  // ... (same as before but no loadCompressors call needed here)
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.settings) {
+        updateSettings(data.settings);
+      }
+      if (data.compressorList && Array.isArray(data.compressorList)) {
+        // Clear existing and replace
+        localStorage.setItem('compressorList', JSON.stringify(data.compressorList));
+        if (data.selectedCompressorId) {
+          localStorage.setItem('selectedCompressorId', data.selectedCompressorId);
+        }
+        loadCompressors(); // refresh memory
+      }
+      // Refresh the modal display (if still open)
+      renderSettingsTabs();
+      alert('Settings imported successfully.');
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+  input.click();
 }
 
-function resetToDefaults() {
-  const defaults = {
-    autoCalculate: true,
-    showDirtyOverlay: true,
-    mm3ToL: 1e-6,
-    lToCuft: 0.0353147,
-    displayPrecisionL: 2,
-    displayPrecisionCuft: 3,
-    canvasWidth: 600,
-    canvasHeight: 800,
-  };
-  Object.assign(settings, defaults);
+function resetAllSettings() {
+  resetSettings();                         // engine settings to defaults
+  localStorage.removeItem('compressorList');
+  localStorage.removeItem('selectedCompressorId');
+  loadCompressors();                       // reloads the default compressor list
+  renderSettingsTabs();
+  document.getElementById('settingsModal').classList.add('hidden');
+  alert('All settings and compressor list have been reset to defaults.');
 }

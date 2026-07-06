@@ -489,6 +489,65 @@ function computeAccurateBottomVolume(geom, eff) {
   const width = geom.W - eff.left - eff.right;
   return area * width * settings.mm3ToL;   // litres
 }
+
+function displayVolumeResults(result) {
+  if (!result.leaves || !result.totals) return;
+  
+  const eff = getEffectiveThicknesses();
+  const bottomIdx = result.leaves.length - 1;
+  const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
+
+  // Override the bottom leaf gross volume with the accurate stepped-floor calculation
+  const bottomLeaf = result.leaves[bottomIdx];
+  const oldBottomVol = bottomLeaf.gross;
+  bottomLeaf.gross = accurateBottomVol;
+  result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+
+  // Format totals display
+  const disp = formatTotalsDisplay({ gross: result.totals.gross });
+  document.getElementById('grossVol').textContent      = disp.gross;
+  document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+
+  const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+  const usableL = result.totals.gross * (usableFactor / 100);
+  const usableCuft = usableL * settings.lToCuft;
+  document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+  document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+}
+
+function drawSchematics(config, leaves) {
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (!frontCanvas || !sideCanvas || !leaves) return;
+
+  const rightPanel = document.querySelector('.right-panel');
+  const panelHeight = rightPanel.clientHeight - 30;
+  const panelWidth  = rightPanel.clientWidth - 20;
+  frontCanvas.height = panelHeight;
+  sideCanvas.height  = panelHeight;
+  frontCanvas.width  = panelWidth / 2 - 5;
+  sideCanvas.width   = panelWidth / 2 - 5;
+
+  const effectiveWalls = getEffectiveThicknesses();
+  const fittings = extractFittingsFromLayout(config.cabinet.layout);
+  const drawOptions = {
+    dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+    compHeights: compartmentsData.map(c => c.height),
+    doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+    compartments: compartmentsData.map(c => ({
+      left: c.left,
+      right: c.right,
+      rear: c.rear
+    })),
+    fittings
+  };
+
+  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
+  drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+  dirtySchematic = false;
+  schematicOverlay.classList.add('hidden');
+}
+
 // ---- Calculate button -------------------------------------------------
 calculateBtn.addEventListener('click', () => {
   const { config, layout } = buildConfigFromForm();
@@ -501,63 +560,10 @@ calculateBtn.addEventListener('click', () => {
 
   const result = runCalculation(config);
 
-  if (result.leaves && result.totals) {
-    // Replace bottom leaf with accurate stepped-floor volume (still needed for gross)
-    const eff = getEffectiveThicknesses();
-    const bottomIdx = result.leaves.length - 1;
-    const bottomCompHeight = compartmentsData[bottomIdx].height;
-    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-
-    const bottomLeaf = result.leaves[bottomIdx];
-    const oldBottomVol = bottomLeaf.gross;
-    bottomLeaf.gross = accurateBottomVol;
-    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-
-    // Format totals display (now only gross)
-    const disp = formatTotalsDisplay({ gross: result.totals.gross });
-    document.getElementById('grossVol').textContent      = disp.gross;
-    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-    const usableL = result.totals.gross * (usableFactor / 100);
-    const usableCuft = usableL * settings.lToCuft;
-    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-  }
+  displayVolumeResults(result);
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
+  drawSchematics(config, result.leaves);
 
-  // Draw schematics
-  const frontCanvas = document.getElementById('schematicFront');
-  const sideCanvas  = document.getElementById('schematicSide');
-  if (frontCanvas && sideCanvas) {
-    const rightPanel = document.querySelector('.right-panel');
-    const panelHeight = rightPanel.clientHeight - 30;
-    const panelWidth  = rightPanel.clientWidth - 20;
-    frontCanvas.height = panelHeight;
-    sideCanvas.height  = panelHeight;
-    frontCanvas.width  = panelWidth / 2 - 5;
-    sideCanvas.width   = panelWidth / 2 - 5;
-
-    const effectiveWalls = getEffectiveThicknesses();
-    // Gather fittings from the layout tree (all leaves)
-    const fittings = extractFittingsFromLayout(layout); // see below
-    const drawOptions = {
-      dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-      compHeights: compartmentsData.map(c => c.height),
-      doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-      compartments: compartmentsData.map(c => ({
-        left: c.left,
-        right: c.right,
-        rear: c.rear
-      })),
-      fittings  // <-- pass to schematic
-    };
-
-    drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
-    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-    dirtySchematic = false;
-    schematicOverlay.classList.add('hidden');
-  }
 });
 
 function extractFittingsFromLayout(node) {
@@ -690,63 +696,9 @@ loadBtn.addEventListener('click', () => {
       const result = runCalculation(config);
 
       // 3. Display results (with accurate bottom volume replacement)
-      if (result.leaves && result.totals) {
-        const eff = getEffectiveThicknesses();
-        const bottomIdx = result.leaves.length - 1;
-        const bottomCompHeight = compartmentsData[bottomIdx].height;
-        const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-
-        const bottomLeaf = result.leaves[bottomIdx];
-        const oldBottomVol = bottomLeaf.gross;
-        bottomLeaf.gross = accurateBottomVol;
-        result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-
-        const disp = formatTotalsDisplay({ gross: result.totals.gross });
-        document.getElementById('grossVol').textContent      = disp.gross;
-        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-
-        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-        const usableL = result.totals.gross * (usableFactor / 100);
-        const usableCuft = usableL * settings.lToCuft;
-        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-      }
-
+      displayVolumeResults(result);
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
-
-      // 4. Draw schematics (once)
-      const frontCanvas = document.getElementById('schematicFront');
-      const sideCanvas  = document.getElementById('schematicSide');
-      if (frontCanvas && sideCanvas && result.leaves) {
-        const rightPanel = document.querySelector('.right-panel');
-        const panelHeight = rightPanel.clientHeight - 30;
-        const panelWidth  = rightPanel.clientWidth - 20;
-        frontCanvas.height = panelHeight;
-        sideCanvas.height  = panelHeight;
-        frontCanvas.width  = panelWidth / 2 - 5;
-        sideCanvas.width   = panelWidth / 2 - 5;
-
-        const effectiveWalls = getEffectiveThicknesses();
-        const fittings = extractFittingsFromLayout(config.cabinet.layout);
-        const drawOptions = {
-          dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-          compHeights: compartmentsData.map(c => c.height),
-          doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-          compartments: compartmentsData.map(c => ({
-            left: c.left,
-            right: c.right,
-            rear: c.rear
-          })),
-          fittings   // <-- correct placement at top level
-        };
-
-        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
-        drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-
-        dirtySchematic = false;
-        schematicOverlay.classList.add('hidden');
-      }
-
+      drawSchematics(config, result.leaves);
       // alert('Configuration loaded and calculated.');   // optional, remove after testing
     } catch (err) {
       alert('Error: ' + err.message);
@@ -926,4 +878,7 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
 // Thermo UI init with geometry provider
-initThermoUI(() => readGeometryFromPanel());
+initThermoUI({
+  getGeometry: () => readGeometryFromPanel(),
+  setGeometryProvider: null  // not needed currently
+});

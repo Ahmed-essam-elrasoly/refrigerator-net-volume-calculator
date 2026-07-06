@@ -49,14 +49,14 @@ function r134a_satPressure(T_K) {
 /**
  * R-134a saturated liquid enthalpy.
  * @param {number} T_C - Temperature in °C
- * @returns {number} Enthalpy in kcal/kg
+ * @returns {number} Enthalpy in KJ/kg
  */
 function r134a_liquidEnthalpy(T_C) {
   return (
-    100.019 +
-    0.31763 * T_C +
-    0.00033057 * T_C ** 2 +
-    0.0000035281 * T_C ** 3
+    100.019 * 4.1868 +
+    0.31763 * T_C * 4.1868 +
+    0.00033057 * T_C ** 2 * 4.1868 +
+    0.0000035281 * T_C ** 3 * 4.1868
   );
 }
 
@@ -64,14 +64,14 @@ function r134a_liquidEnthalpy(T_C) {
  * R-134a superheated suction gas enthalpy.
  * @param {number} T_K - Suction temperature in Kelvin
  * @param {number} Pe  - Evaporating pressure in bar
- * @returns {number} Enthalpy in kcal/kg
+ * @returns {number} Enthalpy in KJ/kg
  */
 function r134a_gasEnthalpy(T_K, Pe) {
   return (
-    119.36 +
-    0.023174 * T_K +
-    0.00031297 * T_K ** 2 -
-    (138.07 * Pe) / T_K
+    119.36 * 4.1868 +
+    0.023174 * T_K * 4.1868 +
+    0.00031297 * 4.1868 * T_K ** 2 -
+    (138.07 * 4.1868 * Pe) / T_K
   );
 }
 
@@ -111,14 +111,14 @@ function r600a_satPressure(T_K) {
 /**
  * R-600a saturated liquid enthalpy.
  * @param {number} T_C - Temperature in °C
- * @returns {number} Enthalpy in kcal/kg
+ * @returns {number} Enthalpy in KJ/kg
  */
 function r600a_liquidEnthalpy(T_C) {
   return (
-    75.545 +
-    0.55731 * T_C +
-    0.0007088 * T_C ** 2 +
-    0.0000029408 * T_C ** 3
+    75.545 * 4.1868 +
+    0.55731 * T_C * 4.1868 +
+    0.0007088 * T_C ** 2 * 4.1868 +
+    0.0000029408 * T_C ** 3 * 4.1868
   );
 }
 
@@ -126,14 +126,14 @@ function r600a_liquidEnthalpy(T_C) {
  * R-600a superheated suction gas enthalpy.
  * @param {number} T_K - Suction temperature in Kelvin
  * @param {number} Pe  - Evaporating pressure in bar
- * @returns {number} Enthalpy in kcal/kg
+ * @returns {number} Enthalpy in KJ/kg
  */
 function r600a_gasEnthalpy(T_K, Pe) {
   return (
-    104.5 +
-    0.049951 * T_K +
-    0.00058822 * T_K ** 2 -
-    (249.18 * Pe) / T_K
+    104.5 * 4.1868 +
+    0.049951 * T_K * 4.1868 +
+    0.00058822 * 4.1868 * T_K ** 2 -
+    (249.18 * 4.1868 * Pe) / T_K
   );
 }
 
@@ -296,8 +296,8 @@ function buildNormalEquations(features, targets) {
  * Algorithm (per test point):
  *   Pe   = satPressure(TE)                              [bar]
  *   Pc   = satPressure(TC)                              [bar]
- *   hGas = gasEnthalpy(T_suction, Pe)                  [kcal/kg]
- *   hLiq = liquidEnthalpy(T_suction)                   [kcal/kg]
+ *   hGas = gasEnthalpy(T_suction, Pe)                  [kW/kg]
+ *   hLiq = liquidEnthalpy(T_suction)                   [kW/kg]
  *   G    = Q / (hGas − hLiq)                           [kg/h, actual mass flow]
  *   GK   = (VC·N·60 / 1×10⁶) / vGas                  [kg/h, theoretical mass flow]
  *   ηv   = G / GK
@@ -309,7 +309,7 @@ function buildNormalEquations(features, targets) {
  * @param {Array<{TE: number, TC: number, Q: number, W: number}>} params.dataPoints
  *   TE: evaporating temperature (°C)
  *   TC: condensing temperature  (°C)
- *   Q:  cooling capacity        (kcal/h)
+ *   Q:  cooling capacity        (W)
  *   W:  compressor input power  (W)
  *
  * @returns {{ etaCoeffs: number[], wCoeffs: number[] }}
@@ -398,7 +398,7 @@ export function computeCompressorCoefficients({
  *   Pe:                   number,  // Evaporating pressure (bar)
  *   Pc:                   number,  // Condensing pressure (bar)
  *   VolumetricEfficiency: number,  // ηv = A + B·(Pc/Pe) + C·Pc  (dimensionless)
- *   QCompressor:          number,  // Cooling capacity (kcal/h)
+ *   QCompressor:          number,  // Cooling capacity (W)
  *   CompPower:            number   // Electrical input power (W)
  * }}
  *
@@ -438,10 +438,10 @@ export function compressorPower(
   // ── 5. Actual mass flow and cooling capacity ──────────────────────────────
   //   displacement [m³/h] = VC [cm³] × N [rpm] × 60 / 1×10⁶
   //   G [kg/h]            = ηv × displacement / v_gas
-  //   Q [kcal/h]          = G × (h_gas − h_liq)
+  //   Q [W]          = G × (h_gas − h_liq)
   const displacement_m3h = (cylinderVolumeCm3 * speedRpm * 60) / 1e6;
   const G           = VolumetricEfficiency * displacement_m3h / vGas;
-  const QCompressor = G * (hGas - hLiq);
+  const QCompressor = G * (hGas - hLiq)/3.6;
 
   return {
     Pe,
@@ -511,7 +511,7 @@ if (typeof window === 'undefined') {
   console.log(`Pe                   = ${point.Pe.toFixed(4)} bar`);
   console.log(`Pc                   = ${point.Pc.toFixed(4)} bar`);
   console.log(`Volumetric efficiency = ${point.VolumetricEfficiency.toFixed(4)}`);
-  console.log(`Cooling capacity      = ${point.QCompressor.toFixed(2)} kcal/h`);
+  console.log(`Cooling capacity      = ${point.QCompressor.toFixed(2)} W`);
   console.log(`Input power           = ${point.CompPower.toFixed(2)} W`);
 }
 */

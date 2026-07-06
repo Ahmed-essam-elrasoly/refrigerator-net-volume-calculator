@@ -13,7 +13,6 @@
 
 /**
  * Available space passed down the node tree.
- * All values in mm. Derived once per node from parent context.
  * @typedef {Object} Space
  * @property {number} width
  * @property {number} height
@@ -108,33 +107,26 @@
  * @typedef {Object} CabinetConfig
  * @property {string}         schemaVersion
  * @property {{ name: string, createdAt: string, updatedAt: string }} meta
-  * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
+ * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
  */
 
 /**
  * @typedef {Object} WallThicknessesByType
  * @property {Object} fresh - {top, bottom, left, right, rear, door}
  * @property {Object} freezer
- * @property {Object} flex
+ * @property {Object} [flex] - optional, treated as zero if absent
  */
+
 /**
- * Per-leaf volume result. All volumes in L at full precision.
- * Rounded values are derived at display time only.
+ * Per-leaf volume result (gross only after simplification).
  * @typedef {Object} LeafResult
- * @property {string}  leafId
- * @property {string}  leafType
- * @property {Space}   space        - resolved available space (mm)
- * @property {number}  gross        - L, full precision
- * @property {number}  egNet        - L, full precision
- * @property {number}  iecNet       - L, full precision
- * @property {string[]} fittingErrors - ids of fittings excluded due to validation failure
+ * @property {string} leafId
+ * @property {number} gross - L, full precision
  */
 
 /**
  * @typedef {Object} Totals
  * @property {number} gross  - L
- * @property {number} egNet  - L
- * @property {number} iecNet - L
  */
 
 /**
@@ -159,9 +151,8 @@
 
 /**
  * Top-level result returned by runCalculation().
- * errors[] is always present; non-empty means output should be flagged.
  * @typedef {Object} CalcResult
- * * @property {FittingConfig} fittings    
+ * @property {LeafResult[]}         leaves
  * @property {Totals|null}          totals
  * @property {ValidationError[]}    validationErrors
  * @property {CalcError[]}          calcErrors

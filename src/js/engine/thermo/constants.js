@@ -10,32 +10,24 @@ export const PHYSICAL_CONSTANTS = Object.freeze({
   // Dry air properties (at approx. -20 °C to +60 °C – constant for modelling)
   // -------------------------------------------------------------------
   air: {
-    density: 1.365,  // kg/m³     (Excel: MAIN B20)
-    cp: 0.24,        // kcal/kg·°C (Excel: MAIN B21)
+    density: 1.365,  // kg/m³     
+    cp: 1.0048,        // KJ/kg·K 
   },
 
   // -------------------------------------------------------------------
-  // Insulation materials – thermal conductivity (kcal / (m·h·°C))
+  // Insulation materials – thermal conductivity (W / (m·°C))
   // -------------------------------------------------------------------
   insulation: {
-    urethane: 0.0165,   // rigid polyurethane foam (SIZE B33)
-    polystyrene: 0.035, // (SIZE B34)
+    urethane: 0.0192,   // rigid polyurethane foam (SIZE B33)
+    polystyrene: 0.0407, // (SIZE B34)
     packing: 0.035,     // door gasket material (SIZE B36)
   },
 
   // -------------------------------------------------------------------
-  // Surface heat‑transfer coefficients (kcal / (m²·h·°C))
+  // Surface heat‑transfer coefficients (W / (m²·°C))
   // -------------------------------------------------------------------
   surfaceCoefficients: {
-    outside: 6,  // ambient air to cabinet (SIZE B40)
-    inside: 10,  // cabinet interior air to wall (SIZE B41)
-  },
-
-  // -------------------------------------------------------------------
-  // Unit conversions
-  // -------------------------------------------------------------------
-  conversion: {
-    wattToKcalPerH: 0.86,
-    // kcal/h → W : multiply by 1/0.86 ≈ 1.16279
+    outside: 6.977,  // ambient air to cabinet (SIZE B40)
+    inside: 11.628,  // cabinet interior air to wall (SIZE B41)
   },
 });

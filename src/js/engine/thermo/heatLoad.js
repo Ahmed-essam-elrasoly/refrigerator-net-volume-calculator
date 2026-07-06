@@ -3,7 +3,7 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
 function lambdaUrethane(T_in, T_out) {
   const T_avg = (T_in + T_out) / 2;
-  return 0.0165 + 0.00011 * (T_avg-25);   // Excel formula, shifted to be 0.0165 at 25°C
+  return 0.0165 + 0.00011 * (T_avg-25) * 1.16279;   // Excel formula, shifted to be 0.0165 at 25°C
 }
 function kExterior(thk, T_in, T_out) {
   const lam = lambdaUrethane(T_in, T_out);
@@ -212,8 +212,8 @@ export function calcHeatLoads(
     }
   }
 
-  const fanLoad = (fanInputPower_W ?? 2.1) * PC.conversion.wattToKcalPerH * PR;
-  const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min/60/24) * PC.conversion.wattToKcalPerH;
-
-  return { QF, QR, QEV: QEV_cond + fanLoad + defrostLoad, fanLoad, defrostLoad };
+  const fanLoad = (fanInputPower_W ?? 2.1) * PR;
+  const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); // 10.5 is the timer period in h
+  const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24); 
+  return { QF: QF * 1.16279, QR: QR * 1.16279, QEV: QEV_cond * 1.16279 + fanLoad + defrostLoad, fanLoad, defrostLoad };
 }

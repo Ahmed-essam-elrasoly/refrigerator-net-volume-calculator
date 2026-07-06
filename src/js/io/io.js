@@ -4,7 +4,7 @@
  * No DOM dependencies. Works in browser (File API) and Node.js.
  */
 
-import { toCuft, roundForDisplay } from '../engine/calc.js';
+import { toCuft, roundForDisplay, formatLeafDisplay, formatTotalsDisplay } from '../engine/calc.js';
 
 const SCHEMA_VERSION = '2.0';
 const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
@@ -13,14 +13,6 @@ const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
 // JSON — Save
 // ---------------------------------------------------------------------------
 
-/**
- * Serialises a CabinetConfig to a JSON string ready for download.
- * Stamps updatedAt; preserves createdAt from original if present.
- *
- * @param {import('../engine/types').CabinetConfig} config
- * @param {string} [name] - optional label to set in meta.name
- * @returns {string} JSON string
- */
 export function configToJSON(config, name) {
   const now = new Date().toISOString();
   const out = {
@@ -35,13 +27,6 @@ export function configToJSON(config, name) {
   return JSON.stringify(out, null, 2);
 }
 
-/**
- * Triggers a browser file download of the config JSON.
- * No-op in Node.js environments.
- *
- * @param {import('../engine/types').CabinetConfig} config
- * @param {string} [filename]
- */
 export function downloadConfigJSON(config, filename) {
   if (typeof document === 'undefined') return;
   const json = configToJSON(config);
@@ -58,14 +43,6 @@ export function downloadConfigJSON(config, filename) {
 // JSON — Load
 // ---------------------------------------------------------------------------
 
-/**
- * Parses a JSON string into a CabinetConfig.
- * Validates schemaVersion. Throws on parse error or version mismatch.
- *
- * @param {string} jsonString
- * @returns {import('../engine/types').CabinetConfig}
- * @throws {Error}
- */
 export function configFromJSON(jsonString) {
   let parsed;
   try {
@@ -90,13 +67,6 @@ export function configFromJSON(jsonString) {
   return parsed;
 }
 
-/**
- * Reads a File object and resolves with a parsed CabinetConfig.
- * Browser only.
- *
- * @param {File} file
- * @returns {Promise<import('../engine/types').CabinetConfig>}
- */
 export function loadConfigFromFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -113,29 +83,6 @@ export function loadConfigFromFile(file) {
 // CSV — Export
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a CSV string from a CalcResult.
- * Columns: Compartment, Type, Gross (L), EG Net (L), IEC Net (L),
- *          Gross (cu.ft), EG Net (cu.ft), IEC Net (cu.ft)
- * Final row: TOTAL.
- *
- * @param {import('../engine/types').CalcResult} result
- * @param {string} [configName]
- * @returns {string} CSV string
- */
-export function formatLeafDisplay(leaf) {
-  return {
-    gross:     roundForDisplay(leaf.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
-  };
-}
-
-export function formatTotalsDisplay(totals) {
-  return {
-    gross:     roundForDisplay(totals.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
-  };
-}
 export function resultToCSV(result, configName) {
   if (!result.leaves || !result.totals) {
     return '# No results available (calculation produced errors)\n';
@@ -184,14 +131,7 @@ export function resultToCSV(result, configName) {
 
   return rows.join('\n');
 }
-/**
- * Triggers a browser file download of the results CSV.
- * No-op in Node.js environments.
- *
- * @param {import('../engine/types').CalcResult} result
- * @param {string} [configName]
- * @param {string} [filename]
- */
+
 export function downloadResultsCSV(result, configName, filename) {
   if (typeof document === 'undefined') return;
   const csv  = resultToCSV(result, configName);

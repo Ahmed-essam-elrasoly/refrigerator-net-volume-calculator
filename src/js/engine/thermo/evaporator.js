@@ -24,17 +24,18 @@ export function computeEvaporatorArea(evap) {
  */
 export function airSpeed(fanParam, evap) {
   const {fanDiam, fanRPM, fanThick} = fanParam
-  const fanAirflow_m3h = (Math.PI * (fanDiam/2)**2 * fanThick) * fanRPM / 1e6 * 3600; // m³/h
+  const fanAirflow_CFM = (Math.PI * (fanDiam/2)**2 * fanThick) * fanRPM / 28_316_846.6; // CFM
+  const fanAirflow_m3h = fanAirflow_CFM * 1.699; // convert CFM to m³/h
   const frontArea_m2 = (evap.width_mm * evap.depth_mm) / 1e6;
-  return fanAirflow_m3h / frontArea_m2 / 3600;
+  return fanAirflow_m3h / frontArea_m2 / 3600; // m/s
 }
 
 /**
- * Evaporator heat transfer coefficient (kcal/h·m²·°C) – Excel MAIN E21
+ * Evaporator heat transfer coefficient (W/m²·°C) – Excel MAIN E21
  * α = 12.93 * v^0.415
  */
 export function evaporatorAlpha(v_ms) {
-  return 12.93 * Math.pow(v_ms, 0.415);
+  return 12.93 * Math.pow(v_ms, 0.415) * 1.16279; // convert to W/m²·°C
 }
 
 /**
