@@ -103,6 +103,7 @@ export function runThermoAnalysis(config) {
         etaV: result.compressor.etaV,
         Pe: result.compressor.Pe,      // ← added
         Pc: result.compressor.Pc,      // ← added
+        COP:             result.compressor.COP,    // ★ add this line
       },
       fan: result.fan,
       electrical: result.electrical,

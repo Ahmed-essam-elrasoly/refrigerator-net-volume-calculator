@@ -210,10 +210,10 @@ function solveInner(
     if (Math.abs(denom) < 1e-12) {
       F1 = loads.QF;
     } else {
-      const T3   = T2 + loads.QEV / denom;
-      const MR   = Math.min(fan.totalAirflow, Math.max(0,
-        loads.QR / (rho * cp * Math.max(0.01, TR - T3) * PR)
-      ));
+      const C_air_WperK = fan.fanAirflow_CFM * 1.699 / 3600 * RHO_AIR * CP_AIR * 1000; // W/K
+      // where CP_AIR in kJ/(kg·K), RHO_AIR in kg/m³    
+      const T3 = T2 + QEV / (C_air_WperK * PR);
+      const MR = QR / (C_air_WperK * (TR - T3) * PR) * 3600;  // m³/h (since C_air_WperK is W/K, QR in W, ΔT in K → dimensionless fraction, then ×3600 to get m³/h?)
       const MF   = fan.totalAirflow - MR;
       currentMR  = MR;
       currentMF  = MF;
@@ -267,6 +267,7 @@ function solveInner(
       etaV:            comp.VolumetricEfficiency,
       coolingCapacity: comp.QCompressor,
       inputPower:      comp.CompPower,
+      COP:             (comp.QCompressor ) / comp.CompPower,   
       massFlow:        comp.massFlow,
       Pe:              comp.Pe,
       Pc:              comp.Pc,
@@ -381,7 +382,7 @@ export function solveThermalSystem(config, TE_override = null) {
     const Pc = prop.satPressure(TC + KELVIN_OFFSET);
     const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);
     const h_liq = prop.liquidEnthalpy(TC - subcool);
-    const QCin = compOuter.massFlow * (h_dis - h_liq);
+    const QCin = compOuter.massFlow * (h_dis - h_liq)/3.6;  // W (corrected: divide by 3.6 to convert from kJ/h to W)
     const F3 = QCout.QCout - QCin;
 
     if (debug) console.log(
@@ -511,12 +512,11 @@ export function runThermalAnalysisDynamic(config) {
     const faceArea = evapWidth_m * evapDepth_m;
     const v_ms     = fan.totalAirflow / faceArea / 3600;
     const alpha = 12.93 * Math.pow(v_ms, 0.415);
-    const C_air  = fan.totalAirflow * RHO_AIR * CP_AIR;
-    const UA_eff = alpha * evapArea_m2 / Math.max(0.01, PR);
-    const NTU    = UA_eff / C_air;
-    const eff    = 1 - Math.exp(-NTU);
-    const newTE = T1 - (T1 - T2) / Math.max(0.001, eff);
-
+    const C_air = fan.totalAirflow / 3600 * RHO_AIR * CP_AIR * 1000;   // W/K (continuous flow)
+    const UA_on = alpha * evapArea_m2;                           // full conductance
+    const NTU = UA_on / C_air;
+    const ε = 1 - Math.exp(-NTU);
+    const newTE = T1 - (T1 - T2) / ε;
     if (Math.abs(newTE - TE) < 0.1) {
       result.TE = newTE;
       return result;

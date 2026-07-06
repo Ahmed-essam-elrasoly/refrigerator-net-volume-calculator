@@ -26,6 +26,7 @@ export const SJ54H_COMPONENTS = Object.freeze({
     speed_rpm: 2550,
     inputPower_W: 2.1,
     totalAirflow_m3h: 59.5,
+    fanAirflow_CFM: 59.5 / 1.699, // convert m³/h to CFM
   },
 
   electrical: {
@@ -33,7 +34,7 @@ export const SJ54H_COMPONENTS = Object.freeze({
     pwbOff_W: 1,
     defrostHeater_W: 140,
     timerPeriod_h: 10.5,
-    defrostOn_min: 0,
+    defrostOn_min: 20,
   },
 
   condenser: {
