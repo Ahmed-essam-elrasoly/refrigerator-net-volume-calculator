@@ -429,13 +429,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   if (compHeights.length === 2 && dividerThickness > 0) {
     const dividerY = innerTop + topH;
     const dividerH = dividerThickness;
+    const dividerLeftX = compRear[1] * scale;
 
     ctx.fillStyle = '#aaa';
-    ctx.fillRect(0, dividerY * scale,
-                 (innerDoor) * scale, dividerH * scale);
+    ctx.fillRect(dividerLeftX, dividerY * scale,
+                (innerDoor - compRear[1]) * scale, dividerH * scale);
     ctx.strokeStyle = '#666';
-    ctx.strokeRect(0, dividerY * scale,
-                  (innerDoor) * scale, dividerH * scale);
+    ctx.strokeRect(dividerLeftX, dividerY * scale,
+                  (innerDoor - compRear[1]) * scale, dividerH * scale);
 
     const doorLeftX = innerDoor * scale;
     const doorWidth = (D - innerDoor) * scale;
@@ -459,13 +460,16 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   } else {
     drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
   }
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, D * scale, H * scale);
 
   // Dimension lines
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-  drawDim(ctx, bottomRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-  drawDim(ctx, bottomRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+  drawDim(ctx, 0, floorRaisedY * scale, Db1 * scale, floorRaisedY * scale, -18, `[Db1= ${( Db1).toFixed(0)}]`);
+  drawDim(ctx, 0, floorLowerY * scale, Db2 * scale, floorLowerY * scale, -18, `[Db2= ${( Db2).toFixed(0)}]`);
   const topMidX = (tRear + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
 

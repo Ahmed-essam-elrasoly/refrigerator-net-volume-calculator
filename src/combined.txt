@@ -317,843 +317,6 @@ button {
   box-sizing: border-box;
 }
 
-===== D:\refrigerator-volume-calculator\src\js\engine\calc.js =====
-import { settings } from '../settings.js';
-
-// ---------------------------------------------------------------------------
-// Boundary walker (unchanged)
-// ---------------------------------------------------------------------------
-
-export function deriveRootSpace(cabinet, layout) {
-  const { external, wallThicknessesByType, airGap } = cabinet;
-
-  const boundaryTypes = {
-    top: new Set(),
-    bottom: new Set(),
-    left: new Set(),
-    right: new Set(),
-  };
-  walkBoundaries(layout, boundaryTypes, true, true, true, true);
-
-  const allTypes = ['fresh','freezer','flex'];
-  const effective = {};
-  for (const face of ['top','bottom','left','right']) {
-    const typesForFace = boundaryTypes[face];
-    let maxVal = 0;
-    for (const type of typesForFace) {
-      const val = wallThicknessesByType[type]?.[face] ?? 0;
-      if (val > maxVal) maxVal = val;
-    }
-    if (typesForFace.size === 0) {
-      for (const type of allTypes) {
-        const val = wallThicknessesByType[type]?.[face] ?? 0;
-        if (val > maxVal) maxVal = val;
-      }
-    }
-    effective[face] = maxVal;
-  }
-  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
-  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
-
-  return {
-    width:  external.width  - effective.left - effective.right,
-    height: external.height - effective.top  - effective.bottom,
-    depth:  external.depth  - effective.rear - effective.door,
-  };
-}
-
-export function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
-  if (node.nodeType === 'leaf') {
-    if (topMost) boundary.top.add(node.type);
-    if (bottomMost) boundary.bottom.add(node.type);
-    if (leftMost) boundary.left.add(node.type);
-    if (rightMost) boundary.right.add(node.type);
-  } else if (node.nodeType === 'horizontal') {
-    const children = node.children;
-    for (let i = 0; i < children.length; i++) {
-      const isFirst = (i === 0);
-      const isLast = (i === children.length - 1);
-      walkBoundaries(
-        children[i].node,
-        boundary,
-        topMost && isFirst,
-        bottomMost && isLast,
-        leftMost,
-        rightMost
-      );
-    }
-  } else if (node.nodeType === 'vertical') {
-    walkBoundaries(node.left,  boundary, topMost, bottomMost, true, false);
-    walkBoundaries(node.right, boundary, topMost, bottomMost, false, true);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Leaf volume – gross only
-// ---------------------------------------------------------------------------
-
-/**
- * @param {object} leaf  – the leaf node (with `id`, `type`, `fittings` – unused for gross)
- * @param {object} space – { width, height, depth } in mm
- * @returns {{ leafId: string, gross: number }}
- */
-export function calcLeafGross(leaf, space) {
-  const gross = space.width * space.height * space.depth * settings.mm3ToL;
-  return {
-    leafId: leaf.id,
-    gross,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Display helpers (keep interface compatible, only gross used)
-// ---------------------------------------------------------------------------
-
-export function formatLeafDisplay(leaf) {
-  return {
-    gross:     roundForDisplay(leaf.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
-  };
-}
-
-export function formatTotalsDisplay(totals) {
-  return {
-    gross:     roundForDisplay(totals.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
-  };
-}
-
-export function toCuft(litres) {
-  return litres * settings.lToCuft;
-}
-
-export function roundForDisplay(val, unit) {
-  const precision = unit === 'cuft' ? settings.displayPrecisionCuft : settings.displayPrecisionL;
-  return Math.round(val * Math.pow(10, precision)) / Math.pow(10, precision);
-}
-
-===== D:\refrigerator-volume-calculator\src\js\engine\geometry.js =====
-// src/js/engine/geometry.js
-
-// src/js/engine/geometry.js
-
-export const DEFAULT_CABINET = Object.freeze({
-  H: 1680,  W: 800,  D: 630,
-  Hb: 260, Db1: 210, Db2: 230,
-  doorGap: 10, packingPos: 15, airGap: 5,
-  walls: {
-    freezer: {
-      top:    59.4, bottom: 70, left:   59.4,
-      right:  59.4, door:   59.4, rear:  60,
-    },
-    refrigerator: {
-      top:     70, bottom1: 40, bottom2: 40, bottom3: 40,
-      left:    40, right:   40, door:    40, rear:    60,
-    },
-  },
-});
-export function toVolumeFormat(geom) {
-  const { H, W, D, walls } = geom;
-  const t = {
-    fresh: {
-      top: walls.refrigerator.top,
-      bottom: walls.refrigerator.bottom1,
-      left: walls.refrigerator.left,
-      right: walls.refrigerator.right,
-      rear: walls.refrigerator.rear,
-      door: walls.refrigerator.door
-    },
-    freezer: {
-      top: walls.freezer.top,
-      bottom: walls.freezer.bottom,
-      left: walls.freezer.left,
-      right: walls.freezer.right,
-      rear: walls.freezer.rear,
-      door: walls.freezer.door
-    },
-    flex: {
-      top: walls.refrigerator.top,
-      bottom: walls.refrigerator.bottom1,
-      left: walls.refrigerator.left,
-      right: walls.refrigerator.right,
-      rear: walls.refrigerator.rear,
-      door: walls.refrigerator.door
-    }
-  };
-  return {
-    external: { height: H, width: W, depth: D },
-    wallThicknessesByType: t,
-    airGap: 0
-  };
-}
-
-export function toThermalFormat(geom) {
-  const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
-  return {
-    H, W, D,
-    Hf, Hr,
-    Hb, Db1, Db2,
-    doorGap, packingPos,
-    tFtop:    walls.freezer.top,
-    tFleft:   walls.freezer.left,
-    tFright:  walls.freezer.right,
-    tFbottom: walls.freezer.bottom,
-    tFdoor:   walls.freezer.door,
-    tFback:   walls.freezer.rear,  
-    tEvaBack: walls.freezer.rear,
-    tRtop:    walls.refrigerator.top,
-    tRleft:   walls.refrigerator.left,
-    tRright:  walls.refrigerator.right,
-    tRback:   walls.refrigerator.rear,
-    tRbottom1:walls.refrigerator.bottom1,
-    tRbottom2:walls.refrigerator.bottom2,
-    tRbottom3:walls.refrigerator.bottom3,
-    tRdoor:   walls.refrigerator.door,
-  };
-}
-
-/**
- * Upgrade an old configuration (v1.0) to the new unified format.
- * Old config: { schemaVersion:"1.0", meta:{...}, cabinet:{ external, wallThicknessesByType, airGap, layout } }
- * Returns a valid v2.0 config.
- */
-export function upgradeConfig(oldConfig) {
-  if (!oldConfig?.cabinet) throw new Error('Invalid old config');
-
-  const { external, wallThicknessesByType, airGap, layout } = oldConfig.cabinet;
-  const def = DEFAULT_CABINET;
-
-  const walls = {
-    freezer: {
-      top:    wallThicknessesByType?.freezer?.top    ?? def.walls.freezer.top,
-      bottom: wallThicknessesByType?.freezer?.bottom ?? def.walls.freezer.bottom,
-      left:   wallThicknessesByType?.freezer?.left   ?? def.walls.freezer.left,
-      right:  wallThicknessesByType?.freezer?.right  ?? def.walls.freezer.right,
-      door:   wallThicknessesByType?.freezer?.door   ?? def.walls.freezer.door,
-      rear:   def.walls.freezer.rear   // old format had no "rear" for freezer
-    },
-    refrigerator: {
-      top:    wallThicknessesByType?.fresh?.top    ?? def.walls.refrigerator.top,
-      bottom1:wallThicknessesByType?.fresh?.bottom ?? def.walls.refrigerator.bottom1,
-      bottom2:def.walls.refrigerator.bottom2,
-      bottom3:def.walls.refrigerator.bottom3,
-      left:   wallThicknessesByType?.fresh?.left   ?? def.walls.refrigerator.left,
-      right:  wallThicknessesByType?.fresh?.right  ?? def.walls.refrigerator.right,
-      door:   wallThicknessesByType?.fresh?.door   ?? def.walls.refrigerator.door,
-      rear:   def.walls.refrigerator.rear
-    }
-  };
-
-  const geom = {
-    H: external.height,
-    W: external.width,
-    D: external.depth,
-    Hf: def.Hf,
-    Hr: def.Hr,
-    Hb: def.Hb,
-    Db1: def.Db1,
-    Db2: def.Db2,
-    doorGap: def.doorGap,
-    packingPos: def.packingPos,
-    airGap: airGap ?? def.airGap,
-    walls
-  };
-
-  return {
-    schemaVersion: '2.0',
-    meta: {
-      ...oldConfig.meta,
-      updatedAt: new Date().toISOString(),
-      upgradedFrom: oldConfig.schemaVersion
-    },
-    cabinet: {
-      geometry: geom,
-      layout
-    }
-  };
-}
-
-===== D:\refrigerator-volume-calculator\src\js\engine\index.js =====
-/**
- * @file index.js
- * Main engine entry point.
- * Orchestrates Pass 1 → cabinet-level pre-checks → Pass 2 → post-calc hierarchy check.
- *
- * Public API:
- *   runCalculation(config) → CalcResult
- */
-
-import { deriveRootSpace, walkBoundaries } from './calc.js';
-import { validateStructure }                                from './validationPass1.js';
-import { traverseAndCompute }                               from './traversal.js';
-import { upgradeConfig, toVolumeFormat } from './geometry.js';
-
-// ---------------------------------------------------------------------------
-// Cabinet-level pre-checks (run before Pass 2 tree traversal)
-// ---------------------------------------------------------------------------
-
-/**
- * Validates cabinet external dims, wall thicknesses, and derived internal space.
- * These are not tree-node checks — they guard the root space derivation.
- *
- * @param {import('./types').CabinetConfig['cabinet']} cabinet
- * @returns {import('./types').ValidationError[]}
- */
-function validateCabinet(cabinet) {
-  const errors = [];
-  const { external, wallThicknessesByType, layout, airGap } = cabinet;
-
-  // Positive external dimensions
-  for (const [key, val] of Object.entries(external)) {
-    if (val <= 0) {
-      errors.push({ rule: 'positiveValues', message: `external.${key} must be > 0, got ${val}` });
-    }
-  }
-
-  // Compute effective wall thicknesses (same logic as deriveRootSpace)
-  const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
-  walkBoundaries(layout, boundaryTypes, true, true, true, true);
-  const effective = {};
-  const allTypes = ['fresh','freezer','flex'];
-  for (const face of ['top','bottom','left','right']) {
-    let max = 0;
-    for (const t of boundaryTypes[face]) {
-      const val = wallThicknessesByType[t]?.[face] ?? 0;
-      if (val > max) max = val;
-    }
-    if (boundaryTypes[face].size === 0) {
-      for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
-    }
-    effective[face] = max;
-  }
-  effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
-  effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
-
-  // Wall ratio checks using effective thicknesses
-  const pairs = [
-    ['top',    external.height, 'height'],
-    ['bottom', external.height, 'height'],
-    ['left',   external.width,  'width'],
-    ['right',  external.width,  'width'],
-    ['rear',   external.depth,  'depth'],
-    ['door',   external.depth,  'depth'],
-  ];
-  for (const [face, extDim, dimName] of pairs) {
-    const thickness = effective[face];
-    if (thickness >= extDim * 0.5) {
-      errors.push({
-        rule:    'wallRatio',
-        message: `${face} wall (${thickness} mm) exceeds 50% of external ${dimName} (${extDim * 0.5} mm)`,
-      });
-    }
-  }
-
-
-  // Internal dimensions positive
-  if (errors.length === 0) {
-    const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
-    for (const [dim, val] of Object.entries(rootSpace)) {
-      if (val <= 0) {
-        errors.push({
-          rule:    'internalPositive',
-          message: `Derived internal ${dim} (${val} mm) is ≤ 0 after wall subtraction`,
-        });
-      }
-    }
-  }
-
-  return errors;
-}
-
-// ---------------------------------------------------------------------------
-// Post-calc hierarchy check
-// ---------------------------------------------------------------------------
-
-/**
- * Asserts Gross ≥ EG_Net ≥ IEC_Net per leaf and on totals.
- * Returns CalcError[]. Non-empty means a formula regression — should never
- * fire under correct formulas.
- *
- * @param {import('./types').LeafResult[]} leaves
- * @param {import('./types').Totals}       totals
- * @returns {import('./types').CalcError[]}
- */
-function checkHierarchy(leaves, totals) {
-  const errors = [];
-
-  for (const leaf of leaves) {
-    if (leaf.gross < leaf.egNet - 1e-9) {
-      errors.push({ rule: 'hierarchyCheck_leaf',
-        message: `Gross (${leaf.gross}) < EG_Net (${leaf.egNet}) on leaf ${leaf.leafId}` });
-    }
-    if (leaf.egNet < leaf.iecNet - 1e-9) {
-      errors.push({ rule: 'hierarchyCheck_leaf',
-        message: `EG_Net (${leaf.egNet}) < IEC_Net (${leaf.iecNet}) on leaf ${leaf.leafId}` });
-    }
-  }
-
-  if (totals.gross < totals.egNet - 1e-9) {
-    errors.push({ rule: 'hierarchyCheck_total',
-      message: `Total Gross (${totals.gross}) < Total EG_Net (${totals.egNet})` });
-  }
-  if (totals.egNet < totals.iecNet - 1e-9) {
-    errors.push({ rule: 'hierarchyCheck_total',
-      message: `Total EG_Net (${totals.egNet}) < Total IEC_Net (${totals.iecNet})` });
-  }
-
-  return errors;
-}
-
-// ---------------------------------------------------------------------------
-// Main entry point
-// ---------------------------------------------------------------------------
-
-/**
- * Runs the full calculation pipeline on a cabinet configuration.
- *
- * @param {import('./types').CabinetConfig} config
- * @returns {import('./types').CalcResult}
- */
-export function runCalculation(config) {
-  const result = { leaves: null, totals: null, validationErrors: [], calcErrors: [], warnings: [] };
-
-  const structErrors = validateStructure(config.cabinet.layout);
-  if (structErrors.length) { result.validationErrors = structErrors; return result; }
-
-  if (config.schemaVersion === '1.0' || (!config.cabinet.geometry && config.cabinet.external)) {
-    config = upgradeConfig(config);
-  }
-
-  const { geometry, layout } = config.cabinet;
-  const volumeGeom = toVolumeFormat(geometry);
-  const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
-  if (cabinetErrors.length) { result.validationErrors = cabinetErrors; return result; }
-
-  const rootSpace = deriveRootSpace(volumeGeom, layout);
-
-  // Pass 2 – now only returns gross volumes
-  const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
-  result.validationErrors = dimErrors;
-  result.warnings = warnings;
-  result.leaves = leaves.map(l => ({ leafId: l.leafId, gross: l.gross }));
-
-  if (leaves.length > 0) {
-    const totalGross = leaves.reduce((sum, l) => sum + l.gross, 0);
-    result.totals = { gross: totalGross };
-  }
-
-  return result;
-}
-export { deriveRootSpace }    from './calc.js';
-export { validateStructure } from './validationPass1.js';
-export { traverseAndCompute } from './traversal.js';
-
-===== D:\refrigerator-volume-calculator\src\js\engine\traversal.js =====
-import { calcLeafGross } from './calc.js';
-import { settings } from '../settings.js';
-
-const DIM_TOL   = 0.01;
-const RATIO_TOL = 0.001;
-
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
-export function traverseAndCompute(rootNode, rootSpace) {
-  const errors   = [];
-  const warnings = [];
-  const leaves   = [];
-
-  traverseNode(rootNode, rootSpace, errors, warnings, leaves);
-
-  return { leaves, errors, warnings };
-}
-
-// ---------------------------------------------------------------------------
-// Recursive node traversal
-// ---------------------------------------------------------------------------
-
-function traverseNode(node, space, errors, warnings, leaves) {
-  switch (node.nodeType) {
-    case 'leaf':
-      processLeaf(node, space, errors, warnings, leaves);
-      break;
-    case 'horizontal':
-      processHorizontal(node, space, errors, warnings, leaves);
-      break;
-    case 'vertical':
-      processVertical(node, space, errors, warnings, leaves);
-      break;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Horizontal split
-// ---------------------------------------------------------------------------
-
-function processHorizontal(node, space, errors, warnings, leaves) {
-  const { children, dividers, id } = node;
-  const mode = children[0].heightMode;
-
-  let childHeights;
-  if (mode === 'ratio') {
-    const totalDividerH = dividers.reduce((s, d) => s + d.thickness, 0);
-    const usableH = space.height - totalDividerH;
-    childHeights = children.map(c => usableH * c.heightValue);
-  } else {
-    const sumHeights   = children.reduce((s, c) => s + c.heightValue, 0);
-    const sumDividers  = dividers.reduce((s, d) => s + d.thickness, 0);
-    const total        = sumHeights + sumDividers;
-
-    if (Math.abs(total - space.height) > DIM_TOL) {
-      errors.push({
-        rule:           'heightBalance_explicit',
-        nodeId:         id,
-        message:        `Sum of heights (${sumHeights}) + dividers (${sumDividers}) = ${total} ≠ availableHeight (${space.height})`,
-        childrenSkipped: true,
-      });
-      return;
-    }
-    childHeights = children.map(c => c.heightValue);
-  }
-
-  for (let i = 0; i < children.length; i++) {
-    const childSpace = {
-      width:  space.width,
-      height: childHeights[i],
-      depth:  space.depth,
-    };
-    traverseNode(children[i].node, childSpace, errors, warnings, leaves);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Vertical split
-// ---------------------------------------------------------------------------
-
-function processVertical(node, space, errors, warnings, leaves) {
-  const { dividerThickness, leftWidthRatio, left, right, id } = node;
-
-  if (dividerThickness >= space.width) {
-    errors.push({
-      rule:           'verticalDividerBounds',
-      nodeId:         id,
-      message:        `dividerThickness (${dividerThickness}) ≥ availableWidth (${space.width})`,
-      childrenSkipped: true,
-    });
-    return;
-  }
-
-  const usableW  = space.width - dividerThickness;
-  const leftW    = usableW * leftWidthRatio;
-  const rightW   = usableW * (1 - leftWidthRatio);
-
-  traverseNode(left,  { width: leftW,  height: space.height, depth: space.depth }, errors, warnings, leaves);
-  traverseNode(right, { width: rightW, height: space.height, depth: space.depth }, errors, warnings, leaves);
-}
-
-// ---------------------------------------------------------------------------
-// Leaf: keep fitting dimension validation, but compute only gross
-// ---------------------------------------------------------------------------
-
-function processLeaf(node, space, errors, warnings, leaves) {
-  const { fittings, id } = node;
-
-  // Validate fittings (dimensions only – no volume deduction needed)
-  for (const shelf of fittings.shelves ?? []) {
-    errors.push(...validateShelf(shelf, space, id));
-  }
-  for (const drawer of fittings.drawers ?? []) {
-    errors.push(...validateDrawer(drawer, space, id));
-  }
-  for (const bin of fittings.doorBins ?? []) {
-    errors.push(...validateDoorBin(bin, space, id));
-  }
-
-  // Soft warning: door bin depth vs shelf depth (still useful)
-  const binDepthWarning = checkDoorBinDepth(fittings, space, id);
-  if (binDepthWarning) warnings.push(binDepthWarning);
-
-  // Compute only gross volume
-  const leafResult = calcLeafGross(node, space);
-  leaves.push(leafResult);
-}
-
-// ---------------------------------------------------------------------------
-// Fitting validators (unchanged, except we don't need excludedFittingIds)
-// ---------------------------------------------------------------------------
-
-function validateShelf(shelf, space, nodeId) {
-  const errs = [];
-  const topEdge = shelf.positionFromFloor + shelf.thickness;
-
-  if (shelf.positionFromFloor <= 0) {
-    errs.push({ rule: 'shelfPosition', nodeId,
-      message: `Shelf positionFromFloor must be > 0, got ${shelf.positionFromFloor}` });
-  } else if (topEdge >= space.height) {
-    errs.push({ rule: 'shelfPosition', nodeId,
-      message: `Shelf top (${topEdge} mm) exceeds compartment height (${space.height} mm)` });
-  }
-
-  if (shelf.depth > space.depth) {
-    errs.push({ rule: 'shelfDepth', nodeId,
-      message: `Shelf depth (${shelf.depth}) exceeds availableDepth (${space.depth})` });
-  }
-
-  if (shelf.width != null && shelf.width > space.width) {
-    errs.push({ rule: 'shelfWidth', nodeId,
-      message: `Shelf width (${shelf.width}) exceeds availableWidth (${space.width})` });
-  }
-
-  return errs;
-}
-
-function validateDrawer(drawer, space, nodeId) {
-  const errs = [];
-  const { outerWidth: oW, outerDepth: oD, outerHeight: oH, wallThickness: t } = drawer;
-
-  if (oW > space.width) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerWidth (${oW}) exceeds availableWidth (${space.width})` });
-  }
-  if (oD > space.depth) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerDepth (${oD}) exceeds availableDepth (${space.depth})` });
-  }
-  if (oH >= space.height) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerHeight (${oH}) must be < compartment height (${space.height})` });
-  }
-
-  const minOuter = Math.min(oW, oD, oH);
-  if (t >= minOuter * 0.5) {
-    errs.push({ rule: 'drawerWall', nodeId,
-      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
-  }
-
-  const innerW = oW - 2 * t;
-  const innerD = oD - 2 * t;
-  const innerH = oH - t;
-  if (innerW <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
-  if (innerD <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
-  if (innerH <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
-
-  return errs;
-}
-
-function validateDoorBin(bin, space, nodeId) {
-  const errs = [];
-  const { outerWidth: oW, outerHeight: oH, outerDepth: oD, wallThickness: t } = bin;
-
-  const minOuter = Math.min(oW, oH, oD);
-  if (t >= minOuter * 0.5) {
-    errs.push({ rule: 'doorBinWall', nodeId,
-      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
-  }
-
-  const innerW = oW - 2 * t;
-  const innerH = oH - 2 * t;
-  const innerD = oD - t;
-  if (innerW <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
-  if (innerH <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
-  if (innerD <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
-
-  return errs;
-}
-
-function checkDoorBinDepth(fittings, space, nodeId) {
-  const bins    = fittings.doorBins ?? [];
-  const shelves = fittings.shelves ?? [];
-  if (!bins.length) return null;
-
-  const totalBinDepth = bins.reduce((s, b) => s + b.outerDepth, 0);
-  const minShelfDepth = shelves.length
-    ? Math.min(...shelves.map(s => s.depth))
-    : 0;
-
-  const threshold = space.depth - minShelfDepth;
-
-  if (totalBinDepth > threshold) {
-    return {
-      rule:    'doorBinDepth',
-      nodeId,
-      message: `Σ bin depths (${totalBinDepth} mm) exceeds availableDepth − minShelfDepth (${threshold} mm)`,
-    };
-  }
-  return null;
-}
-
-===== D:\refrigerator-volume-calculator\src\js\engine\types.js =====
-/**
- * @file types.js
- * JSDoc type definitions shared across the calculation and validation engines.
- * No runtime code — import this file for IDE type hints only.
- */
-
-/**
- * @typedef {Object} ExternalDims
- * @property {number} height - mm
- * @property {number} width  - mm
- * @property {number} depth  - mm
- */
-
-/**
- * Available space passed down the node tree.
- * All values in mm. Derived once per node from parent context.
- * @typedef {Object} Space
- * @property {number} width
- * @property {number} height
- * @property {number} depth
- */
-
-/**
- * @typedef {Object} Shelf
- * @property {string} id
- * @property {number} positionFromFloor - mm
- * @property {number} thickness         - mm
- * @property {number} depth             - mm
- * @property {number|null} width        - mm; null = full availableWidth
- */
-
-/**
- * @typedef {Object} Drawer
- * @property {string} id
- * @property {number} outerWidth
- * @property {number} outerDepth
- * @property {number} outerHeight
- * @property {number} wallThickness
- */
-
-/**
- * @typedef {Object} DoorBin
- * @property {string} id
- * @property {number} outerWidth
- * @property {number} outerHeight
- * @property {number} outerDepth
- * @property {number} wallThickness
- */
-
-/**
- * @typedef {Object} HousingVolume
- * @property {number|null} volume - L; null = not present
- */
-
-/**
- * @typedef {Object} FittingConfig
- * @property {Shelf[]}       shelves
- * @property {Drawer[]}      drawers
- * @property {DoorBin[]}     doorBins
- * @property {HousingVolume} iceMakerHousing
- * @property {HousingVolume} lightHousing
- */
-
-/**
- * @typedef {Object} LeafNode
- * @property {'leaf'}       nodeType
- * @property {string}       id
- * @property {'fresh'|'freezer'|'flex'} type
- * @property {FittingConfig} fittings
- */
-
-/**
- * @typedef {Object} HorizontalChild
- * @property {'ratio'|'explicit'} heightMode
- * @property {number}             heightValue
- * @property {Node}               node
- */
-
-/**
- * @typedef {Object} Divider
- * @property {number} afterChildIndex
- * @property {number} thickness
- */
-
-/**
- * @typedef {Object} HorizontalSplitNode
- * @property {'horizontal'}    nodeType
- * @property {string}          id
- * @property {HorizontalChild[]} children
- * @property {Divider[]}       dividers
- */
-
-/**
- * @typedef {Object} VerticalSplitNode
- * @property {'vertical'} nodeType
- * @property {string}     id
- * @property {number}     dividerThickness
- * @property {number}     leftWidthRatio
- * @property {Node}       left
- * @property {Node}       right
- */
-
-/**
- * @typedef {LeafNode|HorizontalSplitNode|VerticalSplitNode} Node
- */
-
-/**
- * @typedef {Object} CabinetConfig
- * @property {string}         schemaVersion
- * @property {{ name: string, createdAt: string, updatedAt: string }} meta
-  * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
- */
-
-/**
- * @typedef {Object} WallThicknessesByType
- * @property {Object} fresh - {top, bottom, left, right, rear, door}
- * @property {Object} freezer
- * @property {Object} flex
- */
-/**
- * Per-leaf volume result. All volumes in L at full precision.
- * Rounded values are derived at display time only.
- * @typedef {Object} LeafResult
- * @property {string}  leafId
- * @property {string}  leafType
- * @property {Space}   space        - resolved available space (mm)
- * @property {number}  gross        - L, full precision
- * @property {number}  egNet        - L, full precision
- * @property {number}  iecNet       - L, full precision
- * @property {string[]} fittingErrors - ids of fittings excluded due to validation failure
- */
-
-/**
- * @typedef {Object} Totals
- * @property {number} gross  - L
- * @property {number} egNet  - L
- * @property {number} iecNet - L
- */
-
-/**
- * @typedef {Object} ValidationError
- * @property {string}  rule
- * @property {string}  [nodeId]
- * @property {string}  message
- * @property {boolean} [childrenSkipped]
- */
-
-/**
- * @typedef {Object} CalcError
- * @property {string} rule
- * @property {string} message
- */
-
-/**
- * @typedef {Object} Warning
- * @property {string} rule
- * @property {string} message
- */
-
-/**
- * Top-level result returned by runCalculation().
- * errors[] is always present; non-empty means output should be flagged.
- * @typedef {Object} CalcResult
- * * @property {FittingConfig} fittings    
- * @property {Totals|null}          totals
- * @property {ValidationError[]}    validationErrors
- * @property {CalcError[]}          calcErrors
- * @property {Warning[]}            warnings
- */
-
 ===== D:\refrigerator-volume-calculator\src\js\io\io.js =====
 /**
  * @file src/io/io.js
@@ -1161,7 +324,7 @@ function checkDoorBinDepth(fittings, space, nodeId) {
  * No DOM dependencies. Works in browser (File API) and Node.js.
  */
 
-import { toCuft, roundForDisplay } from '../engine/calc.js';
+import { toCuft, roundForDisplay, formatLeafDisplay, formatTotalsDisplay } from '../engine/calc.js';
 
 const SCHEMA_VERSION = '2.0';
 const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
@@ -1170,14 +333,6 @@ const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
 // JSON — Save
 // ---------------------------------------------------------------------------
 
-/**
- * Serialises a CabinetConfig to a JSON string ready for download.
- * Stamps updatedAt; preserves createdAt from original if present.
- *
- * @param {import('../engine/types').CabinetConfig} config
- * @param {string} [name] - optional label to set in meta.name
- * @returns {string} JSON string
- */
 export function configToJSON(config, name) {
   const now = new Date().toISOString();
   const out = {
@@ -1192,13 +347,6 @@ export function configToJSON(config, name) {
   return JSON.stringify(out, null, 2);
 }
 
-/**
- * Triggers a browser file download of the config JSON.
- * No-op in Node.js environments.
- *
- * @param {import('../engine/types').CabinetConfig} config
- * @param {string} [filename]
- */
 export function downloadConfigJSON(config, filename) {
   if (typeof document === 'undefined') return;
   const json = configToJSON(config);
@@ -1215,14 +363,6 @@ export function downloadConfigJSON(config, filename) {
 // JSON — Load
 // ---------------------------------------------------------------------------
 
-/**
- * Parses a JSON string into a CabinetConfig.
- * Validates schemaVersion. Throws on parse error or version mismatch.
- *
- * @param {string} jsonString
- * @returns {import('../engine/types').CabinetConfig}
- * @throws {Error}
- */
 export function configFromJSON(jsonString) {
   let parsed;
   try {
@@ -1247,13 +387,6 @@ export function configFromJSON(jsonString) {
   return parsed;
 }
 
-/**
- * Reads a File object and resolves with a parsed CabinetConfig.
- * Browser only.
- *
- * @param {File} file
- * @returns {Promise<import('../engine/types').CabinetConfig>}
- */
 export function loadConfigFromFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1270,29 +403,6 @@ export function loadConfigFromFile(file) {
 // CSV — Export
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a CSV string from a CalcResult.
- * Columns: Compartment, Type, Gross (L), EG Net (L), IEC Net (L),
- *          Gross (cu.ft), EG Net (cu.ft), IEC Net (cu.ft)
- * Final row: TOTAL.
- *
- * @param {import('../engine/types').CalcResult} result
- * @param {string} [configName]
- * @returns {string} CSV string
- */
-export function formatLeafDisplay(leaf) {
-  return {
-    gross:     roundForDisplay(leaf.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(leaf.gross), 'cuft'),
-  };
-}
-
-export function formatTotalsDisplay(totals) {
-  return {
-    gross:     roundForDisplay(totals.gross, 'L'),
-    grossCuft: roundForDisplay(toCuft(totals.gross), 'cuft'),
-  };
-}
 export function resultToCSV(result, configName) {
   if (!result.leaves || !result.totals) {
     return '# No results available (calculation produced errors)\n';
@@ -1341,14 +451,7 @@ export function resultToCSV(result, configName) {
 
   return rows.join('\n');
 }
-/**
- * Triggers a browser file download of the results CSV.
- * No-op in Node.js environments.
- *
- * @param {import('../engine/types').CalcResult} result
- * @param {string} [configName]
- * @param {string} [filename]
- */
+
 export function downloadResultsCSV(result, configName, filename) {
   if (typeof document === 'undefined') return;
   const csv  = resultToCSV(result, configName);
@@ -1365,15 +468,35 @@ export function downloadResultsCSV(result, configName, filename) {
 /**
  * Draw a dimension line with extension lines, arrows, and label.
  * Styled to standard CAD drafting representation.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x1
+ * @param {number} y1
+ * @param {number} x2
+ * @param {number} y2
+ * @param {number} offset
+ * @param {string} label
+ * @param {object} [opts]
+ * @param {string} [opts.color]
+ * @param {number} [opts.lineWidth]
+ * @param {number} [opts.arrowSize]
+ * @param {string} [opts.font]
+ * @param {number} [opts.textOffsetX]
+ * @param {number} [opts.textOffsetY]
+ * @param {boolean} [opts.drawExtLines]
+ * @param {string} [opts.bgColor]
+ * @param {number} [opts.textGap]
  */
 function drawDim(ctx, x1, y1, x2, y2, offset, label, {
-  color = '#2980b9',
-  lineWidth = 1,
-  arrowSize = 5,
-  font = 'bold 11px "Segoe UI", Arial, sans-serif',
+  color = DRAW_THEME.color,
+  lineWidth = DRAW_THEME.lineWidth,
+  arrowSize = DRAW_THEME.arrowSize,
+  font = DRAW_THEME.font,
   textOffsetX = 0,
   textOffsetY = 0,
-  drawExtLines = true
+  drawExtLines = true,
+  bgColor = DRAW_THEME.bgColor,
+  textGap = DRAW_THEME.textGap,
 } = {}) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -1391,10 +514,11 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
 
+  // Extension lines
   if (drawExtLines && offset !== 0) {
     ctx.beginPath();
     const extStart = Math.sign(offset) * 2;
-    const extEnd = offset + Math.sign(offset) * 4; // Slightly past the dim line
+    const extEnd = offset + Math.sign(offset) * 4;
     ctx.moveTo(x1 + nx * extStart, y1 + ny * extStart);
     ctx.lineTo(x1 + nx * extEnd, y1 + ny * extEnd);
     ctx.moveTo(x2 + nx * extStart, y2 + ny * extStart);
@@ -1402,12 +526,13 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.stroke();
   }
 
-  // Draw main dimension line
+  // Main dimension line
   ctx.beginPath();
   ctx.moveTo(p1x, p1y);
   ctx.lineTo(p2x, p2y);
   ctx.stroke();
 
+  // Arrows
   const angle = Math.atan2(dy, dx);
   ctx.fillStyle = color;
   for (const [px, py, sign] of [[p1x, p1y, 1], [p2x, p2y, -1]]) {
@@ -1425,22 +550,22 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.fill();
   }
 
+  // Label
   if (label) {
     const midX = (p1x + p2x) / 2 + textOffsetX;
     const midY = (p1y + p2y) / 2 + textOffsetY;
-    
+
     ctx.translate(midX, midY);
 
     // Keep text upright and readable (Standard CAD behavior)
     let textAngle = angle;
     if (textAngle > Math.PI / 2 + 0.01) {
-        textAngle -= Math.PI;
+      textAngle -= Math.PI;
     } else if (textAngle < -Math.PI / 2 + 0.01) {
-        textAngle += Math.PI;
+      textAngle += Math.PI;
     }
-    // Force vertical lines to read bottom-to-top strictly
     if (Math.abs(textAngle - Math.PI / 2) < 0.01) {
-        textAngle = -Math.PI / 2;
+      textAngle = -Math.PI / 2;
     }
 
     ctx.rotate(textAngle);
@@ -1448,27 +573,38 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.font = font;
     const metrics = ctx.measureText(label);
     const tw = metrics.width;
-    const th = 12; // Approximate font height
-    const gap = 4; // Separation from the dimension line
+    const th = 12; // approximate font height
 
-    // Semi-transparent background box to prevent overlap with model lines
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    // Semi-transparent background box
+    ctx.fillStyle = bgColor;
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4, 3);
+      ctx.roundRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4, 3);
     } else {
-      ctx.fillRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4);
+      ctx.fillRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4);
     }
     ctx.fill();
 
-    // Render dimension value completely off the line
+    // Dimension text
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(label, 0, -gap);
+    ctx.fillText(label, 0, -textGap);
   }
   ctx.restore();
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Drawing theme (exported for external use if needed)
+// ──────────────────────────────────────────────────────────────────
+export const DRAW_THEME = {
+  color: '#2980b9',
+  lineWidth: 1,
+  arrowSize: 5,
+  font: 'bold 11px "Segoe UI", Arial, sans-serif',
+  bgColor: 'rgba(255, 255, 255, 0.85)',
+  textGap: 4,
+};
 
 // ──────────────────────────────────────────────────────────────────
 // Front view
@@ -1497,7 +633,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   const intTop     = effectiveWalls.top;
   const intBottom  = H - effectiveWalls.bottom;
 
-  // Build the inner cavity polygon (stepped if left/right differ)
+  // Build the inner cavity polygon
   ctx.beginPath();
   ctx.rect(0, 0, W * scale, H * scale);
   let y = intTop;
@@ -1515,7 +651,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     y += h;
     ctx.lineTo(rightX, y * scale);
     if (i < compHeights.length - 1) {
-      // gap for divider will be handled below
+      // divider gap will be handled below
     }
   }
   ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
@@ -1554,7 +690,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // -------------------- Fittings drawing (if provided) --------------------
+  // Fittings drawing (if provided)
   if (options.fittings && leaves) {
     const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
     let yOffset = effectiveWalls.top;   // start from top of internal space
@@ -1603,8 +739,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // -------------------- Dimension lines (always drawn) --------------------
-  // Left side – compartment heights & divider
+  // Dimension lines
   const dimX = -35;
   y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
@@ -1620,13 +755,12 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
 
   // Horizontal dimensions at bottom
   drawDim(ctx, 0, H * scale, W * scale, H * scale, 35, `[W= ${W.toFixed(0)}]`);
-  // Left thickness for top compartment
   drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
-  // Right thickness for top compartment
   drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
 
   ctx.restore();
 }
+
 // ──────────────────────────────────────────────────────────────────
 // Side view – per‑compartment rear thicknesses
 // ──────────────────────────────────────────────────────────────────
@@ -1661,18 +795,17 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const innerTop  = tTop;
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
-  // Use bottom compartment’s rear (or the only compartment) for the stepped floor
   const bottomRear = compRear.length === 2 ? compRear[1] : compRear[0];
   const slopeStartX = bottomRear + Db1;
-  const slopeEndX   = bottomRear + Db2;  
-  // ---- 1. Insulation bands (per compartment, non‑overlapping) ----
-  // Top compartment
+  const slopeEndX   = bottomRear + Db2;
+
+  // Insulation bands
   const topH = compHeights[0];
   const topRearX = compRear[0] * scale;
   const topY = innerTop * scale;
   const topCompH = topH * scale;
   ctx.beginPath();
-  ctx.rect(0, 0, D * scale, topY + topCompH);                     // outer slice
+  ctx.rect(0, 0, D * scale, topY + topCompH);
   ctx.moveTo(topRearX, topCompH);
   ctx.lineTo(innerDoor * scale, topY);
   ctx.lineTo(innerDoor * scale, topY + topCompH);
@@ -1681,29 +814,26 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fillStyle = '#f0f0f0';
   ctx.fill();
 
-  // If two compartments, bottom compartment insulation
   if (compHeights.length === 2) {
     const bottomH = compHeights[1];
     const bottomRearX = compRear[1] * scale;
     const bottomY = (innerTop + topH + dividerThickness) * scale;
     const bottomCompH = bottomH * scale;
     ctx.beginPath();
-    ctx.rect(0, bottomY, D * scale, bottomCompH);             // outer slice
-    // inner cutout follows the stepped floor
+    ctx.rect(0, bottomY, D * scale, bottomCompH);
     ctx.moveTo(bottomRearX, bottomY);
     ctx.lineTo(innerDoor * scale, bottomY);
     ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
-    ctx.lineTo(innerDoor * scale, floorLowerY * scale);       // down to lower floor (should be same as bottom bottom)
+    ctx.lineTo(innerDoor * scale, floorLowerY * scale);
     ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
     ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-    ctx.lineTo(bottomRearX, floorRaisedY * scale);            // back to rear at raised floor
+    ctx.lineTo(bottomRearX, floorRaisedY * scale);
     ctx.closePath();
     ctx.fillStyle = '#f0f0f0';
     ctx.fill();
   }
 
-  // ---- 2. Compressor box ----
-  // (same as before, using global tRear)
+  // Compressor box
   const slopeDx = slopeEndX - slopeStartX;
   const slopeDy = floorLowerY - floorRaisedY;
   const slopeLen = Math.sqrt(slopeDx*slopeDx + slopeDy*slopeDy);
@@ -1732,7 +862,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fillStyle = '#555'; ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // ---- 3. White inner cavity (two separate shapes) ----
+  // White inner cavity (two separate shapes)
   // Top compartment
   ctx.beginPath();
   ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
@@ -1740,7 +870,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fill();
   ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
   ctx.stroke();
-  // bottom compartment
+
+  // Bottom compartment
   if (compHeights.length === 2) {
     const bottomRearX = compRear[1] * scale;
     const bottomY = (innerTop + topH + dividerThickness) * scale;
@@ -1760,7 +891,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.stroke();
   }
 
-  // ---- 4. Divider & doors ----
+  // Divider & doors
   let drawnDoors = [];
   if (compHeights.length === 2 && dividerThickness > 0) {
     const dividerY = innerTop + topH;
@@ -1796,7 +927,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
   }
 
-  // ---- Dimensions ----
+  // Dimension lines
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
@@ -1853,7 +984,15 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 ===== D:\refrigerator-volume-calculator\src\js\ui\settingsModal.js =====
 // js/ui/settingsModal.js
 
-import { settings, updateSettings } from '../settings.js';
+import { settings, updateSettings, resetSettings } from '../settings.js';
+import {
+  loadCompressors,
+  getCompressorList,
+  getCurrentCompressor,
+  setSelectedCompressor,
+  addCompressor,
+  deleteCompressor
+} from '../compressorManager.js';
 
 export function initSettingsModal() {
   const modal    = document.getElementById('settingsModal');
@@ -1864,44 +1003,36 @@ export function initSettingsModal() {
   const resetBtn  = document.getElementById('settingsReset');
   const gearBtn   = document.getElementById('settingsBtn');
 
-  // Show modal
   gearBtn.addEventListener('click', () => {
     renderSettingsTabs();
     modal.classList.remove('hidden');
   });
 
-  // Hide modal
   closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
   window.addEventListener('click', (e) => {
     if (e.target === modal) modal.classList.add('hidden');
   });
 
-  // Save & Close
   saveBtn.addEventListener('click', () => {
     collectSettingsFromTabs();
     updateSettings(settings);
     modal.classList.add('hidden');
   });
 
-  // Export / Import / Reset
   exportBtn.addEventListener('click', exportSettings);
   importBtn.addEventListener('click', importSettings);
   resetBtn.addEventListener('click', () => {
-    if (confirm('Reset all settings to factory defaults?')) {
-      resetToDefaults();
-      updateSettings(settings);
-      renderSettingsTabs();
-      modal.classList.add('hidden');
+    if (confirm('Reset all settings to factory defaults? This will also clear your compressor list.')) {
+      resetAllSettings();
     }
   });
 }
 
 // ---------------------------------------------------------------------------
-// Tab rendering
+// Tab rendering (General tab only)
 // ---------------------------------------------------------------------------
 
 function renderSettingsTabs() {
-  // Only the General tab exists now
   document.getElementById('stabGeneral').innerHTML = `
     <label>
       <input type="checkbox" id="autoCalculate" ${settings.autoCalculate ? 'checked' : ''}>
@@ -1936,46 +1067,75 @@ function collectSettingsFromTabs() {
 }
 
 // ---------------------------------------------------------------------------
-// Export / Import / Reset helpers – unchanged, they still export everything
+// Export / Import / Reset – full implementations
 // ---------------------------------------------------------------------------
 
 function exportSettings() {
-  const data = { ...settings, compressors: getCompressorList() };
-  // ... (exactly as before)
+  loadCompressors();
+  const exportData = {
+    settings: { ...settings },
+    compressorList: getCompressorList(),
+    selectedCompressorId: getCurrentCompressor()?.id ?? ''
+  };
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'refrigerator-calc-settings.json';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function importSettings() {
-  // ... (same as before but no loadCompressors call needed here)
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.settings) {
+        updateSettings(data.settings);
+      }
+      if (data.compressorList && Array.isArray(data.compressorList)) {
+        // Clear existing and replace
+        localStorage.setItem('compressorList', JSON.stringify(data.compressorList));
+        if (data.selectedCompressorId) {
+          localStorage.setItem('selectedCompressorId', data.selectedCompressorId);
+        }
+        loadCompressors(); // refresh memory
+      }
+      // Refresh the modal display (if still open)
+      renderSettingsTabs();
+      alert('Settings imported successfully.');
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    }
+  };
+  input.click();
 }
 
-function resetToDefaults() {
-  const defaults = {
-    autoCalculate: true,
-    showDirtyOverlay: true,
-    mm3ToL: 1e-6,
-    lToCuft: 0.0353147,
-    displayPrecisionL: 2,
-    displayPrecisionCuft: 3,
-    canvasWidth: 600,
-    canvasHeight: 800,
-  };
-  Object.assign(settings, defaults);
+function resetAllSettings() {
+  resetSettings();                         // engine settings to defaults
+  localStorage.removeItem('compressorList');
+  localStorage.removeItem('selectedCompressorId');
+  loadCompressors();                       // reloads the default compressor list
+  renderSettingsTabs();
+  document.getElementById('settingsModal').classList.add('hidden');
+  alert('All settings and compressor list have been reset to defaults.');
 }
 
 ===== D:\refrigerator-volume-calculator\src\js\ui\thermoUI.js =====
 // ──────────────────────────────────────────────────────────────────────────────
 // thermoUI.js — Thermal analysis panel
-//
-// Changes from original:
-//   • Removed unused `runThermalAnalysisDynamic` import (wrong API shape).
-//   • initThermoUI: initialises the new thermoFanInputPower field.
-//   • handleRun: uses buildDefaultConfig() so compParams (wCoeffs/etaCoeffs
-//     arrays) and condenserConfig (sidePipePitch_mm / backPipePitch_mm keys)
-//     are correctly formatted for solver.js.  Then calls runThermoAnalysis()
-//     whose return shape { success, errors, warnings, results } matches the
-//     existing handler logic.
-//   • displayResults: shows all result fields (TE, etaV, fanLoad, defrostLoad,
-//     iteration counts) that were previously missing.
+//   • Fan airflow is now calculated from fan geometry & RPM, not user‑entered.
+//   • Modal is built once; values are refreshed each time it opens.
+//   • Accepts an options object for cleaner injection of the geometry provider.
+//   • Fan airflow is displayed in the results report.
+//   • Full compressor management (add/edit/delete) via 3×3 matrix.
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
@@ -1990,11 +1150,26 @@ import {
   deleteCompressor
 } from '../compressorManager.js';
 import { computeCompressorCoefficients } from '../engine/thermo/CompressorPerformance.js';
-import { EnergyConsumption } from '../engine/thermo/solver.js';   // adjust path if needed
+import { EnergyConsumption } from '../engine/thermo/solver.js';
 import { settings, updateSettings } from '../settings.js';
 import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
 
-// Store advanced parameters globally, initialised from defaults
+// ---------------------------------------------------------------------------
+// Helper: compute fan airflow from diameter (mm) and RPM (rev/min)
+//   Returns m³/h. Uses a simplified axial‑flow fan model.
+//   Adjust the axialVelocityFactor (0.15) based on empirical data if needed.
+// ---------------------------------------------------------------------------
+function computeFanAirflow(fanParam = {}) {
+  const { fanDiam = 100, fanRPM = 2200 } = fanParam;   // mm, RPM
+  const D = fanDiam / 1000;                            // convert to m
+  const tipSpeed = (Math.PI * D * fanRPM) / 60;        // m/s
+  const axialVelocity = tipSpeed * 0.15;               // typical axial‑to‑tip ratio
+  const area = (Math.PI * D * D) / 4;                  // m²
+  const flow_m3s = axialVelocity * area;
+  return flow_m3s * 3600;                              // m³/h
+}
+
+// Module-level state
 let thermalAdvanced = {
   subcool: SJ54H_COMPONENTS.subcool_K,
   dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
@@ -2002,17 +1177,29 @@ let thermalAdvanced = {
   defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
   defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
 };
-let getGeometryFn = null;
 
-export function initThermoUI(getGeometry) {
-  getGeometryFn = getGeometry;
+let getGeometryFn = () => null;               // geometry provider
+
+// Persistent modal elements
+let thermalModal = null;
+let thermalModalInputs = {};
+
+// ────────────────────────────────────────────────────────────────
+// Public init
+// ────────────────────────────────────────────────────────────────
+export function initThermoUI(options) {
+  if (typeof options === 'function') {        // backward compatibility
+    getGeometryFn = options;
+  } else if (options && options.getGeometry) {
+    getGeometryFn = options.getGeometry;
+  }
 
   const panel = document.getElementById('panelThermal');
   if (!panel) return;
 
   panel.innerHTML = `
     <button id="thermoRunBtn">Run Thermal Analysis</button>
-    <div id="thermoErrors"></div>   <!-- keep errors in the left panel -->
+    <div id="thermoErrors"></div>
     <fieldset>
       <legend>Design Inputs</legend>
       <label>Ambient T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
@@ -2024,35 +1211,35 @@ export function initThermoUI(getGeometry) {
           <option value="R-134a">R-134a</option>
         </select>
       </label>
-      <label>Fan airflow (m³/h): <input type="number" id="thermoFanFlow" step="any"></label>
       <button id="thermoAdvancedBtn" type="button">⚙️ Advanced</button>
     </fieldset>
   `;
-  // Set default values
-  document.getElementById('thermoFanFlow').value = SJ54H_COMPONENTS.fan.totalAirflow_m3h;
 
-  // Load advanced values from localStorage (if any)
+  // Load saved advanced values from localStorage (if any)
   const saved = localStorage.getItem('thermoAdvanced');
   if (saved) thermalAdvanced = { ...thermalAdvanced, ...JSON.parse(saved) };
 
   document.getElementById('thermoAdvancedBtn').addEventListener('click', openThermalSettings);
   document.getElementById('thermoRunBtn').addEventListener('click', handleRun);
+
+  // Build the modal once and keep it hidden
+  buildThermalModalOnce();
 }
 
-function openThermalSettings() {
-  const modal = document.getElementById('thermalSettingsModal');
-  if (!modal) return;
+// ────────────────────────────────────────────────────────────────
+// Modal construction (runs only once)
+// ────────────────────────────────────────────────────────────────
+function buildThermalModalOnce() {
+  // Create the modal container if it doesn't already exist
+  thermalModal = document.getElementById('thermalSettingsModal');
+  if (!thermalModal) {
+    thermalModal = document.createElement('div');
+    thermalModal.id = 'thermalSettingsModal';
+    thermalModal.className = 'modal hidden';
+    document.body.appendChild(thermalModal);
+  }
 
-  // Ensure compressor list is fresh
-  loadCompressors();
-  const compressors = getCompressorList();
-  const currentComp = getCurrentCompressor();
-
-  // Read condenser settings from the main settings object (with fallback)
-  const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
-
-  // Build the full modal content
-  modal.innerHTML = `
+  thermalModal.innerHTML = `
     <div class="modal-content">
       <span class="close-btn" id="closeThermalSettings">&times;</span>
       <h2>Thermal Design Parameters</h2>
@@ -2060,10 +1247,10 @@ function openThermalSettings() {
       <fieldset>
         <legend>Condenser</legend>
         <label>Side pipe pitch (mm):
-          <input type="number" id="thermoCondSidePitch" value="${cond.sidePipePitch_mm}" step="any">
+          <input type="number" id="thermoCondSidePitch" step="any">
         </label>
         <label>Back pipe pitch (mm):
-          <input type="number" id="thermoCondBackPitch" value="${cond.backPipePitch_mm}" step="any">
+          <input type="number" id="thermoCondBackPitch" step="any">
         </label>
       </fieldset>
 
@@ -2080,45 +1267,44 @@ function openThermalSettings() {
         <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
         <label>Side Plates: <input id="evapSidePlateNo" type="number" step="any"></label>
       </fieldset>
+
       <fieldset>
         <legend>Fan Parameters</legend>
         <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
         <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
         <label>Input power (W):
-          <input type="number" id="thermoFanInputPower" value="${thermalAdvanced.fanInputPower}" step="any" min="0">
+          <input type="number" id="thermoFanInputPower" step="any" min="0">
         </label>
-
       </fieldset>
+
       <fieldset>
         <legend>Compressor</legend>
         <label>Current Compressor:
-          <select id="thermoCompressorSelect">
-            ${compressors.map(c => `<option value="${c.id}" ${c.id === currentComp.id ? 'selected' : ''}>${c.name}</option>`).join('')}
-          </select>
+          <select id="thermoCompressorSelect"></select>
         </label>
         <button id="thermoAddCompressorBtn" type="button">Add Compressor</button>
         <button id="thermoEditCompressorBtn" type="button">Edit Selected</button>
         <button id="thermoDeleteCompressorBtn" type="button">Delete Selected</button>
-        <div id="thermoCompressorList"></div>  <!-- can be used for detailed info later -->
       </fieldset>
 
       <fieldset>
         <legend>Subcool &amp; Discharge</legend>
         <label>Subcool (K):
-          <input type="number" id="thermoSubcool" value="${thermalAdvanced.subcool}" step="any">
+          <input type="number" id="thermoSubcool" step="any">
         </label>
         <label>Discharge temp (°C):
-          <input type="number" id="thermoDiscTemp" value="${thermalAdvanced.dischargeTemp}" step="any">
+          <input type="number" id="thermoDiscTemp" step="any">
         </label>
       </fieldset>
 
+      <fieldset>
         <legend>Defrost</legend>
         <label>Heater (W):
-          <input type="number" id="thermoDefHeater" value="${thermalAdvanced.defHeater}" step="any">
+          <input type="number" id="thermoDefHeater" step="any">
         </label>
         <label>On time (min/24h):
-          <input type="number" id="thermoDefOn" value="${thermalAdvanced.defOnMin}" step="any">
+          <input type="number" id="thermoDefOn" step="any">
         </label>
       </fieldset>
 
@@ -2127,229 +1313,161 @@ function openThermalSettings() {
       </div>
     </div>
   `;
-  const evap = settings.evaporator || {};
-  document.getElementById('evapWidth').value       = evap.width_mm ?? 460;
-  document.getElementById('evapHeight').value      = evap.height_mm ?? 150;
-  document.getElementById('evapDepth').value       = evap.depth_mm ?? 60;
-  document.getElementById('evapRows').value        = evap.rows ?? 2;
-  document.getElementById('evapTubeOD').value      = evap.tubeOD_mm ?? 8;
-  document.getElementById('evapFinPitch').value    = evap.finPitch_mm ?? 4;
-  document.getElementById('evapFinHeight').value   = evap.finHeight_mm ?? 150;
-  document.getElementById('evapFinLength').value   = evap.finLength_mm ?? 460;
-  document.getElementById('evapNumFins').value     = evap.numFins ?? 32;
-  document.getElementById('evapSidePlateNo').value = evap.sidePlateNo ?? 0;
 
-  const fanP = settings.fanParam || {};
-  document.getElementById('fanDiam').value  = fanP.fanDiam ?? 100;
-  document.getElementById('fanRPM').value   = fanP.fanRPM ?? 2200;
-  document.getElementById('fanThick').value = fanP.fanThick ?? 25;
-  modal.classList.remove('hidden');
+  // Cache all input references
+  thermalModalInputs = {
+    condSidePitch: document.getElementById('thermoCondSidePitch'),
+    condBackPitch: document.getElementById('thermoCondBackPitch'),
+    evapWidth: document.getElementById('evapWidth'),
+    evapHeight: document.getElementById('evapHeight'),
+    evapDepth: document.getElementById('evapDepth'),
+    evapRows: document.getElementById('evapRows'),
+    evapTubeOD: document.getElementById('evapTubeOD'),
+    evapFinPitch: document.getElementById('evapFinPitch'),
+    evapFinHeight: document.getElementById('evapFinHeight'),
+    evapFinLength: document.getElementById('evapFinLength'),
+    evapNumFins: document.getElementById('evapNumFins'),
+    evapSidePlateNo: document.getElementById('evapSidePlateNo'),
+    fanDiam: document.getElementById('fanDiam'),
+    fanRPM: document.getElementById('fanRPM'),
+    fanThick: document.getElementById('fanThick'),
+    fanInputPower: document.getElementById('thermoFanInputPower'),
+    compressorSelect: document.getElementById('thermoCompressorSelect'),
+    subcool: document.getElementById('thermoSubcool'),
+    dischargeTemp: document.getElementById('thermoDiscTemp'),
+    defHeater: document.getElementById('thermoDefHeater'),
+    defOn: document.getElementById('thermoDefOn'),
+  };
 
-  // Attach event listeners
-  document.getElementById('closeThermalSettings').onclick = () => modal.classList.add('hidden');
-
-  // Compressor management
-document.getElementById('thermoAddCompressorBtn').onclick = () => {
-  openAddCompressorModal();
-};
-document.getElementById('thermoEditCompressorBtn').onclick = () => {
-  openEditCompressorModal();
-};
+  // Attach permanent event listeners
+  document.getElementById('closeThermalSettings').onclick = () => thermalModal.classList.add('hidden');
+  document.getElementById('thermoAddCompressorBtn').onclick = openAddCompressorModal;
+  document.getElementById('thermoEditCompressorBtn').onclick = openEditCompressorModal;
   document.getElementById('thermoDeleteCompressorBtn').onclick = () => {
-    const sel = document.getElementById('thermoCompressorSelect');
+    const sel = thermalModalInputs.compressorSelect;
     if (confirm('Delete the selected compressor?')) {
       deleteCompressor(sel.value);
-      openThermalSettings(); // refresh
+      refreshCompressorSelect();
     }
   };
-
-  document.getElementById('thermoCompressorSelect').onchange = (e) => {
+  thermalModalInputs.compressorSelect.onchange = (e) => {
     setSelectedCompressor(e.target.value);
   };
-
-  // Save button
-  document.getElementById('saveThermalSettings').onclick = () => {
-    // Read condenser fields
-    const sidePitch = parseFloat(document.getElementById('thermoCondSidePitch').value) || 50;
-    const backPitch = parseFloat(document.getElementById('thermoCondBackPitch').value) || 50;
-    settings.condenser = {
-      sidePipePitch_mm: sidePitch,
-      backPipePitch_mm: backPitch,
-    };
-        // Read evaporator fields
-    settings.evaporator = {
-      width_mm:       parseFloat(document.getElementById('evapWidth').value) || 460,
-      height_mm:      parseFloat(document.getElementById('evapHeight').value) || 150,
-      depth_mm:       parseFloat(document.getElementById('evapDepth').value) || 60,
-      rows:           parseInt(document.getElementById('evapRows').value) || 2,
-      tubeOD_mm:      parseFloat(document.getElementById('evapTubeOD').value) || 8,
-      finPitch_mm:    parseFloat(document.getElementById('evapFinPitch').value) || 4,
-      finHeight_mm:   parseFloat(document.getElementById('evapFinHeight').value) || 150,
-      finLength_mm:   parseFloat(document.getElementById('evapFinLength').value) || 460,
-      numFins:        parseInt(document.getElementById('evapNumFins').value) || 32,
-      sidePlateNo:    parseInt(document.getElementById('evapSidePlateNo').value) || 0,
-    };
-
-    // Read fan parameters
-    settings.fanParam = {
-      fanDiam:  parseFloat(document.getElementById('fanDiam').value) || 100,
-      fanRPM:   parseFloat(document.getElementById('fanRPM').value) || 2200,
-      fanThick: parseFloat(document.getElementById('fanThick').value) || 25,
-    };
-    updateSettings(settings);   // persist & fire event
-
-    // Save the advanced thermal values to localStorage
-    thermalAdvanced.subcool       = parseFloat(document.getElementById('thermoSubcool').value) || SJ54H_COMPONENTS.subcool_K;
-    thermalAdvanced.dischargeTemp = parseFloat(document.getElementById('thermoDiscTemp').value) || SJ54H_COMPONENTS.dischargeTemp_C;
-    thermalAdvanced.fanInputPower = parseFloat(document.getElementById('thermoFanInputPower').value) || SJ54H_COMPONENTS.fan.inputPower_W;
-    thermalAdvanced.defHeater     = parseFloat(document.getElementById('thermoDefHeater').value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
-    thermalAdvanced.defOnMin      = parseFloat(document.getElementById('thermoDefOn').value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
-    localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
-
-    // Compressor selection already saved by onchange, but ensure it's set
-    const compSelect = document.getElementById('thermoCompressorSelect');
-    if (compSelect) setSelectedCompressor(compSelect.value);
-
-    modal.classList.add('hidden');
-  };
+  document.getElementById('saveThermalSettings').onclick = saveThermalSettings;
 
   // Close when clicking outside modal
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.classList.add('hidden');
+  thermalModal.onclick = (e) => {
+    if (e.target === thermalModal) thermalModal.classList.add('hidden');
   };
 }
 
+// ────────────────────────────────────────────────────────────────
+// Refresh modal fields and show it
+// ────────────────────────────────────────────────────────────────
+function openThermalSettings() {
+  loadCompressors();   // ensure latest compressor list
 
-function handleRun() {
-  clearMessages();
-  if (!getGeometryFn) { showError('Geometry source not available.'); return; }
-  const cabinetGeom = getGeometryFn();
+  // Condenser
+  const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
+  thermalModalInputs.condSidePitch.value = cond.sidePipePitch_mm;
+  thermalModalInputs.condBackPitch.value = cond.backPipePitch_mm;
 
-  if (
-    cabinetGeom._compartments &&
-    cabinetGeom._compartments.length > 1 &&
-    cabinetGeom._compartments[0].type !== 'freezer'
-  ) {
-    showError('Thermal analysis currently supports only freezer-top configurations.');
-    return;
-  }
+  // Evaporator
+  const evap = settings.evaporator || {};
+  thermalModalInputs.evapWidth.value       = evap.width_mm ?? 460;
+  thermalModalInputs.evapHeight.value      = evap.height_mm ?? 150;
+  thermalModalInputs.evapDepth.value       = evap.depth_mm ?? 60;
+  thermalModalInputs.evapRows.value        = evap.rows ?? 2;
+  thermalModalInputs.evapTubeOD.value      = evap.tubeOD_mm ?? 8;
+  thermalModalInputs.evapFinPitch.value    = evap.finPitch_mm ?? 4;
+  thermalModalInputs.evapFinHeight.value   = evap.finHeight_mm ?? 150;
+  thermalModalInputs.evapFinLength.value   = evap.finLength_mm ?? 460;
+  thermalModalInputs.evapNumFins.value     = evap.numFins ?? 32;
+  thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
 
-  const geom = toThermalFormat(cabinetGeom);
+  // Fan parameters
+  const fanP = settings.fanParam || {};
+  thermalModalInputs.fanDiam.value  = fanP.fanDiam ?? 100;
+  thermalModalInputs.fanRPM.value   = fanP.fanRPM ?? 2200;
+  thermalModalInputs.fanThick.value = fanP.fanThick ?? 25;
+  thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
-  const T0 = parseFloat(document.getElementById('thermoT0')?.value);
-  const TF = parseFloat(document.getElementById('thermoTF')?.value);
-  const TR = parseFloat(document.getElementById('thermoTR')?.value);
-  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) { showError('Please fill all temperatures.'); return; }
+  // Advanced thermal values
+  thermalModalInputs.subcool.value       = thermalAdvanced.subcool;
+  thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
+  thermalModalInputs.defHeater.value     = thermalAdvanced.defHeater;
+  thermalModalInputs.defOn.value         = thermalAdvanced.defOnMin;
 
-  const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
-  const fanFlow = parseFloat(document.getElementById('thermoFanFlow')?.value) || SJ54H_COMPONENTS.fan.totalAirflow_m3h;
-  
-  const config = buildDefaultConfig({
-    geom,
-    freezerPosition: cabinetGeom._compartments?.[0]?.type === 'freezer' ? 'top' : 'bottom',
-    refrigerant,
-    subcool: thermalAdvanced.subcool,
-    dischargeTemp: thermalAdvanced.dischargeTemp,
-    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
-  });
-  config.evapGeom = settings.evaporator || {};
-  config.fanParam = settings.fanParam || {};
-  // Keep a reference to the default (working) coefficients
-  const defaultCompParams = config.compParams;
+  // Compressor dropdown
+  refreshCompressorSelect();
 
-  loadCompressors();
-  const compressor = getCurrentCompressor();   // single declaration
-  console.log('Loaded compressor object:', JSON.stringify(compressor, null, 2));
-    // Replace compParams only if the selected compressor provides valid arrays
-  if (compressor) {
-      // Helper: ensure coefficients are a flat array
-      const toArray = (coeffs, keys) => {
-          if (Array.isArray(coeffs)) return coeffs;
-          if (coeffs && typeof coeffs === 'object') {
-              return keys.map(k => coeffs[k]).filter(v => v !== undefined);
-          }
-          return null;
-      };
-
-      const wArr = toArray(compressor.wCoeffs, ['AW','BW','CW','DW','EW']);
-      const etaArr = toArray(compressor.etaCoeffs, ['A','B','C']);
-
-      if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
-          config.compParams = {
-              name: compressor.name,
-              cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
-              speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
-              wCoeffs: wArr,
-              etaCoeffs: etaArr,
-          };
-      } else {
-          console.warn('Selected compressor missing coefficients – using default.', compressor);
-      }
-  }
-
-  // Now it’s safe to run
-  const result = runThermoAnalysis(config);
-  if (!result.success) {
-    showError(result.errors.join('; '));
-    return;
-  }
-
-  // Compute energy consumption
-  let energy = null;
-  if (result.results && result.results.converged) {
-    try {
-      energy = EnergyConsumption(result.results);
-    } catch (e) {
-      console.warn('EnergyConsumption calculation failed:', e);
-    }
-  }
-  // Fallback: if converged flag is missing, assume converged if PR is present
-  if (result.results && (result.results.converged !== false)) {
-    try {
-      energy = EnergyConsumption(result.results);
-    } catch (e) {
-      console.error('EnergyConsumption threw:', e);
-    }
-  }
-  // Compute evaporator performance if settings exist
-  let evapDetails = null;
-  const evap = settings.evaporator;
-  const fanP = settings.fanParam;
-  if (evap && fanP && result.results && result.results.converged !== false) {
-    try {
-      const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap);
-      const alpha = evaporatorAlpha(v);
-      const TF = parseFloat(document.getElementById('thermoTF')?.value) || -18;
-      const TR = parseFloat(document.getElementById('thermoTR')?.value) || 3;
-      const MR = result.results.MR || 0;
-      const MF = result.results.MF || 0;
-      const totalFlow = MR + MF;
-      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
-      const T2 = result.results.T2;
-      const TE = result.results.TE;
-      const LMTD = lmtd(T1, T2, TE);
-      const Qevap = evaporatorCapacity(alpha, area, LMTD);
-      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
-    } catch (e) {
-      console.warn('Evaporator calculation failed:', e);
-    }
-  }
-
-  // Attach to results so displayResults can use it
-  if (evapDetails) {
-    result.results.evapDetails = evapDetails;
-  }
-
-  displayResults(result.results, energy);
-  if (result.warnings.length) showWarnings(result.warnings);
+  thermalModal.classList.remove('hidden');
 }
 
-// ---------------------------------------------------------------------------
-// Add Compressor Modal – builds the 3×3 matrix, fits coefficients, adds to list
-// ---------------------------------------------------------------------------
+function refreshCompressorSelect() {
+  const select = thermalModalInputs.compressorSelect;
+  select.innerHTML = '';
+  const compressors = getCompressorList();
+  const currentId = getCurrentCompressor()?.id;
+  compressors.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    opt.selected = c.id === currentId;
+    select.appendChild(opt);
+  });
+}
+
+// ────────────────────────────────────────────────────────────────
+// Save settings from the modal
+// ────────────────────────────────────────────────────────────────
+function saveThermalSettings() {
+  // Condenser
+  const sidePitch = parseFloat(thermalModalInputs.condSidePitch.value) || 50;
+  const backPitch = parseFloat(thermalModalInputs.condBackPitch.value) || 50;
+  settings.condenser = { sidePipePitch_mm: sidePitch, backPipePitch_mm: backPitch };
+
+  // Evaporator
+  settings.evaporator = {
+    width_mm:       parseFloat(thermalModalInputs.evapWidth.value) || 460,
+    height_mm:      parseFloat(thermalModalInputs.evapHeight.value) || 150,
+    depth_mm:       parseFloat(thermalModalInputs.evapDepth.value) || 60,
+    rows:           parseInt(thermalModalInputs.evapRows.value) || 2,
+    tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
+    finPitch_mm:    parseFloat(thermalModalInputs.evapFinPitch.value) || 4,
+    finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
+    finLength_mm:   parseFloat(thermalModalInputs.evapFinLength.value) || 460,
+    numFins:        parseInt(thermalModalInputs.evapNumFins.value) || 32,
+    sidePlateNo:    parseInt(thermalModalInputs.evapSidePlateNo.value) || 0,
+  };
+
+  // Fan
+  settings.fanParam = {
+    fanDiam:  parseFloat(thermalModalInputs.fanDiam.value) || 100,
+    fanRPM:   parseFloat(thermalModalInputs.fanRPM.value) || 2200,
+    fanThick: parseFloat(thermalModalInputs.fanThick.value) || 25,
+  };
+
+  updateSettings(settings);
+
+  // Advanced thermal values
+  thermalAdvanced.subcool       = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
+  thermalAdvanced.dischargeTemp = parseFloat(thermalModalInputs.dischargeTemp.value) || SJ54H_COMPONENTS.dischargeTemp_C;
+  thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
+  thermalAdvanced.defHeater     = parseFloat(thermalModalInputs.defHeater.value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
+  thermalAdvanced.defOnMin      = parseFloat(thermalModalInputs.defOn.value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
+  localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
+
+  // Compressor
+  const compSelect = thermalModalInputs.compressorSelect;
+  if (compSelect) setSelectedCompressor(compSelect.value);
+
+  thermalModal.classList.add('hidden');
+}
+
+// ────────────────────────────────────────────────────────────────
+// Add Compressor Modal – builds the 3×3 matrix, fits coefficients
+// ────────────────────────────────────────────────────────────────
 function openAddCompressorModal() {
   const modal = document.getElementById('addCompressorModal');
   if (!modal) return;
@@ -2531,24 +1649,23 @@ function openEditCompressorModal() {
   const name = comp.name || '';
   const cyl  = comp.cylinderVolumeCm3 || 10.17;
   const rpm  = comp.speedRpm || 2220;
-  const refIdx = comp.refrigerantIndex || 2;   // we don't store refrigerant index, default R‑600a
+  const refIdx = comp.refrigerantIndex || 2;
 
-  // We can't recover original test data, so we show empty matrix
+  // Default TE/TC values (can't recover original test data)
   const defaultTE = [-34.4, -23.3, -12.2];
   const defaultTC = [37.8, 46.1, 54.4];
-  const Q_matrix = [['','',''],['','',''],['','','']];
-  const W_matrix = [['','',''],['','',''],['','','']];
-  // Build the modal content – note the title says "Edit Compressor"
+
   const headerCells = defaultTC.map((tc, j) => `
     <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
   `).join('');
+
   const bodyRows = defaultTE.map((te, i) => `
     <tr>
       <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
       ${defaultTC.map((_, j) => `
         <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;"><br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">
         </td>
       `).join('')}
     </tr>
@@ -2638,37 +1755,37 @@ function openEditCompressorModal() {
     }
 
     let wCoeffs, etaCoeffs;
-    // After the loop that builds dataPoints:
     const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
     if (dataPoints.length >= 5 && nonZeroCount === 0) {
-        errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
-        return;
+      errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
+      return;
     }
-        if (dataPoints.length >= 5) {
-          try {
-            const coeffs = computeCompressorCoefficients({
-              cylinderVolumeCm3: newCyl,
-              speedRpm: newRpm,
-              refrigerantIndex: newRefIdx,
-              dataPoints,
-            });
-            wCoeffs = coeffs.wCoeffs;
-            etaCoeffs = coeffs.etaCoeffs;
-          } catch (err) {
-            errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
-            return;
-          }
-        } else {
-          // Keep existing coefficients, but must be valid
-          if (!comp.wCoeffs || !comp.etaCoeffs || comp.wCoeffs.length !== 5 || comp.etaCoeffs.length !== 3) {
-            errorDiv.textContent = 'No valid existing coefficients. Please enter at least 5 test data points.';
-            return;
-          }
+
+    if (dataPoints.length >= 5) {
+      try {
+        const coeffs = computeCompressorCoefficients({
+          cylinderVolumeCm3: newCyl,
+          speedRpm: newRpm,
+          refrigerantIndex: newRefIdx,
+          dataPoints,
+        });
+        wCoeffs = coeffs.wCoeffs;
+        etaCoeffs = coeffs.etaCoeffs;
+      } catch (err) {
+        errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
+        return;
+      }
+    } else {
+      // Keep existing coefficients
+      if (!comp.wCoeffs || !comp.etaCoeffs || comp.wCoeffs.length !== 5 || comp.etaCoeffs.length !== 3) {
+        errorDiv.textContent = 'No valid existing coefficients. Please enter at least 5 test data points.';
+        return;
+      }
       wCoeffs = comp.wCoeffs;
       etaCoeffs = comp.etaCoeffs;
     }
 
-    // Build the updated compressor object
+    // Build updated compressor object
     const updatedComp = {
       id: newName.replace(/\s/g, ''),
       name: newName,
@@ -2694,8 +1811,133 @@ function openEditCompressorModal() {
     if (e.target === modal) modal.classList.add('hidden');
   };
 }
-// ─── Results display ───────────────────────────────────────────────────────
 
+// ────────────────────────────────────────────────────────────────
+// Run thermal analysis
+// ────────────────────────────────────────────────────────────────
+function handleRun() {
+  clearMessages();
+  if (!getGeometryFn) { showError('Geometry source not available.'); return; }
+  const cabinetGeom = getGeometryFn();
+  const geom = toThermalFormat(cabinetGeom);
+
+  const T0 = parseFloat(document.getElementById('thermoT0')?.value);
+  const TF = parseFloat(document.getElementById('thermoTF')?.value);
+  const TR = parseFloat(document.getElementById('thermoTR')?.value);
+  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) { showError('Please fill all temperatures.'); return; }
+
+  const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
+
+  // Fan airflow calculated from fan parameters stored in settings
+  const fanParam = settings.fanParam || {};
+  const fanFlow = computeFanAirflow(fanParam);
+
+  // Determine freezer position correctly for any configuration
+  const comps = cabinetGeom._compartments;
+  const nComps = comps?.length || 0;
+  const hasFreezer = comps && comps[0].type === 'freezer';
+  const freezerPosition =
+      nComps === 1 ? 'top' :                // single compartment always 'top'
+      hasFreezer ? 'top' : 'bottom';
+
+  const config = buildDefaultConfig({
+    geom,
+    freezerPosition,
+    refrigerant,
+    subcool: thermalAdvanced.subcool,
+    dischargeTemp: thermalAdvanced.dischargeTemp,
+    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+  });
+  config.evapGeom = settings.evaporator || {};
+  config.fanParam = fanParam;
+
+  // Compressor coefficients
+  const defaultCompParams = config.compParams;
+  loadCompressors();
+  const compressor = getCurrentCompressor();
+  if (compressor) {
+    const toArray = (coeffs, keys) => {
+      if (Array.isArray(coeffs)) return coeffs;
+      if (coeffs && typeof coeffs === 'object') {
+        return keys.map(k => coeffs[k]).filter(v => v !== undefined);
+      }
+      return null;
+    };
+    const wArr = toArray(compressor.wCoeffs, ['AW','BW','CW','DW','EW']);
+    const etaArr = toArray(compressor.etaCoeffs, ['A','B','C']);
+
+    if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
+      config.compParams = {
+        name: compressor.name,
+        cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
+        speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
+        wCoeffs: wArr,
+        etaCoeffs: etaArr,
+      };
+    } else {
+      console.warn('Selected compressor missing coefficients – using default.', compressor);
+    }
+  }
+  config.solverOptions = config.solverOptions || {};
+  config.solverOptions.innerOptions = config.solverOptions.innerOptions || {};
+  config.solverOptions.innerOptions.debug = true;
+
+  const result = runThermoAnalysis(config);
+  if (!result.success) {
+    showError(result.errors.join('; '));
+    return;
+  }
+
+  // Energy consumption
+  let energy = null;
+  if (result.results && (result.results.converged !== false)) {
+    try { energy = EnergyConsumption(result.results); }
+    catch (e) { console.warn('EnergyConsumption failed:', e); }
+  }
+
+  // Evaporator performance
+  let evapDetails = null;
+  const evap = settings.evaporator;
+  const fanP = settings.fanParam;
+  if (evap && fanP && result.results && result.results.converged !== false) {
+    try {
+      const area = computeEvaporatorArea(evap);
+      const v = airSpeed(fanP, evap);
+      const alpha = evaporatorAlpha(v);
+      const TF = parseFloat(document.getElementById('thermoTF')?.value) || -18;
+      const TR = parseFloat(document.getElementById('thermoTR')?.value) || 3;
+      const MR = result.results.MR || 0;
+      const MF = result.results.MF || 0;
+      const totalFlow = MR + MF;
+      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T2 = result.results.T2;
+      const TE = result.results.TE;
+      const LMTD = lmtd(T1, T2, TE);
+      const Qevap = evaporatorCapacity(alpha, area, LMTD);
+      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+    } catch (e) { console.warn('Evaporator calculation failed:', e); }
+  }
+  if (evapDetails) result.results.evapDetails = evapDetails;
+
+  // Attach fan airflow to results for display
+  result.results.fanAirflow = fanFlow;
+
+  // Switch to Thermal tab and display results
+  document.getElementById('tabThermal').click();
+  const thermoRight = document.getElementById('thermoRightPanel');
+  if (thermoRight) thermoRight.innerHTML = '';
+  result.results.configLabel =
+    (comps && comps.length === 1 ? `Single ${comps[0].type}` :
+     freezerPosition === 'top' ? 'Top Freezer' : 'Bottom Freezer');
+  displayResults(result.results, energy);
+  if (result.warnings.length) showWarnings(result.warnings);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Display helpers (now includes fan airflow section)
+// ────────────────────────────────────────────────────────────────
 function displayResults(res, energy) {
   if (!res) return;
 
@@ -2719,15 +1961,19 @@ function displayResults(res, energy) {
   const etaV = comp.etaV !== undefined ? fmtP(comp.etaV) : '—';
   const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';
   const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';
+  const COP = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
   const mFlow= comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
 
   const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
 
+  const fanAirflow = res.fanAirflow !== undefined ? fmt(res.fanAirflow, 1) : '—';
+
+  const configLabel = res.configLabel || 'Unknown';
   const html = `
     <table class="thermo-results-table">
       <thead>
-        <tr><th colspan="2">Thermal Analysis Results</th></tr>
+        <tr><th colspan="2">Thermal Analysis Results — ${configLabel}</th></tr>
       </thead>
       <tbody>
         <tr class="section-header"><td colspan="2">Operating Points</td></tr>
@@ -2742,6 +1988,7 @@ function displayResults(res, energy) {
         <tr><td>Vol. efficiency η<sub>v</sub></td><td>${etaV}</td></tr>
         <tr><td>Cooling capacity</td><td>${qComp} kcal/h</td></tr>
         <tr><td>Input power</td><td>${pComp} W</td></tr>
+        <tr><td>COP</td><td>${COP}</td></tr>
         <tr><td>Mass flow</td><td>${mFlow} kg/h</td></tr>
 
         <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
@@ -2754,6 +2001,9 @@ function displayResults(res, energy) {
         <tr><td>QEV — Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
         <tr><td>Fan load</td><td>${fmt(res.heatLoads.fanLoad)}</td></tr>
         <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
+
+        <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
+        <tr><td>Calculated airflow</td><td>${fanAirflow} m³/h</td></tr>
         ${
           res.evapDetails ? `
           <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
@@ -2773,8 +2023,6 @@ function displayResults(res, energy) {
   `;
   resultsDiv.innerHTML = html;
 }
-
-// ─── Message helpers ───────────────────────────────────────────────────────
 
 function clearMessages() {
   const thermoRight = document.getElementById('thermoRightPanel');
@@ -3061,6 +2309,20 @@ function syncConstraints() {
 }
 
 function onCompFieldChange(compIdx, field, value) {
+  // For non‑numeric fields (type), skip the numeric guard
+  if (field === 'type') {
+    compartmentsData[compIdx].type = value;
+    // If two compartments, force the other one to the opposite type
+    if (compartmentsData.length > 1) {
+      const otherIdx = 1 - compIdx;
+      compartmentsData[otherIdx].type = (value === 'freezer' ? 'fresh' : 'freezer');
+    }
+    syncDisplay();
+    if (settings.autoCalculate) calculateBtn.click();
+    return;
+  }
+
+  // Numeric fields – must be a valid number
   if (isNaN(value)) return;
   compartmentsData[compIdx][field] = value;
 
@@ -3103,10 +2365,7 @@ function onCompFieldChange(compIdx, field, value) {
   }
 
   syncDisplay();
-
-  if (settings.autoCalculate) {
-    calculateBtn.click();
-  }
+  if (settings.autoCalculate) calculateBtn.click();
 }
 
 function syncDisplay() {
@@ -3387,6 +2646,65 @@ function computeAccurateBottomVolume(geom, eff) {
   const width = geom.W - eff.left - eff.right;
   return area * width * settings.mm3ToL;   // litres
 }
+
+function displayVolumeResults(result) {
+  if (!result.leaves || !result.totals) return;
+  
+  const eff = getEffectiveThicknesses();
+  const bottomIdx = result.leaves.length - 1;
+  const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
+
+  // Override the bottom leaf gross volume with the accurate stepped-floor calculation
+  const bottomLeaf = result.leaves[bottomIdx];
+  const oldBottomVol = bottomLeaf.gross;
+  bottomLeaf.gross = accurateBottomVol;
+  result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+
+  // Format totals display
+  const disp = formatTotalsDisplay({ gross: result.totals.gross });
+  document.getElementById('grossVol').textContent      = disp.gross;
+  document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+
+  const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+  const usableL = result.totals.gross * (usableFactor / 100);
+  const usableCuft = usableL * settings.lToCuft;
+  document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
+  document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+}
+
+function drawSchematics(config, leaves) {
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (!frontCanvas || !sideCanvas || !leaves) return;
+
+  const rightPanel = document.querySelector('.right-panel');
+  const panelHeight = rightPanel.clientHeight - 30;
+  const panelWidth  = rightPanel.clientWidth - 20;
+  frontCanvas.height = panelHeight;
+  sideCanvas.height  = panelHeight;
+  frontCanvas.width  = panelWidth / 2 - 5;
+  sideCanvas.width   = panelWidth / 2 - 5;
+
+  const effectiveWalls = getEffectiveThicknesses();
+  const fittings = extractFittingsFromLayout(config.cabinet.layout);
+  const drawOptions = {
+    dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+    compHeights: compartmentsData.map(c => c.height),
+    doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+    compartments: compartmentsData.map(c => ({
+      left: c.left,
+      right: c.right,
+      rear: c.rear
+    })),
+    fittings
+  };
+
+  drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
+  drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+  dirtySchematic = false;
+  schematicOverlay.classList.add('hidden');
+}
+
 // ---- Calculate button -------------------------------------------------
 calculateBtn.addEventListener('click', () => {
   const { config, layout } = buildConfigFromForm();
@@ -3399,63 +2717,10 @@ calculateBtn.addEventListener('click', () => {
 
   const result = runCalculation(config);
 
-  if (result.leaves && result.totals) {
-    // Replace bottom leaf with accurate stepped-floor volume (still needed for gross)
-    const eff = getEffectiveThicknesses();
-    const bottomIdx = result.leaves.length - 1;
-    const bottomCompHeight = compartmentsData[bottomIdx].height;
-    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-
-    const bottomLeaf = result.leaves[bottomIdx];
-    const oldBottomVol = bottomLeaf.gross;
-    bottomLeaf.gross = accurateBottomVol;
-    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-
-    // Format totals display (now only gross)
-    const disp = formatTotalsDisplay({ gross: result.totals.gross });
-    document.getElementById('grossVol').textContent      = disp.gross;
-    document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-    const usableL = result.totals.gross * (usableFactor / 100);
-    const usableCuft = usableL * settings.lToCuft;
-    document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-    document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-  }
+  displayVolumeResults(result);
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
+  drawSchematics(config, result.leaves);
 
-  // Draw schematics
-  const frontCanvas = document.getElementById('schematicFront');
-  const sideCanvas  = document.getElementById('schematicSide');
-  if (frontCanvas && sideCanvas) {
-    const rightPanel = document.querySelector('.right-panel');
-    const panelHeight = rightPanel.clientHeight - 30;
-    const panelWidth  = rightPanel.clientWidth - 20;
-    frontCanvas.height = panelHeight;
-    sideCanvas.height  = panelHeight;
-    frontCanvas.width  = panelWidth / 2 - 5;
-    sideCanvas.width   = panelWidth / 2 - 5;
-
-    const effectiveWalls = getEffectiveThicknesses();
-    // Gather fittings from the layout tree (all leaves)
-    const fittings = extractFittingsFromLayout(layout); // see below
-    const drawOptions = {
-      dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-      compHeights: compartmentsData.map(c => c.height),
-      doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-      compartments: compartmentsData.map(c => ({
-        left: c.left,
-        right: c.right,
-        rear: c.rear
-      })),
-      fittings  // <-- pass to schematic
-    };
-
-    drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
-    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-    dirtySchematic = false;
-    schematicOverlay.classList.add('hidden');
-  }
 });
 
 function extractFittingsFromLayout(node) {
@@ -3588,63 +2853,9 @@ loadBtn.addEventListener('click', () => {
       const result = runCalculation(config);
 
       // 3. Display results (with accurate bottom volume replacement)
-      if (result.leaves && result.totals) {
-        const eff = getEffectiveThicknesses();
-        const bottomIdx = result.leaves.length - 1;
-        const bottomCompHeight = compartmentsData[bottomIdx].height;
-        const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-
-        const bottomLeaf = result.leaves[bottomIdx];
-        const oldBottomVol = bottomLeaf.gross;
-        bottomLeaf.gross = accurateBottomVol;
-        result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-
-        const disp = formatTotalsDisplay({ gross: result.totals.gross });
-        document.getElementById('grossVol').textContent      = disp.gross;
-        document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
-
-        const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-        const usableL = result.totals.gross * (usableFactor / 100);
-        const usableCuft = usableL * settings.lToCuft;
-        document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-        document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
-      }
-
+      displayVolumeResults(result);
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
-
-      // 4. Draw schematics (once)
-      const frontCanvas = document.getElementById('schematicFront');
-      const sideCanvas  = document.getElementById('schematicSide');
-      if (frontCanvas && sideCanvas && result.leaves) {
-        const rightPanel = document.querySelector('.right-panel');
-        const panelHeight = rightPanel.clientHeight - 30;
-        const panelWidth  = rightPanel.clientWidth - 20;
-        frontCanvas.height = panelHeight;
-        sideCanvas.height  = panelHeight;
-        frontCanvas.width  = panelWidth / 2 - 5;
-        sideCanvas.width   = panelWidth / 2 - 5;
-
-        const effectiveWalls = getEffectiveThicknesses();
-        const fittings = extractFittingsFromLayout(config.cabinet.layout);
-        const drawOptions = {
-          dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-          compHeights: compartmentsData.map(c => c.height),
-          doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-          compartments: compartmentsData.map(c => ({
-            left: c.left,
-            right: c.right,
-            rear: c.rear
-          })),
-          fittings   // <-- correct placement at top level
-        };
-
-        drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
-        drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-
-        dirtySchematic = false;
-        schematicOverlay.classList.add('hidden');
-      }
-
+      drawSchematics(config, result.leaves);
       // alert('Configuration loaded and calculated.');   // optional, remove after testing
     } catch (err) {
       alert('Error: ' + err.message);
@@ -3824,7 +3035,10 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
 // Thermo UI init with geometry provider
-initThermoUI(() => readGeometryFromPanel());
+initThermoUI({
+  getGeometry: () => readGeometryFromPanel(),
+  setGeometryProvider: null  // not needed currently
+});
 
 ===== D:\refrigerator-volume-calculator\src\js\settings.js =====
 // js/settings.js

@@ -105,7 +105,7 @@ function initCompartments() {
 function syncConstraints() {
   const count = compartmentsData.length;
   const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
-  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
   const totalInsulTop = compartmentsData[0].top;
   const totalInsulBottom = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
   let internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
@@ -121,6 +121,9 @@ function syncConstraints() {
     compartmentsData[0].height = internalH;
     compartmentsData[0].ratio = 1.0;
     return;
+  }
+  if (count === 2) {
+    compartmentsData[1].top = dividerThick;
   }
 
   // Two compartments
@@ -172,7 +175,7 @@ function onCompFieldChange(compIdx, field, value) {
   if (field === 'height' || field === 'ratio') {
     const count = compartmentsData.length;
     const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
-    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
     const topInsul = compartmentsData[0].top;
     const bottomInsul = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
     const internalH = H - topInsul - bottomInsul - (count - 1) * dividerThick;
@@ -223,6 +226,8 @@ function syncDisplay() {
       ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
     }
     if (typeSelect) typeSelect.value = d.type;
+        const topInput = document.getElementById(`comp-${i}-top`);
+    if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
   }
 }
 
@@ -253,7 +258,7 @@ function buildCompartmentUI() {
       <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
       <fieldset>
         <legend>Wall Thicknesses (mm)</legend>
-        <label>Top:    <input type="number" id="comp-${i}-top"    value="${d.top}"    step="any"></label>
+        ${ count === 1 || i === 0 ? `<label>Top: <input type="number" id="comp-${i}-top" value="${d.top}" step="any"></label>` : '' }
         <label>Left:   <input type="number" id="comp-${i}-left"   value="${d.left}"   step="any"></label>
         <label>Right:  <input type="number" id="comp-${i}-right"  value="${d.right}"  step="any"></label>
         <label>Rear:   <input type="number" id="comp-${i}-rear"   value="${d.rear}"   step="any"></label>
@@ -275,7 +280,9 @@ function buildCompartmentUI() {
       onCompFieldChange(i, 'ratio', parseFloat(e.target.value) || 10);
     });
     for (const face of ['top','left','right','rear','door']) {
-      document.getElementById(`comp-${i}-${face}`).addEventListener('input', (e) => {
+      const el = document.getElementById(`comp-${i}-${face}`);
+      if (!el) continue;
+      el.addEventListener('input', (e) => {
         compartmentsData[i][face] = parseFloat(e.target.value) || 0;
         syncConstraints();
         syncDisplay();
@@ -306,7 +313,7 @@ function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
   const comps = compartmentsData;
   const count = comps.length;
-  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+  const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
 
   let freezerComp = comps.find(c => c.type === 'freezer');
   let freshComp   = comps.find(c => c.type === 'fresh');

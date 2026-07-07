@@ -36,14 +36,6 @@ export function toVolumeFormat(geom) {
       rear: walls.freezer.rear,
       door: walls.freezer.door
     },
-    flex: {
-      top: walls.refrigerator.top,
-      bottom: walls.refrigerator.bottom1,
-      left: walls.refrigerator.left,
-      right: walls.refrigerator.right,
-      rear: walls.refrigerator.rear,
-      door: walls.refrigerator.door
-    }
   };
   return {
     external: { height: H, width: W, depth: D },

@@ -350,7 +350,7 @@ export function computeCompressorCoefficients({
     const vGas = prop.specificVolume(suctionTempK, Pe);
 
     // Actual mass flow from measured cooling capacity
-    const G = Q / (hGas - hLiquid);
+    const G = Q * 3.6 / (hGas - hLiquid);
 
     // Theoretical (displacement) mass flow
     const displacement_m3h = (cylinderVolumeCm3 * speedRpm * 60) / 1e6;

@@ -130,7 +130,6 @@ function buildThermalModalOnce() {
         <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
-        <label>Fin Pitch (mm): <input id="evapFinPitch" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
         <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
         <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
@@ -192,7 +191,6 @@ function buildThermalModalOnce() {
     evapDepth: document.getElementById('evapDepth'),
     evapRows: document.getElementById('evapRows'),
     evapTubeOD: document.getElementById('evapTubeOD'),
-    evapFinPitch: document.getElementById('evapFinPitch'),
     evapFinHeight: document.getElementById('evapFinHeight'),
     evapFinLength: document.getElementById('evapFinLength'),
     evapNumFins: document.getElementById('evapNumFins'),
@@ -248,7 +246,6 @@ function openThermalSettings() {
   thermalModalInputs.evapDepth.value       = evap.depth_mm ?? 60;
   thermalModalInputs.evapRows.value        = evap.rows ?? 2;
   thermalModalInputs.evapTubeOD.value      = evap.tubeOD_mm ?? 8;
-  thermalModalInputs.evapFinPitch.value    = evap.finPitch_mm ?? 4;
   thermalModalInputs.evapFinHeight.value   = evap.finHeight_mm ?? 150;
   thermalModalInputs.evapFinLength.value   = evap.finLength_mm ?? 460;
   thermalModalInputs.evapNumFins.value     = evap.numFins ?? 32;
@@ -303,7 +300,6 @@ function saveThermalSettings() {
     depth_mm:       parseFloat(thermalModalInputs.evapDepth.value) || 60,
     rows:           parseInt(thermalModalInputs.evapRows.value) || 2,
     tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
-    finPitch_mm:    parseFloat(thermalModalInputs.evapFinPitch.value) || 4,
     finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
     finLength_mm:   parseFloat(thermalModalInputs.evapFinLength.value) || 460,
     numFins:        parseInt(thermalModalInputs.evapNumFins.value) || 32,
@@ -351,16 +347,17 @@ function openAddCompressorModal() {
   const defaultTE = [-34.4, -23.3, -12.2];
   const defaultTC = [37.8, 46.1, 54.4];
   const Q_matrix = [
-    [ 70.554507,  67.112824,  61.950299],
-    [129.063122, 126.481860, 121.319335],
-    [215.105204, 210.803100, 203.919733],
+    [ 70.554507,  67.112824,  61.950299].map(v => v * 1.16279),
+    [129.063122, 126.481860, 121.319335].map(v => v * 1.16279),
+    [215.105204, 210.803100, 203.919733].map(v => v * 1.16279),
   ];
+
+  // W values stay unchanged (already W)
   const W_matrix = [
     [ 49.7,  51.3,  72.0],
     [ 67.6,  72.4, 141.0],
     [ 86.2,  93.5, 237.0],
   ];
-
   // Build table rows with editable TE values at the start of each row
   const headerCells = defaultTC.map((tc, j) => `
     <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
@@ -371,8 +368,8 @@ function openAddCompressorModal() {
       <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
       ${defaultTC.map((tc, j) => `
         <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;">W<br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">W
         </td>
       `).join('')}
     </tr>
@@ -533,8 +530,8 @@ function openEditCompressorModal() {
       <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
       ${defaultTC.map((_, j) => `
         <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;"><br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;">W<br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">W
         </td>
       `).join('')}
     </tr>
@@ -828,15 +825,16 @@ function displayResults(res, energy) {
   const pe = (comp.Pe !== undefined ? comp.Pe : res.Pe)?.toFixed(4) ?? '—';
   const pc = (comp.Pc !== undefined ? comp.Pc : res.Pc)?.toFixed(4) ?? '—';
   const etaV = comp.etaV !== undefined ? fmtP(comp.etaV) : '—';
-  const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';
-  const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';
+  const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';  // W
+  const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';      // W
   const COP = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
   const mFlow= comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
 
   const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
 
-  const fanAirflow = res.fanAirflow !== undefined ? fmt(res.fanAirflow, 1) : '—';
+  const fanAirflow_m3h = res.fanAirflow !== undefined ? res.fanAirflow : 0;
+  const fanAirflow_CFM = fanAirflow_m3h * 0.588578;   // 1 m³/h = 0.588578 CFM
 
   const configLabel = res.configLabel || 'Unknown';
   const html = `
@@ -855,7 +853,7 @@ function displayResults(res, energy) {
         <tr><td>Evap. pressure Pe</td><td>${pe} bar</td></tr>
         <tr><td>Cond. pressure Pc</td><td>${pc} bar</td></tr>
         <tr><td>Vol. efficiency η<sub>v</sub></td><td>${etaV}</td></tr>
-        <tr><td>Cooling capacity</td><td>${qComp} kcal/h</td></tr>
+        <tr><td>Cooling capacity</td><td>${qComp} W</td></tr>
         <tr><td>Input power</td><td>${pComp} W</td></tr>
         <tr><td>COP</td><td>${COP}</td></tr>
         <tr><td>Mass flow</td><td>${mFlow} kg/h</td></tr>
@@ -864,7 +862,7 @@ function displayResults(res, energy) {
         <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
         <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
 
-        <tr class="section-header"><td colspan="2">Heat Loads (kcal/h)</td></tr>
+        <tr class="section-header"><td colspan="2">Heat Loads (W)</td></tr>
         <tr><td>QF — Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>
         <tr><td>QR — Refrigerator compartment</td><td>${fmt(res.heatLoads.QR)}</td></tr>
         <tr><td>QEV — Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
@@ -872,16 +870,16 @@ function displayResults(res, energy) {
         <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
 
         <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
-        <tr><td>Calculated airflow</td><td>${fanAirflow} m³/h</td></tr>
+        <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m³/h)</td></tr>
         ${
           res.evapDetails ? `
           <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
           <tr><td>Surface area</td><td>${fmt(res.evapDetails.area, 4)} m²</td></tr>
           <tr><td>Air speed</td><td>${fmt(res.evapDetails.v, 3)} m/s</td></tr>
-          <tr><td>Heat transfer coeff α</td><td>${fmt(res.evapDetails.alpha, 2)} kcal/h·m²·°C</td></tr>
+          <tr><td>Heat transfer coeff α</td><td>${fmt(res.evapDetails.alpha, 2)} W/(m²·K)</td></tr>
           <tr><td>LMTD</td><td>${fmt(res.evapDetails.LMTD, 2)} °C</td></tr>
           <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
-          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} kcal/h</td></tr>
+          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} W</td></tr>
           ` : ''
         }
         <tr class="section-header"><td colspan="2">Solver</td></tr>
