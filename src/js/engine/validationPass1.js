@@ -142,9 +142,24 @@ function checkPositiveFittingValues(node, errors) {
   if (!node.fittings) return;
   const f = node.fittings;
 
-  for (const shelf of f.shelves ?? []) {
-    checkPositive(shelf, ['positionFromFloor', 'thickness', 'depth'], errors, node.id);
-    if (shelf.width != null) checkPositive(shelf, ['width'], errors, node.id);
+  // NEW: optional simple count
+  if (f.shelfCount != null) {
+    if (!Number.isInteger(f.shelfCount) || f.shelfCount <= 0) {
+      errors.push({
+        rule: 'positiveValues',
+        nodeId: node.id,
+        message: `shelfCount must be a positive integer, got ${f.shelfCount}`
+      });
+    }
+    // If shelfCount is given, detailed shelves are optional
+    if (f.shelves && f.shelves.length > 0) {
+      errors.push({
+        rule: 'ambiguousShelves',
+        nodeId: node.id,
+        message: 'Provide either shelfCount or shelves, not both'
+      });
+    }
+    return; // skip checking detailed shelves
   }
   for (const drawer of f.drawers ?? []) {
     checkPositive(drawer, ['outerWidth', 'outerDepth', 'outerHeight', 'wallThickness'], errors, node.id);
