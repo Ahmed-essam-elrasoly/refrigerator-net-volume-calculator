@@ -1,14 +1,15 @@
 import { runCalculation } from './engine/index.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
-import { drawFrontView, drawSideView } from './ui/schematic.js';
-import { initSettingsModal } from './ui/settingsModal.js';    // no showModal
-import { settings, updateSettings } from './settings.js';    // from the core settings
-import { formatTotalsDisplay, roundForDisplay } from './engine/calc.js'; // no walkBoundaries unused
+import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';   // ← now imported from the same module
+import { initSettingsModal } from './ui/settingsModal.js';
+import { settings, updateSettings } from './settings.js';
+import { formatTotalsDisplay, roundForDisplay } from './engine/calc.js';
 import { initThermoUI } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 
 // Load settings from localStorage on startup
-updateSettings(settings);  // this triggers the event and refreshes display if needed
+updateSettings(settings);
+
 // ---- DOM references ---------------------------------------------------
 const divHorizInput       = document.getElementById('divHoriz');
 const usableFactorInput   = document.getElementById('usableFactor');
@@ -40,7 +41,7 @@ let dirtySchematic = false;
 let isResizing = false;
 let startX, startWidth;
 
-// Splitter logic
+// Splitter logic (unchanged)
 splitter.addEventListener('mousedown', (e) => {
   isResizing = true;
   startX = e.clientX;
@@ -155,10 +156,8 @@ function syncConstraints() {
 }
 
 function onCompFieldChange(compIdx, field, value) {
-  // For non‑numeric fields (type), skip the numeric guard
   if (field === 'type') {
     compartmentsData[compIdx].type = value;
-    // If two compartments, force the other one to the opposite type
     if (compartmentsData.length > 1) {
       const otherIdx = 1 - compIdx;
       compartmentsData[otherIdx].type = (value === 'freezer' ? 'fresh' : 'freezer');
@@ -168,7 +167,6 @@ function onCompFieldChange(compIdx, field, value) {
     return;
   }
 
-  // Numeric fields – must be a valid number
   if (isNaN(value)) return;
   compartmentsData[compIdx][field] = value;
 
@@ -193,7 +191,7 @@ function onCompFieldChange(compIdx, field, value) {
         compartmentsData[otherIdx].height = internalH - clamped;
         compartmentsData[0].ratio = compartmentsData[0].height / internalH;
         compartmentsData[1].ratio = 1.0 - compartmentsData[0].ratio;
-      } else { // ratio changed (percentage)
+      } else {
         let percent = Math.max(10, Math.min(count === 1 ? 100 : 90, value));
         let clamped = percent / 100;
         compartmentsData[compIdx].ratio = clamped;
@@ -226,7 +224,7 @@ function syncDisplay() {
       ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
     }
     if (typeSelect) typeSelect.value = d.type;
-        const topInput = document.getElementById(`comp-${i}-top`);
+    const topInput = document.getElementById(`comp-${i}-top`);
     if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
   }
 }
@@ -459,24 +457,23 @@ function showMessages(errors, warnings, calcErrors) {
     messagesFieldset.style.display = 'none';
   }
 }
+
 function computeAccurateBottomVolume(geom, eff) {
   const { H, D, Hb, Db1, Db2, walls } = geom;
   const rearX = eff.rear;
   const doorX = D - eff.door;
   const innerTop = eff.top;
 
-  // y‑position of the top of the bottom compartment
   const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
   const divider  = compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
   const yTopBottom = innerTop + topCompH + divider;
 
-  const yBottomRear = H - Hb - walls.refrigerator.bottom1;   // raised floor (inner surface)
-  const yBottomDoor = H - walls.refrigerator.bottom3;        // lower floor (inner surface)
+  const yBottomRear = H - Hb - walls.refrigerator.bottom1;
+  const yBottomDoor = H - walls.refrigerator.bottom3;
 
-  const slopeStartX = rearX + Db1;                           // top of slope
-  const slopeEndX   = rearX + Db2;                           // foot of slope
+  const slopeStartX = rearX + Db1;
+  const slopeEndX   = rearX + Db2;
 
-  // Shoelace formula for the cavity cross‑section (mm²)
   const points = [
     [rearX,        yTopBottom],
     [doorX,        yTopBottom],
@@ -494,7 +491,7 @@ function computeAccurateBottomVolume(geom, eff) {
   area = Math.abs(area) / 2;
 
   const width = geom.W - eff.left - eff.right;
-  return area * width * settings.mm3ToL;   // litres
+  return area * width * settings.mm3ToL;
 }
 
 function displayVolumeResults(result) {
@@ -504,13 +501,11 @@ function displayVolumeResults(result) {
   const bottomIdx = result.leaves.length - 1;
   const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
 
-  // Override the bottom leaf gross volume with the accurate stepped-floor calculation
   const bottomLeaf = result.leaves[bottomIdx];
   const oldBottomVol = bottomLeaf.gross;
   bottomLeaf.gross = accurateBottomVol;
   result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
 
-  // Format totals display
   const disp = formatTotalsDisplay({ gross: result.totals.gross });
   document.getElementById('grossVol').textContent      = disp.gross;
   document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
@@ -570,7 +565,6 @@ calculateBtn.addEventListener('click', () => {
   displayVolumeResults(result);
   showMessages(result.validationErrors, result.warnings, result.calcErrors);
   drawSchematics(config, result.leaves);
-
 });
 
 function extractFittingsFromLayout(node) {
@@ -592,15 +586,6 @@ function extractFittingsFromLayout(node) {
 }
 
 // ---- populateUIFromConfig ---------------------------------------------
-/**
- * Restores all left-panel inputs and reactive state from a loaded config.
- * Must run synchronously before the subsequent runCalculation() call so that
- * compartmentsData, currentGeometry, and all DOM inputs are consistent.
- *
- * Supports:
- *   v2.0 configs: cabinet.geometry  (produced by the current UI)
- *   v1.0 configs: cabinet.external  (old format, geometry inputs only)
- */
 function populateUIFromConfig(config) {
   const set = (id, val) => {
     const el = document.getElementById(id);
@@ -610,7 +595,6 @@ function populateUIFromConfig(config) {
   const geometry = config.cabinet?.geometry;
 
   if (geometry) {
-    // ── v2.0 format ─────────────────────────────────────────────────────────
     set('geom-H',          geometry.H);
     set('geom-W',          geometry.W);
     set('geom-D',          geometry.D);
@@ -627,29 +611,22 @@ function populateUIFromConfig(config) {
       set('geom-bottom3', rw.bottom3);
     }
 
-    // Restore compartment data from _compartments saved by readGeometryFromPanel().
-    // This field carries type, per-wall thicknesses, height, and ratio for each
-    // compartment — everything needed to rebuild the compartment UI cards.
     const savedComps = geometry._compartments;
     if (savedComps?.length > 0) {
       numCompartmentsInput.value = savedComps.length;
       compartmentsData = savedComps.map(c => ({ ...c }));
 
-      // Restore divider thickness from the layout node
       const layout = config.cabinet.layout;
       if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
         divHorizInput.value = layout.dividers[0].thickness ?? 20;
       }
     } else {
-      // Manually-authored config with no _compartments — reset to UI defaults
       initCompartments();
     }
 
-    // Update the shared geometry reference used by the schematic renderer
     currentGeometry = { ...geometry };
 
   } else if (config.cabinet?.external) {
-    // ── v1.0 format (backward compat) ────────────────────────────────────────
     const ext = config.cabinet.external;
     set('geom-H', ext.height);
     set('geom-W', ext.width);
@@ -696,17 +673,12 @@ loadBtn.addEventListener('click', () => {
       storeSlotBBtn.style.display = 'inline-block';
       compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
 
-      // 1. Restore UI inputs and reactive state
       populateUIFromConfig(config);
 
-      // 2. Run the calculation
       const result = runCalculation(config);
-
-      // 3. Display results (with accurate bottom volume replacement)
       displayVolumeResults(result);
       showMessages(result.validationErrors, result.warnings, result.calcErrors);
       drawSchematics(config, result.leaves);
-      // alert('Configuration loaded and calculated.');   // optional, remove after testing
     } catch (err) {
       alert('Error: ' + err.message);
     }
@@ -853,30 +825,28 @@ function buildComparisonTable(resultA, resultB) {
   }
   comparisonContent.innerHTML = html;
 }
+
 // ---- Tab Switching ----
 document.getElementById('tabVolume').addEventListener('click', () => {
-  // Left panel switching
   document.getElementById('panelVolume').classList.remove('hidden');
   document.getElementById('panelThermal').classList.add('hidden');
   document.getElementById('tabVolume').classList.add('active');
   document.getElementById('tabThermal').classList.remove('active');
 
-  // Right panel: hide thermal results, show schematics
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   if (thermoRight) thermoRight.classList.add('hidden');
   if (frontCanvas) frontCanvas.style.display = '';
   if (sideCanvas)  sideCanvas.style.display  = '';
-  // If schematic is dirty, the overlay may be shown – handled by dirty flag
 });
+
 document.getElementById('tabThermal').addEventListener('click', () => {
   document.getElementById('panelThermal').classList.remove('hidden');
   document.getElementById('panelVolume').classList.add('hidden');
   document.getElementById('tabThermal').classList.add('active');
   document.getElementById('tabVolume').classList.remove('active');
 
-  // Right panel: hide schematics, show thermal results (if any)
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -884,8 +854,18 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (frontCanvas) frontCanvas.style.display = 'none';
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
+
 // Thermo UI init with geometry provider
 initThermoUI({
   getGeometry: () => readGeometryFromPanel(),
-  setGeometryProvider: null  // not needed currently
+  setGeometryProvider: null
 });
+
+// ======================================================================
+//  NEW: Enable coordinate tooltip on both schematic canvases
+// ======================================================================
+enableCoordinateTooltip(
+  document.getElementById('schematicFront'),
+  document.getElementById('schematicSide'),
+  () => readGeometryFromPanel()   // returns { H, W, D, … } required by the tooltip
+);

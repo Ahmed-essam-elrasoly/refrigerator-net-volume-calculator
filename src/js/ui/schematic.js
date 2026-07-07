@@ -1,24 +1,6 @@
 /**
  * Draw a dimension line with extension lines, arrows, and label.
  * Styled to standard CAD drafting representation.
- *
- * @param {CanvasRenderingContext2D} ctx
- * @param {number} x1
- * @param {number} y1
- * @param {number} x2
- * @param {number} y2
- * @param {number} offset
- * @param {string} label
- * @param {object} [opts]
- * @param {string} [opts.color]
- * @param {number} [opts.lineWidth]
- * @param {number} [opts.arrowSize]
- * @param {string} [opts.font]
- * @param {number} [opts.textOffsetX]
- * @param {number} [opts.textOffsetY]
- * @param {boolean} [opts.drawExtLines]
- * @param {string} [opts.bgColor]
- * @param {number} [opts.textGap]
  */
 function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   color = DRAW_THEME.color,
@@ -128,7 +110,7 @@ function drawDim(ctx, x1, y1, x2, y2, offset, label, {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// Drawing theme (exported for external use if needed)
+// Drawing theme
 // ──────────────────────────────────────────────────────────────────
 export const DRAW_THEME = {
   color: '#2980b9',
@@ -156,19 +138,15 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   ctx.save();
   ctx.translate(PAD.left, PAD.top);
 
-  // Outer cabinet
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, W * scale, H * scale);
-
   // Per‑compartment inner boundaries
   const innerLeft  = compartments.map(c => c.left);
   const innerRight = compartments.map(c => W - c.right);
   const intTop     = effectiveWalls.top;
   const intBottom  = H - effectiveWalls.bottom;
 
-  // Build the inner cavity polygon
+  // Build the inner cavity polygon (filled insulation)
   ctx.beginPath();
-  ctx.rect(0, 0, W * scale, H * scale);
+  ctx.rect(0, 0, W * scale, H * scale);   // outer rectangle
   let y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
     const h = compHeights[i];
@@ -183,16 +161,13 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     ctx.lineTo(rightX, y * scale);
     y += h;
     ctx.lineTo(rightX, y * scale);
-    if (i < compHeights.length - 1) {
-      // divider gap will be handled below
-    }
   }
   ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
   ctx.closePath();
   ctx.fillStyle = '#f0f0f0';
   ctx.fill();
 
-  // Draw individual compartments
+  // Draw individual compartments (white inner space)
   const types = leaves ? leaves.map(l => l.leafType) : [];
   y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
@@ -211,7 +186,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
 
     y += h;
 
-    // divider after this compartment if there is a next one
+    // divider after this compartment
     if (i < compHeights.length - 1 && dividerThickness > 0) {
       const dividerY = y * scale;
       const dividerH = dividerThickness * scale;
@@ -223,10 +198,10 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // Fittings drawing (if provided)
+  // Fittings (shelves, drawers)
   if (options.fittings && leaves) {
     const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
-    let yOffset = effectiveWalls.top;   // start from top of internal space
+    let yOffset = effectiveWalls.top;
 
     for (let i = 0; i < compHeights.length; i++) {
       const compH = compHeights[i];
@@ -239,7 +214,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       const compY = yOffset * scale;
       const compHeightPx = compH * scale;
 
-      // Draw shelves
+      // Shelves
       const shelfCount = fittingsForLeaf.shelves.length;
       if (shelfCount > 0) {
         const shelfGap = compHeightPx / (shelfCount + 1);
@@ -251,7 +226,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
         }
       }
 
-      // Draw drawers
+      // Drawers
       const drawerCount = fittingsForLeaf.drawers.length;
       if (drawerCount > 0) {
         const drawerWidth = internalWidth * 0.8 * scale;
@@ -271,6 +246,11 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
   }
+
+  // ── Outer cabinet stroke (drawn after all fills) ──
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, W * scale, H * scale);
 
   // Dimension lines
   const dimX = -35;
@@ -304,12 +284,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
   const tTop      = effectiveWalls.top;
   const tDoor     = effectiveWalls.door;
-  const tRear     = effectiveWalls.rear;            // global rear for compressor box
   const tRbottom1 = walls.refrigerator.bottom1;
   const tRbottom2 = walls.refrigerator.bottom2;
   const tRbottom3 = walls.refrigerator.bottom3;
 
-  const compRear = compartments.map(c => c.rear);   // per‑compartment
+  const compRear = compartments.map(c => c.rear);
 
   const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
   const drawW = canvas.width - PAD.left - PAD.right;
@@ -320,23 +299,22 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.save();
   ctx.translate(PAD.left, PAD.top);
 
-  // Outer cabinet
-  ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-  ctx.strokeRect(0, 0, D * scale, H * scale);
-
   const innerDoor = D - tDoor;
   const innerTop  = tTop;
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
-  const bottomRear = compRear.length === 2 ? compRear[1] : compRear[0];
-  const slopeStartX = bottomRear + Db1;
-  const slopeEndX   = bottomRear + Db2;
 
-  // Insulation bands
+  // ---- Db1/Db2 are now measured from the OUTSIDE (x=0) ----
+  const slopeStartX = Db1;   // total distance from outer rear to slope start
+  const slopeEndX   = Db2;   // total distance from outer rear to slope end
+
   const topH = compHeights[0];
   const topRearX = compRear[0] * scale;
   const topY = innerTop * scale;
   const topCompH = topH * scale;
+
+  // Insulation bands (fill grey)
+  // Top compartment insulation
   ctx.beginPath();
   ctx.rect(0, 0, D * scale, topY + topCompH);
   ctx.moveTo(topRearX, topCompH);
@@ -395,7 +373,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fillStyle = '#555'; ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // White inner cavity (two separate shapes)
+  // White inner cavity
   // Top compartment
   ctx.beginPath();
   ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
@@ -429,6 +407,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   if (compHeights.length === 2 && dividerThickness > 0) {
     const dividerY = innerTop + topH;
     const dividerH = dividerThickness;
+    // Divider starts at the inner rear face of the bottom compartment
     const dividerLeftX = compRear[1] * scale;
 
     ctx.fillStyle = '#aaa';
@@ -460,6 +439,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   } else {
     drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
   }
+
+  // ── Outer cabinet stroke (now drawn after all fills) ──
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
@@ -468,9 +449,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-  drawDim(ctx, 0, floorRaisedY * scale, Db1 * scale, floorRaisedY * scale, -18, `[Db1= ${( Db1).toFixed(0)}]`);
-  drawDim(ctx, 0, floorLowerY * scale, Db2 * scale, floorLowerY * scale, -18, `[Db2= ${( Db2).toFixed(0)}]`);
-  const topMidX = (tRear + innerDoor) / 2 * scale;
+
+  // Db1 and Db2 from OUTSIDE (x=0 to slope start/end)
+  drawDim(ctx, 0, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18,
+          `[Db1= ${Db1.toFixed(0)}]`);
+  drawDim(ctx, 0, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18,
+          `[Db2= ${Db2.toFixed(0)}]`);
+
+  const topMidX = (compRear[0] + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
 
   drawnDoors.forEach(door => {
@@ -516,4 +502,52 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   }
 
   ctx.restore();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Click‑to‑show‑coordinate feature
+// ──────────────────────────────────────────────────────────────────
+export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
+  const tooltip = document.getElementById('schematicTooltip');
+
+  function handleClick(canvas, isFront) {
+    canvas.addEventListener('click', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;   // account for CSS vs. canvas size
+      const scaleY = canvas.height / rect.height;
+
+      const pixelX = (e.clientX - rect.left) * scaleX;
+      const pixelY = (e.clientY - rect.top) * scaleY;
+
+      // Get current geometry and compute the padding / scale used in the last draw call
+      const geometry = getGeometryFn();
+      if (!geometry) return;
+
+      let worldX, worldY;
+      if (isFront) {
+        const PAD = { left: 50, top: 40 };
+        const drawW = canvas.width - PAD.left - 40;  // right padding 40
+        const drawH = canvas.height - PAD.top - 40;  // bottom padding 40
+        const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
+        worldX = (pixelX - PAD.left) / scale;
+        worldY = (pixelY - PAD.top) / scale;
+      } else {
+        const PAD = { left: 60, top: 40 };
+        const drawW = canvas.width - PAD.left - 60;
+        const drawH = canvas.height - PAD.top - 40;
+        const scale = Math.min(drawW / geometry.D, drawH / geometry.H);
+        worldX = (pixelX - PAD.left) / scale;
+        worldY = (pixelY - PAD.top) / scale;
+      }
+
+      // Show the tooltip near the click
+      tooltip.classList.remove('hidden');
+      tooltip.style.left = (e.clientX + 10) + 'px';
+      tooltip.style.top = (e.clientY - 30) + 'px';
+      tooltip.textContent = `X: ${worldX.toFixed(1)} mm, Y: ${worldY.toFixed(1)} mm`;
+    });
+  }
+
+  handleClick(frontCanvas, true);
+  handleClick(sideCanvas, false);
 }
