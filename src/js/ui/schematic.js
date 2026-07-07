@@ -2,7 +2,7 @@
  * Draw a dimension line with extension lines, arrows, and label.
  * Styled to standard CAD drafting representation.
  */
-function drawDim(ctx, x1, y1, x2, y2, offset, label, {
+export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   color = DRAW_THEME.color,
   lineWidth = DRAW_THEME.lineWidth,
   arrowSize = DRAW_THEME.arrowSize,
@@ -304,9 +304,40 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
 
-  // ---- Db1/Db2 are now measured from the OUTSIDE (x=0) ----
-  const slopeStartX = Db1;   // total distance from outer rear to slope start
-  const slopeEndX   = Db2;   // total distance from outer rear to slope end
+  // Compressor box bound explicitly to Db1, Db2, Hb from the OUTSIDE (x=0)
+  const xTopCB = Db1;
+  const yTopCB = H - Hb;
+  const xBottomCB = Db2;
+  const yBottomCB = H;
+
+  // Inner cavity slope projected inwards from compressor box by tRbottom2
+  const cbDx = xBottomCB - xTopCB;
+  const cbDy = yBottomCB - yTopCB;
+  const cbLen = Math.sqrt(cbDx * cbDx + cbDy * cbDy);
+
+  let slopeStartX = Db1;
+  let slopeEndX = Db2;
+  let nx = 1; 
+  let ny = 0;
+
+  if (cbLen > 0) {
+    nx = cbDy / cbLen;
+    ny = -cbDx / cbLen; // Points inward (right and up relative to the canvas)
+
+    const px = xTopCB + nx * tRbottom2;
+    const py = yTopCB + ny * tRbottom2;
+
+    if (cbDy !== 0) {
+      const tStart = (floorRaisedY - py) / cbDy;
+      slopeStartX = px + cbDx * tStart;
+
+      const tEnd = (floorLowerY - py) / cbDy;
+      slopeEndX = px + cbDx * tEnd;
+    } else {
+      slopeStartX = px;
+      slopeEndX = px;
+    }
+  }
 
   const topH = compHeights[0];
   const topRearX = compRear[0] * scale;
@@ -345,21 +376,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   }
 
   // Compressor box
-  const slopeDx = slopeEndX - slopeStartX;
-  const slopeDy = floorLowerY - floorRaisedY;
-  const slopeLen = Math.sqrt(slopeDx*slopeDx + slopeDy*slopeDy);
-  let nx =  slopeDy / slopeLen;
-  let ny = -slopeDx / slopeLen;
-  if (ny < 0) { nx = -nx; ny = -ny; }
-
-  const yTopCB = floorRaisedY + tRbottom1;
-  const sTop = slopeDy !== 0 ? (yTopCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-  const xTopCB = slopeStartX + sTop * slopeDx + nx * tRbottom2;
-
-  const yBottomCB = H;
-  const sBottom = slopeDy !== 0 ? (yBottomCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-  const xBottomCB = slopeStartX + sBottom * slopeDx + nx * tRbottom2;
-
   ctx.beginPath();
   ctx.moveTo(0, H * scale);
   ctx.lineTo(0, yTopCB * scale);
@@ -450,11 +466,9 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
 
-  // Db1 and Db2 from OUTSIDE (x=0 to slope start/end)
-  drawDim(ctx, 0, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18,
-          `[Db1= ${Db1.toFixed(0)}]`);
-  drawDim(ctx, 0, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18,
-          `[Db2= ${Db2.toFixed(0)}]`);
+  // Db1 and Db2 explicitly dimensioned on the compressor box bounds
+  drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
+  drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
 
   const topMidX = (compRear[0] + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
@@ -478,13 +492,12 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
   drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
 
-  const midSlopeX = (slopeStartX + slopeEndX) / 2;
-  const midSlopeY = (floorRaisedY + floorLowerY) / 2;
-  const innerPX = midSlopeX * scale;
-  const innerPY = midSlopeY * scale;
-  const outerPX = innerPX + nx * (tRbottom2 * scale);
-  const outerPY = innerPY + ny * (tRbottom2 * scale);
-  drawDim(ctx, innerPX, innerPY, outerPX, outerPY, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
+  // Map slope insulation thickness dimensioning to the new inward vector
+  const midCbX = (xTopCB + xBottomCB) / 2;
+  const midCbY = (yTopCB + yBottomCB) / 2;
+  const inPX = midCbX + nx * tRbottom2;
+  const inPY = midCbY + ny * tRbottom2;
+  drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
 
   // Compartment height dimensions (right side)
   if (compHeights.length === 2) {
