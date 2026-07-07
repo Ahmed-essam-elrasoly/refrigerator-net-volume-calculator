@@ -54,6 +54,7 @@
 /**
  * @typedef {Object} FittingConfig
  * @property {Shelf[]}       shelves
+ * @property {number}        [shelfCount]    // NEW: just a number, no offsets
  * @property {Drawer[]}      drawers
  * @property {DoorBin[]}     doorBins
  * @property {HousingVolume} iceMakerHousing

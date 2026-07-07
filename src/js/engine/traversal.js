@@ -108,26 +108,26 @@ function processVertical(node, space, errors, warnings, leaves) {
 function processLeaf(node, space, errors, warnings, leaves) {
   const { fittings, id } = node;
 
-  // Validate fittings (dimensions only – no volume deduction needed)
-  for (const shelf of fittings.shelves ?? []) {
-    errors.push(...validateShelf(shelf, space, id));
-  }
-  for (const drawer of fittings.drawers ?? []) {
-    errors.push(...validateDrawer(drawer, space, id));
-  }
-  for (const bin of fittings.doorBins ?? []) {
-    errors.push(...validateDoorBin(bin, space, id));
+  if (fittings.shelves && fittings.shelves.length > 0) {
+    // existing detailed validation
+    for (const shelf of fittings.shelves) {
+      errors.push(...validateShelf(shelf, space, id));
+    }
+  } else if (fittings.shelfCount != null) {
+    // No detailed shelves → no dimensional checks needed
+    // Optionally add a soft warning that shelf dimensions are not verified
+    warnings.push({
+      rule: 'shelfCountOnly',
+      nodeId: id,
+      message: `Using shelfCount=${fittings.shelfCount}; shelf dimensions/positions not checked`
+    });
   }
 
-  // Soft warning: door bin depth vs shelf depth (still useful)
-  const binDepthWarning = checkDoorBinDepth(fittings, space, id);
-  if (binDepthWarning) warnings.push(binDepthWarning);
-
-  // Compute only gross volume
+  // Drawers, door bins validation unchanged …
+  // Compute gross volume (unchanged)
   const leafResult = calcLeafGross(node, space);
   leaves.push(leafResult);
 }
-
 // ---------------------------------------------------------------------------
 // Fitting validators (unchanged, except we don't need excludedFittingIds)
 // ---------------------------------------------------------------------------

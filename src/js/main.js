@@ -96,7 +96,8 @@ function initCompartments() {
       type: i === 0 ? 'freezer' : 'fresh',
       ...defaultWalls,
       height: 0,
-      ratio: i === 0 ? 0.4 : 0.6
+      ratio: i === 0 ? 0.4 : 0.6,
+      shelfCount: 0,               // ← NEW
     });
   }
   syncConstraints();
@@ -226,6 +227,8 @@ function syncDisplay() {
     if (typeSelect) typeSelect.value = d.type;
     const topInput = document.getElementById(`comp-${i}-top`);
     if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
+    const shelfCountInput = document.getElementById(`comp-${i}-shelfCount`);
+    if (shelfCountInput) shelfCountInput.value = d.shelfCount || 0;
   }
 }
 
@@ -254,6 +257,8 @@ function buildCompartmentUI() {
       </label>
       <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
       <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
+      <!-- NEW shelf count input -->
+      <label>Number of Shelves: <input type="number" id="comp-${i}-shelfCount" min="0" step="1" value="${d.shelfCount || 0}"></label>
       <fieldset>
         <legend>Wall Thicknesses (mm)</legend>
         ${ count === 1 || i === 0 ? `<label>Top: <input type="number" id="comp-${i}-top" value="${d.top}" step="any"></label>` : '' }
@@ -287,7 +292,16 @@ function buildCompartmentUI() {
         markDirty();
       });
     }
+  
+    const shelfCountEl = document.getElementById(`comp-${i}-shelfCount`);
+  if (shelfCountEl) {
+    shelfCountEl.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value) || 0;
+      compartmentsData[i].shelfCount = Math.max(0, val);
+      if (settings.autoCalculate) calculateBtn.click();
+    });
   }
+}
 }
 
 function fillGeometryDefaults() {
@@ -304,6 +318,12 @@ function fillGeometryDefaults() {
   set('geom-bottom1', 40);
   set('geom-bottom2', 40);
   set('geom-bottom3', 40);
+  set('geom-railHeight', 20);
+  set('geom-railWidth', 10);
+  set('geom-railDepthPct', 50);
+  set('geom-doorDikeHeight', 20);
+  set('geom-doorDikeBaseWidth', 10);
+  set('geom-doorDikeTopWidth', 5);
 }
 
 // ---- Read geometry from panel -----------------------------------------
@@ -352,6 +372,14 @@ function readGeometryFromPanel() {
     Hf: freezerComp ? freezerComp.height : 0,
     Hr: freshComp   ? freshComp.height   : 0,
     walls,
+    special: {
+      railHeight:    g('geom-railHeight')    ?? 20,
+      railWidth:     g('geom-railWidth')     ?? 10,
+      railDepthPct:  g('geom-railDepthPct')  ?? 50,
+      doorDikeHeight: g('geom-doorDikeHeight') ?? 20,
+      doorDikeBaseWidth: g('geom-doorDikeBaseWidth') ?? 10,
+      doorDikeTopWidth:  g('geom-doorDikeTopWidth')  ?? 5,
+    },
     _compartments: comps
   };
 }
@@ -410,7 +438,10 @@ function buildConfigFromForm() {
         id: `comp${i}`,
         type: comp.type,
         fittings: {
-          shelves: [],
+          // Use simple count if specified, otherwise keep empty shelves array
+          ...(comp.shelfCount > 0
+            ? { shelfCount: comp.shelfCount }
+            : { shelves: [] }),
           drawers: [],
           doorBins: [],
           iceMakerHousing: { volume: null },
@@ -543,7 +574,51 @@ function drawSchematics(config, leaves) {
     })),
     fittings
   };
+  // After computing effectiveWalls and before drawOptions
+  const geom = currentGeometry;
+  const H = geom.H, D = geom.D;
+  const eff = effectiveWalls;
+  const innerTopY = eff.top;
+  const innerLeftX = eff.left;
+  const innerRightX = geom.W - eff.right;
+  const innerRearX = eff.rear;
+  const doorX = D - eff.door;
+  const innerBottomY = H - Math.max(
+    parseFloat(document.getElementById('geom-bottom1')?.value) || 40,
+    parseFloat(document.getElementById('geom-bottom2')?.value) || 40,
+    parseFloat(document.getElementById('geom-bottom3')?.value) || 40
+  );
+  // Shelf count per compartment (from compartmentsData)
+  const shelfCounts = compartmentsData.map(c => c.shelfCount || 0);
 
+  const drawOptions = {
+    dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+    compHeights: compartmentsData.map(c => c.height),
+    doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
+    compartments: compartmentsData.map(c => ({
+      left: c.left,
+      right: c.right,
+      rear: c.rear
+    })),
+    fittings,
+    // New fields
+    shelfCounts,                // array of integers per leaf
+    railHeight: geom.special.railHeight,
+    railWidth: geom.special.railWidth,
+    railDepthPct: geom.special.railDepthPct,
+    dikeHeight: geom.special.doorDikeHeight,
+    dikeBaseWidth: geom.special.doorDikeBaseWidth,
+    dikeTopWidth: geom.special.doorDikeTopWidth,
+    innerTopY,
+    innerBottomY,
+    innerLeftX,
+    innerRightX,
+    innerRearX,
+    doorX,
+    cabinetDepth: D,
+    cabinetWidth: geom.W,
+    cabinetHeight: H
+  };
   drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
   drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
   dirtySchematic = false;
@@ -571,10 +646,13 @@ function extractFittingsFromLayout(node) {
   const fittings = [];
   function walk(n) {
     if (n.nodeType === 'leaf' && n.fittings) {
+      const shelves = n.fittings.shelves || [];
+      // If using shelfCount, we skip drawing shelves for now
+      const safeShelves = n.fittings.shelfCount != null ? [] : shelves;
       fittings.push({
         leafId: n.id,
         type: n.type,
-        shelves: n.fittings.shelves || [],
+        shelves: safeShelves,
         drawers: n.fittings.drawers || [],
         doorBins: n.fittings.doorBins || []
       });
@@ -603,7 +681,9 @@ function populateUIFromConfig(config) {
     set('geom-Db2',        geometry.Db2);
     set('geom-packingPos', geometry.packingPos);
     set('geom-doorGap',    geometry.doorGap);
-
+    set('geom-doorDikeHeight', geometry.doorDikeHeight);
+    set('geom-doorDikeBaseWidth', geometry.doorDikeBaseWidth);
+    set('geom-doorDikeTopWidth', geometry.doorDikeTopWidth);
     const rw = geometry.walls?.refrigerator;
     if (rw) {
       set('geom-bottom1', rw.bottom1);
@@ -614,7 +694,10 @@ function populateUIFromConfig(config) {
     const savedComps = geometry._compartments;
     if (savedComps?.length > 0) {
       numCompartmentsInput.value = savedComps.length;
-      compartmentsData = savedComps.map(c => ({ ...c }));
+      compartmentsData = savedComps.map(c => ({
+        ...c,
+        shelfCount: c.shelfCount ?? 0,   // fallback for older configs
+      }));
 
       const layout = config.cabinet.layout;
       if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
@@ -625,7 +708,22 @@ function populateUIFromConfig(config) {
     }
 
     currentGeometry = { ...geometry };
-
+    if (geometry.special) {
+      set('geom-railHeight',   geometry.special.railHeight);
+      set('geom-railWidth',    geometry.special.railWidth);
+      set('geom-railDepthPct', geometry.special.railDepthPct);
+      set('geom-doorDikeHeight', geometry.special.doorDikeHeight);
+      set('geom-doorDikeBaseWidth', geometry.special.doorDikeBaseWidth);
+      set('geom-doorDikeTopWidth', geometry.special.doorDikeTopWidth);
+    } else {
+      // default values if loading an old config without special geometries
+      set('geom-railHeight', 20);
+      set('geom-railWidth', 10);
+      set('geom-railDepthPct', 50);
+      set('geom-doorDikeHeight', 20);
+      set('geom-doorDikeBaseWidth', 10);
+      set('geom-doorDikeTopWidth', 5);
+    }
   } else if (config.cabinet?.external) {
     const ext = config.cabinet.external;
     set('geom-H', ext.height);
@@ -711,6 +809,12 @@ resetAllBtn.addEventListener('click', () => {
   document.getElementById('geom-bottom1').value = 40;
   document.getElementById('geom-bottom2').value = 40;
   document.getElementById('geom-bottom3').value = 40;
+  document.getElementById('geom-railHeight').value = 20;
+  document.getElementById('geom-railWidth').value = 10;
+  document.getElementById('geom-railDepthPct').value = 50;
+  document.getElementById('geom-doorDikeHeight').value = 20;
+  document.getElementById('geom-doorDikeBaseWidth').value = 10;
+  document.getElementById('geom-doorDikeTopWidth').value = 5;
   divHorizInput.value = 20;
   numCompartmentsInput.value = 2;
 
