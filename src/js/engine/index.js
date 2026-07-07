@@ -31,7 +31,7 @@ function validateCabinet(cabinet) {
   const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
   walkBoundaries(layout, boundaryTypes, true, true, true, true);
   const effective = {};
-  const allTypes = ['fresh','freezer','flex'];
+  const allTypes = ['fresh','freezer'];
   for (const face of ['top','bottom','left','right']) {
     let max = 0;
     for (const t of boundaryTypes[face]) {

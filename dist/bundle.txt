@@ -48,6 +48,11 @@
     saveToStorage(settings);
     document.dispatchEvent(new CustomEvent("settings-changed", { detail: settings }));
   }
+  function resetSettings() {
+    Object.assign(settings, DEFAULTS);
+    saveToStorage(settings);
+    document.dispatchEvent(new CustomEvent("settings-changed", { detail: settings }));
+  }
 
   // src/js/engine/calc.js
   function deriveRootSpace(cabinet, layout) {
@@ -114,6 +119,12 @@
     return {
       leafId: leaf.id,
       gross
+    };
+  }
+  function formatLeafDisplay(leaf) {
+    return {
+      gross: roundForDisplay(leaf.gross, "L"),
+      grossCuft: roundForDisplay(toCuft(leaf.gross), "cuft")
     };
   }
   function formatTotalsDisplay(totals) {
@@ -823,18 +834,6 @@
       reader.readAsText(file);
     });
   }
-  function formatLeafDisplay(leaf) {
-    return {
-      gross: roundForDisplay(leaf.gross, "L"),
-      grossCuft: roundForDisplay(toCuft(leaf.gross), "cuft")
-    };
-  }
-  function formatTotalsDisplay2(totals) {
-    return {
-      gross: roundForDisplay(totals.gross, "L"),
-      grossCuft: roundForDisplay(toCuft(totals.gross), "cuft")
-    };
-  }
   function resultToCSV(result, configName) {
     if (!result.leaves || !result.totals) {
       return "# No results available (calculation produced errors)\n";
@@ -858,7 +857,7 @@
         d.grossCuft
       ].join(","));
     }
-    const t = formatTotalsDisplay2(result.totals);
+    const t = formatTotalsDisplay(result.totals);
     rows.push([
       "TOTAL",
       t.gross,
@@ -887,13 +886,15 @@
 
   // src/js/ui/schematic.js
   function drawDim(ctx, x1, y1, x2, y2, offset, label, {
-    color = "#2980b9",
-    lineWidth = 1,
-    arrowSize = 5,
-    font = 'bold 11px "Segoe UI", Arial, sans-serif',
+    color = DRAW_THEME.color,
+    lineWidth = DRAW_THEME.lineWidth,
+    arrowSize = DRAW_THEME.arrowSize,
+    font = DRAW_THEME.font,
     textOffsetX = 0,
     textOffsetY = 0,
-    drawExtLines = true
+    drawExtLines = true,
+    bgColor = DRAW_THEME.bgColor,
+    textGap = DRAW_THEME.textGap
   } = {}) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -956,22 +957,29 @@
       const metrics = ctx.measureText(label);
       const tw = metrics.width;
       const th = 12;
-      const gap = 4;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.fillStyle = bgColor;
       ctx.beginPath();
       if (ctx.roundRect) {
-        ctx.roundRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4, 3);
+        ctx.roundRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4, 3);
       } else {
-        ctx.fillRect(-tw / 2 - 4, -th - gap - 2, tw + 8, th + 4);
+        ctx.fillRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4);
       }
       ctx.fill();
       ctx.fillStyle = color;
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(label, 0, -gap);
+      ctx.fillText(label, 0, -textGap);
     }
     ctx.restore();
   }
+  var DRAW_THEME = {
+    color: "#2980b9",
+    lineWidth: 1,
+    arrowSize: 5,
+    font: 'bold 11px "Segoe UI", Arial, sans-serif',
+    bgColor: "rgba(255, 255, 255, 0.85)",
+    textGap: 4
+  };
   function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
     const ctx = canvas.getContext("2d");
     const { H, W } = geometry;
@@ -1309,6 +1317,205 @@
     ctx.restore();
   }
 
+  // src/js/engine/thermo/defaultComponents.js
+  var SJ54H_COMPONENTS = Object.freeze({
+    compressor: {
+      name: "EGX80CLC 100V 50Hz",
+      rpm: 2900,
+      rpm0: 2900,
+      Vc: 11.14,
+      // cc
+      T_suction: 32.2,
+      // °C – fixed suction temperature from Excel H11
+      volEffCoeffs: {
+        A: 0.9260142251566365,
+        B: -0.01221312333322575,
+        C: -0.0023789273042382304
+      },
+      kEtaV: { a: 1, b: 0, c: 0 },
+      powerCoeffs: {
+        AW: 135.175,
+        BW: 2.6366666666666667,
+        CW: 0.975,
+        DW: 0.02,
+        EW: 0.016666666666666666
+      },
+      powerKw: { a: 1, b: 0, c: 0 }
+    },
+    fan: {
+      diameter_mm: 100,
+      speed_rpm: 2550,
+      inputPower_W: 2.1,
+      totalAirflow_m3h: 59.5,
+      fanAirflow_CFM: 59.5 / 1.699
+      // convert m³/h to CFM
+    },
+    electrical: {
+      pwbOn_W: 2,
+      pwbOff_W: 1,
+      defrostHeater_W: 140,
+      timerPeriod_h: 10.5,
+      defrostOn_min: 20
+    },
+    condenser: {
+      sidePipePitch_mm: 150,
+      backPipePitch_mm: 200,
+      K_side_kcalhm2C: 5.395,
+      K_back_kcalhm2C: 4.17,
+      backCondenserEfficiency: 0.7,
+      k_RFront1: 0.3405,
+      k_RFront2: 0.03322,
+      k_FRPartition1: 0.1984,
+      k_FRPartition2: 0.1219,
+      k_FFront1: 0.3395,
+      k_FFront2: 0.0344
+    },
+    subcool_K: 10,
+    dischargeTemp_C: 60,
+    // Evaporator geometry (used by dynamic TE calculation)
+    evapGeom: {
+      evapWidth_mm: 460,
+      // E26 (EV WIDTH)
+      evapDepth_mm: 60,
+      // E27 (EV DEPTH)
+      evapArea_m2: 1.754
+      // E33 (SURFACE OF EVAPORATOR)
+    },
+    initialTE: -25.7
+  });
+  var SJ_PV73K_COMPONENTS = Object.freeze({
+    compressor: {
+      name: "SQ47LAEG 220V 50Hz",
+      rpm: 2220,
+      rpm0: 2220,
+      Vc: 10.17,
+      T_suction: 32.2,
+      // use compressorMap instead of polynomial coefficients
+      useMap: true
+    },
+    fan: {
+      diameter_mm: 100,
+      speed_rpm: 2850,
+      inputPower_W: 2.4,
+      totalAirflow_m3h: 146.4
+    },
+    electrical: {
+      pwbOn_W: 2,
+      pwbOff_W: 1,
+      defrostHeater_W: 112,
+      timerPeriod_h: 10.5,
+      defrostOn_min: 0
+    },
+    condenser: {
+      sidePipePitch_mm: 150,
+      backPipePitch_mm: 200,
+      K_side_kcalhm2C: 5.395,
+      K_back_kcalhm2C: 4.17,
+      backCondenserEfficiency: 0.7,
+      k_RFront1: 0.3405,
+      k_RFront2: 0.03322,
+      k_FRPartition1: 0.1984,
+      k_FRPartition2: 0.1219,
+      k_FFront1: 0.3395,
+      k_FFront2: 0.0344
+    },
+    subcool_K: 10,
+    dischargeTemp_C: 60,
+    evapGeom: {
+      evapWidth_mm: 440.5,
+      evapDepth_mm: 58,
+      evapArea_m2: 1.2985
+    },
+    freezerPosition: "bottom",
+    initialTE: -22.7
+  });
+
+  // src/js/compressorManager.js
+  var DEFAULT_COMPRESSORS = [
+    {
+      id: "EGX80CLC",
+      name: "EGX80CLC 100V 50Hz",
+      model: "EGX80CLC",
+      voltage: 100,
+      frequency: 50,
+      cylinderVolumeCm3: SJ54H_COMPONENTS.compressor.cylinderVolumeCm3,
+      speedRpm: SJ54H_COMPONENTS.compressor.speedRpm,
+      wCoeffs: [
+        SJ54H_COMPONENTS.compressor.powerCoeffs.AW,
+        SJ54H_COMPONENTS.compressor.powerCoeffs.BW,
+        SJ54H_COMPONENTS.compressor.powerCoeffs.CW,
+        SJ54H_COMPONENTS.compressor.powerCoeffs.DW,
+        SJ54H_COMPONENTS.compressor.powerCoeffs.EW
+      ],
+      etaCoeffs: [
+        SJ54H_COMPONENTS.compressor.volEffCoeffs.A,
+        SJ54H_COMPONENTS.compressor.volEffCoeffs.B,
+        SJ54H_COMPONENTS.compressor.volEffCoeffs.C
+      ]
+    }
+  ];
+  var compressorList = [];
+  var selectedCompressorId = "EGX80CLC";
+  function ensureArrays(comp) {
+    const toArray = (val, keys) => {
+      if (Array.isArray(val)) return val;
+      if (val && typeof val === "object") return keys.map((k) => val[k]).filter((v) => v !== void 0);
+      return null;
+    };
+    return {
+      ...comp,
+      wCoeffs: toArray(comp.wCoeffs, ["AW", "BW", "CW", "DW", "EW"]),
+      etaCoeffs: toArray(comp.etaCoeffs, ["A", "B", "C"])
+    };
+  }
+  function loadCompressors() {
+    const saved = localStorage.getItem("compressorList");
+    if (saved) {
+      compressorList = JSON.parse(saved);
+      compressorList = compressorList.map((comp) => {
+        if (comp.id === "EGX80CLC") {
+          return {
+            ...DEFAULT_COMPRESSORS[0],
+            ...comp,
+            cylinderVolumeCm3: comp.cylinderVolumeCm3 ?? DEFAULT_COMPRESSORS[0].cylinderVolumeCm3,
+            speedRpm: comp.speedRpm ?? DEFAULT_COMPRESSORS[0].speedRpm,
+            wCoeffs: ensureArrays(comp).wCoeffs || DEFAULT_COMPRESSORS[0].wCoeffs,
+            etaCoeffs: ensureArrays(comp).etaCoeffs || DEFAULT_COMPRESSORS[0].etaCoeffs
+          };
+        }
+        return ensureArrays(comp);
+      });
+      localStorage.setItem("compressorList", JSON.stringify(compressorList));
+    } else {
+      compressorList = [...DEFAULT_COMPRESSORS];
+    }
+    selectedCompressorId = localStorage.getItem("selectedCompressorId") || "EGX80CLC";
+  }
+  function saveCompressors() {
+    localStorage.setItem("compressorList", JSON.stringify(compressorList));
+    localStorage.setItem("selectedCompressorId", selectedCompressorId);
+  }
+  function getCompressorList() {
+    return compressorList;
+  }
+  function getCurrentCompressor() {
+    return compressorList.find((c) => c.id === selectedCompressorId) || compressorList[0];
+  }
+  function setSelectedCompressor(id) {
+    selectedCompressorId = id;
+    saveCompressors();
+  }
+  function addCompressor(comp) {
+    compressorList.push(ensureArrays(comp));
+    saveCompressors();
+  }
+  function deleteCompressor(id) {
+    compressorList = compressorList.filter((c) => c.id !== id);
+    if (selectedCompressorId === id) selectedCompressorId = compressorList[0]?.id || "";
+    saveCompressors();
+  }
+  loadCompressors();
+
   // src/js/ui/settingsModal.js
   function initSettingsModal() {
     const modal = document.getElementById("settingsModal");
@@ -1334,11 +1541,8 @@
     exportBtn2.addEventListener("click", exportSettings);
     importBtn.addEventListener("click", importSettings);
     resetBtn.addEventListener("click", () => {
-      if (confirm("Reset all settings to factory defaults?")) {
-        resetToDefaults();
-        updateSettings(settings);
-        renderSettingsTabs();
-        modal.classList.add("hidden");
+      if (confirm("Reset all settings to factory defaults? This will also clear your compressor list.")) {
+        resetAllSettings();
       }
     });
   }
@@ -1371,22 +1575,57 @@
     settings.canvasHeight = parseInt(document.getElementById("canvasHeight").value) || 800;
   }
   function exportSettings() {
-    const data = { ...settings, compressors: getCompressorList() };
+    loadCompressors();
+    const exportData = {
+      settings: { ...settings },
+      compressorList: getCompressorList(),
+      selectedCompressorId: getCurrentCompressor()?.id ?? ""
+    };
+    const json = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "refrigerator-calc-settings.json";
+    a.click();
+    URL.revokeObjectURL(url);
   }
   function importSettings() {
-  }
-  function resetToDefaults() {
-    const defaults = {
-      autoCalculate: true,
-      showDirtyOverlay: true,
-      mm3ToL: 1e-6,
-      lToCuft: 0.0353147,
-      displayPrecisionL: 2,
-      displayPrecisionCuft: 3,
-      canvasWidth: 600,
-      canvasHeight: 800
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.settings) {
+          updateSettings(data.settings);
+        }
+        if (data.compressorList && Array.isArray(data.compressorList)) {
+          localStorage.setItem("compressorList", JSON.stringify(data.compressorList));
+          if (data.selectedCompressorId) {
+            localStorage.setItem("selectedCompressorId", data.selectedCompressorId);
+          }
+          loadCompressors();
+        }
+        renderSettingsTabs();
+        alert("Settings imported successfully.");
+      } catch (err) {
+        alert("Import failed: " + err.message);
+      }
     };
-    Object.assign(settings, defaults);
+    input.click();
+  }
+  function resetAllSettings() {
+    resetSettings();
+    localStorage.removeItem("compressorList");
+    localStorage.removeItem("selectedCompressorId");
+    loadCompressors();
+    renderSettingsTabs();
+    document.getElementById("settingsModal").classList.add("hidden");
+    alert("All settings and compressor list have been reset to defaults.");
   }
 
   // src/js/engine/thermo/constants.js
@@ -1396,43 +1635,36 @@
     // -------------------------------------------------------------------
     air: {
       density: 1.365,
-      // kg/m³     (Excel: MAIN B20)
-      cp: 0.24
-      // kcal/kg·°C (Excel: MAIN B21)
+      // kg/m³     
+      cp: 1.0048
+      // KJ/kg·K 
     },
     // -------------------------------------------------------------------
-    // Insulation materials – thermal conductivity (kcal / (m·h·°C))
+    // Insulation materials – thermal conductivity (W / (m·°C))
     // -------------------------------------------------------------------
     insulation: {
-      urethane: 0.0165,
+      urethane: 0.0192,
       // rigid polyurethane foam (SIZE B33)
-      polystyrene: 0.035,
+      polystyrene: 0.0407,
       // (SIZE B34)
       packing: 0.035
       // door gasket material (SIZE B36)
     },
     // -------------------------------------------------------------------
-    // Surface heat‑transfer coefficients (kcal / (m²·h·°C))
+    // Surface heat‑transfer coefficients (W / (m²·°C))
     // -------------------------------------------------------------------
     surfaceCoefficients: {
-      outside: 6,
+      outside: 6.977,
       // ambient air to cabinet (SIZE B40)
-      inside: 10
+      inside: 11.628
       // cabinet interior air to wall (SIZE B41)
-    },
-    // -------------------------------------------------------------------
-    // Unit conversions
-    // -------------------------------------------------------------------
-    conversion: {
-      wattToKcalPerH: 0.86
-      // kcal/h → W : multiply by 1/0.86 ≈ 1.16279
     }
   });
 
   // src/js/engine/thermo/heatLoad.js
   function lambdaUrethane(T_in, T_out) {
     const T_avg = (T_in + T_out) / 2;
-    return 0.0165 + 11e-5 * (T_avg - 25);
+    return 0.0165 + 11e-5 * (T_avg - 25) * 1.16279;
   }
   function kExterior(thk, T_in, T_out) {
     const lam = lambdaUrethane(T_in, T_out);
@@ -1589,9 +1821,10 @@
         QEV_cond = kExterior(tEvaBack, T2, T_wallBack) * A_evaBack * (T_wallBack - T2);
       }
     }
-    const fanLoad = (fanInputPower_W ?? 2.1) * PHYSICAL_CONSTANTS.conversion.wattToKcalPerH * PR;
-    const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60 / 24) * PHYSICAL_CONSTANTS.conversion.wattToKcalPerH;
-    return { QF, QR, QEV: QEV_cond + fanLoad + defrostLoad, fanLoad, defrostLoad };
+    const fanLoad = (fanInputPower_W ?? 2.1) * PR;
+    const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR);
+    const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24);
+    return { QF: QF * 1.16279, QR: QR * 1.16279, QEV: QEV_cond * 1.16279 + fanLoad + defrostLoad, fanLoad, defrostLoad };
   }
 
   // src/js/engine/thermo/condenser.js
@@ -1604,20 +1837,20 @@
     const K_back = 1.0738 - 4152e-6 * PIPEPITCH.back + 482e-8 * PIPEPITCH.back ** 2;
     const TRise_side = (TC - T0) * K_side;
     const TRise_back = (TC - T0) * K_back;
-    const Qdpfr = (0.1984 * (TC - T0) + 0.1219 * (TC - TF)) * PR * (W - tFright - tFleft) / 1e3;
+    const Qdpfr = (0.1984 * (TC - T0) + 0.1219 * (TC - TF)) * PR * (W - tFright - tFleft) / 1e3 * 1.16279;
     const isTop = freezerPosition === "top";
     let Qdpf;
     let Qdpr;
     if (isTop) {
-      Qdpf = (0.3395 * (TC - T0) + 0.0344 * (TC - TF)) * PR * (Hf * 2 + W) / 1e3;
-      Qdpr = (0.3405 * (TC - T0) + 0.03322 * (TC - TR)) * PR * (Hr * 2) / 1e3;
+      Qdpf = (0.3395 * (TC - T0) + 0.0344 * (TC - TF)) * PR * (Hf * 2 + W) / 1e3 * 1.16279;
+      Qdpr = (0.3405 * (TC - T0) + 0.03322 * (TC - TR)) * PR * (Hr * 2) / 1e3 * 1.16279;
     } else {
-      Qdpf = (0.3395 * (TC - T0) + 0.0344 * (TC - TR)) * PR * (Hf * 2) / 1e3;
-      Qdpr = (0.3405 * (TC - T0) + 0.03322 * (TC - TF)) * PR * (Hr * 2 + W) / 1e3;
+      Qdpf = (0.3395 * (TC - T0) + 0.0344 * (TC - TR)) * PR * (Hf * 2) / 1e3 * 1.16279;
+      Qdpr = (0.3405 * (TC - T0) + 0.03322 * (TC - TF)) * PR * (Hr * 2 + W) / 1e3 * 1.16279;
     }
     const Qdp = Qdpfr + Qdpf + Qdpr;
-    const Qside = K_side * sideArea * (TC - T0);
-    const Qback = K_back * backArea * (TC - T0);
+    const Qside = K_side * sideArea * (TC - T0) * 1.16279;
+    const Qback = K_back * backArea * (TC - T0) * 1.16279;
     return { Qdpfr, Qdpf, Qdpr, Qdp, Qside, Qback, QCout: Qdp + Qside + Qback };
   }
 
@@ -1630,10 +1863,10 @@
     );
   }
   function r134a_liquidEnthalpy(T_C) {
-    return 100.019 + 0.31763 * T_C + 33057e-8 * T_C ** 2 + 35281e-10 * T_C ** 3;
+    return 100.019 * 4.1868 + 0.31763 * T_C * 4.1868 + 33057e-8 * T_C ** 2 * 4.1868 + 35281e-10 * T_C ** 3 * 4.1868;
   }
   function r134a_gasEnthalpy(T_K, Pe) {
-    return 119.36 + 0.023174 * T_K + 31297e-8 * T_K ** 2 - 138.07 * Pe / T_K;
+    return 119.36 * 4.1868 + 0.023174 * T_K * 4.1868 + 31297e-8 * 4.1868 * T_K ** 2 - 138.07 * 4.1868 * Pe / T_K;
   }
   function r134a_specificVolume(T_K, Pe) {
     return 0.01077 + 8278e-7 * T_K / Pe - 4.511 / T_K - 118e-6 * Pe;
@@ -1644,10 +1877,10 @@
     );
   }
   function r600a_liquidEnthalpy(T_C) {
-    return 75.545 + 0.55731 * T_C + 7088e-7 * T_C ** 2 + 29408e-10 * T_C ** 3;
+    return 75.545 * 4.1868 + 0.55731 * T_C * 4.1868 + 7088e-7 * T_C ** 2 * 4.1868 + 29408e-10 * T_C ** 3 * 4.1868;
   }
   function r600a_gasEnthalpy(T_K, Pe) {
-    return 104.5 + 0.049951 * T_K + 58822e-8 * T_K ** 2 - 249.18 * Pe / T_K;
+    return 104.5 * 4.1868 + 0.049951 * T_K * 4.1868 + 58822e-8 * 4.1868 * T_K ** 2 - 249.18 * 4.1868 * Pe / T_K;
   }
   function r600a_specificVolume(T_K, Pe) {
     return 0.015883 + 1455e-6 * T_K / Pe - 7.2936 / T_K - 4645e-7 * Pe;
@@ -1748,7 +1981,7 @@
       const Pc = prop.satPressure(TC + KELVIN_OFFSET);
       const hGas = prop.gasEnthalpy(suctionTempK, Pe);
       const vGas = prop.specificVolume(suctionTempK, Pe);
-      const G = Q / (hGas - hLiquid);
+      const G = Q * 3.6 / (hGas - hLiquid);
       const displacement_m3h = cylinderVolumeCm3 * speedRpm * 60 / 1e6;
       const GK = displacement_m3h / vGas;
       const etaV = G / GK;
@@ -1777,7 +2010,7 @@
     const hGas = prop.gasEnthalpy(suctionTempK, Pe);
     const displacement_m3h = cylinderVolumeCm3 * speedRpm * 60 / 1e6;
     const G = VolumetricEfficiency * displacement_m3h / vGas;
-    const QCompressor = G * (hGas - hLiq);
+    const QCompressor = G * (hGas - hLiq) / 3.6;
     return {
       Pe,
       Pc,
@@ -1792,6 +2025,7 @@
   var RHO_AIR = PHYSICAL_CONSTANTS.air.density;
   var CP_AIR = PHYSICAL_CONSTANTS.air.cp;
   var KELVIN_OFFSET2 = 273.16;
+  var CV = RHO_AIR * CP_AIR * 1e3 / 3600;
   function getRefrigerantIndex(name) {
     if (name === "R-134a") return 1;
     if (name === "R-600a") return 2;
@@ -1915,7 +2149,6 @@
       debug = false
     } = innerOpts;
     const { T0, TF, TR } = fixedTemps;
-    const rho = RHO_AIR, cp = CP_AIR;
     const PIPEPITCH = {
       side: condenserConfig.sidePipePitch_mm,
       back: condenserConfig.backPipePitch_mm
@@ -1954,22 +2187,15 @@
         console.log(`    loads: QF=${loads2.QF}, QR=${loads2.QR}, QEV=${loads2.QEV}`);
         console.log(`    comp: QComp=${comp2.QCompressor}, Power=${comp2.CompPower}, Pe=${comp2.Pe}, Pc=${comp2.Pc}`);
       }
-      const denom = fan.totalAirflow * rho * cp * PR;
-      let F1, F2;
-      if (Math.abs(denom) < 1e-12) {
-        F1 = loads2.QF;
-      } else {
-        const T3 = T2 + loads2.QEV / denom;
-        const MR = Math.min(fan.totalAirflow, Math.max(
-          0,
-          loads2.QR / (rho * cp * Math.max(0.01, TR - T3) * PR)
-        ));
-        const MF = fan.totalAirflow - MR;
-        currentMR = MR;
-        currentMF = MF;
-        F1 = loads2.QF - MF * rho * cp * (TF - T3) * PR;
-      }
-      F2 = loads2.QF + loads2.QR + loads2.QEV - comp2.QCompressor * PR;
+      const C_tot = fan.totalAirflow * CV;
+      const T3 = T2 + loads2.QEV / (C_tot * PR);
+      const denomR = CV * Math.max(0.01, TR - T3) * PR;
+      const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads2.QR / denomR)) : 0;
+      const MF = fan.totalAirflow - MR;
+      currentMR = MR;
+      currentMF = MF;
+      const F1 = loads2.QF - MF * CV * (TF - T3) * PR;
+      const F2 = loads2.QF + loads2.QR + loads2.QEV - comp2.QCompressor * PR;
       if (debug) console.log(`    F1=${F1.toFixed(4)}, F2=${F2.toFixed(4)}`);
       return [F1, F2];
     };
@@ -2012,10 +2238,17 @@
       compressor: {
         etaV: comp.VolumetricEfficiency,
         coolingCapacity: comp.QCompressor,
+        // W
         inputPower: comp.CompPower,
+        // W
+        COP: comp.QCompressor / comp.CompPower,
+        // dimensionless (W/W)
         massFlow: comp.massFlow,
+        // kg/h
         Pe: comp.Pe,
+        // bar
         Pc: comp.Pc
+        // bar
       },
       MR: currentMR,
       MF: currentMF
@@ -2153,8 +2386,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       const Pc = prop.satPressure(TC + KELVIN_OFFSET2);
       const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET2, Pc);
       const h_liq = prop.liquidEnthalpy(TC - subcool);
-      const QCin = compOuter.massFlow * (h_dis - h_liq);
-      const F3 = QCout.QCout - QCin;
+      const QCin_W = compOuter.massFlow * (h_dis - h_liq) / 3.6;
+      const F3 = QCout.QCout - QCin_W;
       if (debug) console.log(
         `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
       );
@@ -2238,7 +2471,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         const Pc_pert = prop.satPressure(TC + appliedDH + KELVIN_OFFSET2);
         const h_dis_pert = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET2, Pc_pert);
         const h_liq_pert = prop.liquidEnthalpy(TC + appliedDH - subcool);
-        QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert);
+        QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert) / 3.6;
         F3_pert = QCout_pert.QCout - QCin_pert;
         dF3dTC = (F3_pert - F3) / appliedDH;
       } else {
@@ -2279,125 +2512,15 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const pwbOff_W = electrical.pwboff_W ?? 0;
     const defrostOn_W = electrical.defrostOn_W ?? electrical.defrostHeater_W ?? 0;
     const defrostOn_min = electrical.defrostOn_min ?? 0;
+    const timerPeriod_h = electrical.timerPeriod_h ?? 10.5;
     const fanPower = fan.inputPower_W ?? 0;
     const OnPower_W = (compressor.inputPower ?? 0) + fanPower + pwbOn_W;
-    const energy_W = (OnPower_W * PR + pwbOff_W * (1 - PR)) * 24 / 1e3 + defrostOn_min * defrostOn_W * (24 / (10.5 / PR)) / 60 / 1e3;
+    const energy_W = (OnPower_W * PR + pwbOff_W * (1 - PR)) * 24 / 1e3 + defrostOn_min * defrostOn_W * (24 / (timerPeriod_h / PR)) / 60 / 1e3;
     return {
       EnergyConsumption_W: energy_W,
       EnergyConsumption_kWhMonth: energy_W * 30
     };
   }
-
-  // src/js/engine/thermo/defaultComponents.js
-  var SJ54H_COMPONENTS = Object.freeze({
-    compressor: {
-      name: "EGX80CLC 100V 50Hz",
-      rpm: 2900,
-      rpm0: 2900,
-      Vc: 11.14,
-      // cc
-      T_suction: 32.2,
-      // °C – fixed suction temperature from Excel H11
-      volEffCoeffs: {
-        A: 0.9260142251566365,
-        B: -0.01221312333322575,
-        C: -0.0023789273042382304
-      },
-      kEtaV: { a: 1, b: 0, c: 0 },
-      powerCoeffs: {
-        AW: 135.175,
-        BW: 2.6366666666666667,
-        CW: 0.975,
-        DW: 0.02,
-        EW: 0.016666666666666666
-      },
-      powerKw: { a: 1, b: 0, c: 0 }
-    },
-    fan: {
-      diameter_mm: 100,
-      speed_rpm: 2550,
-      inputPower_W: 2.1,
-      totalAirflow_m3h: 59.5
-    },
-    electrical: {
-      pwbOn_W: 2,
-      pwbOff_W: 1,
-      defrostHeater_W: 140,
-      timerPeriod_h: 10.5,
-      defrostOn_min: 0
-    },
-    condenser: {
-      sidePipePitch_mm: 150,
-      backPipePitch_mm: 200,
-      K_side_kcalhm2C: 5.395,
-      K_back_kcalhm2C: 4.17,
-      backCondenserEfficiency: 0.7,
-      k_RFront1: 0.3405,
-      k_RFront2: 0.03322,
-      k_FRPartition1: 0.1984,
-      k_FRPartition2: 0.1219,
-      k_FFront1: 0.3395,
-      k_FFront2: 0.0344
-    },
-    subcool_K: 10,
-    dischargeTemp_C: 60,
-    // Evaporator geometry (used by dynamic TE calculation)
-    evapGeom: {
-      evapWidth_mm: 460,
-      // E26 (EV WIDTH)
-      evapDepth_mm: 60,
-      // E27 (EV DEPTH)
-      evapArea_m2: 1.754
-      // E33 (SURFACE OF EVAPORATOR)
-    },
-    initialTE: -25.7
-  });
-  var SJ_PV73K_COMPONENTS = Object.freeze({
-    compressor: {
-      name: "SQ47LAEG 220V 50Hz",
-      rpm: 2220,
-      rpm0: 2220,
-      Vc: 10.17,
-      T_suction: 32.2,
-      // use compressorMap instead of polynomial coefficients
-      useMap: true
-    },
-    fan: {
-      diameter_mm: 100,
-      speed_rpm: 2850,
-      inputPower_W: 2.4,
-      totalAirflow_m3h: 146.4
-    },
-    electrical: {
-      pwbOn_W: 2,
-      pwbOff_W: 1,
-      defrostHeater_W: 112,
-      timerPeriod_h: 10.5,
-      defrostOn_min: 0
-    },
-    condenser: {
-      sidePipePitch_mm: 150,
-      backPipePitch_mm: 200,
-      K_side_kcalhm2C: 5.395,
-      K_back_kcalhm2C: 4.17,
-      backCondenserEfficiency: 0.7,
-      k_RFront1: 0.3405,
-      k_RFront2: 0.03322,
-      k_FRPartition1: 0.1984,
-      k_FRPartition2: 0.1219,
-      k_FFront1: 0.3395,
-      k_FFront2: 0.0344
-    },
-    subcool_K: 10,
-    dischargeTemp_C: 60,
-    evapGeom: {
-      evapWidth_mm: 440.5,
-      evapDepth_mm: 58,
-      evapArea_m2: 1.2985
-    },
-    freezerPosition: "bottom",
-    initialTE: -22.7
-  });
 
   // src/js/engine/thermo/index.js
   function runThermoAnalysis(config) {
@@ -2488,8 +2611,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           etaV: result.compressor.etaV,
           Pe: result.compressor.Pe,
           // ← added
-          Pc: result.compressor.Pc
+          Pc: result.compressor.Pc,
           // ← added
+          COP: result.compressor.COP
+          // ★ add this line
         },
         fan: result.fan,
         electrical: result.electrical,
@@ -2587,92 +2712,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     return out;
   }
 
-  // src/js/compressorManager.js
-  var DEFAULT_COMPRESSORS = [
-    {
-      id: "EGX80CLC",
-      name: "EGX80CLC 100V 50Hz",
-      model: "EGX80CLC",
-      voltage: 100,
-      frequency: 50,
-      cylinderVolumeCm3: SJ54H_COMPONENTS.compressor.cylinderVolumeCm3,
-      speedRpm: SJ54H_COMPONENTS.compressor.speedRpm,
-      wCoeffs: [
-        SJ54H_COMPONENTS.compressor.powerCoeffs.AW,
-        SJ54H_COMPONENTS.compressor.powerCoeffs.BW,
-        SJ54H_COMPONENTS.compressor.powerCoeffs.CW,
-        SJ54H_COMPONENTS.compressor.powerCoeffs.DW,
-        SJ54H_COMPONENTS.compressor.powerCoeffs.EW
-      ],
-      etaCoeffs: [
-        SJ54H_COMPONENTS.compressor.volEffCoeffs.A,
-        SJ54H_COMPONENTS.compressor.volEffCoeffs.B,
-        SJ54H_COMPONENTS.compressor.volEffCoeffs.C
-      ]
-    }
-  ];
-  var compressorList = [];
-  var selectedCompressorId = "EGX80CLC";
-  function ensureArrays(comp) {
-    const toArray = (val, keys) => {
-      if (Array.isArray(val)) return val;
-      if (val && typeof val === "object") return keys.map((k) => val[k]).filter((v) => v !== void 0);
-      return null;
-    };
-    return {
-      ...comp,
-      wCoeffs: toArray(comp.wCoeffs, ["AW", "BW", "CW", "DW", "EW"]),
-      etaCoeffs: toArray(comp.etaCoeffs, ["A", "B", "C"])
-    };
-  }
-  function loadCompressors() {
-    const saved = localStorage.getItem("compressorList");
-    if (saved) {
-      compressorList = JSON.parse(saved);
-      compressorList = compressorList.map((comp) => {
-        if (comp.id === "EGX80CLC") {
-          return {
-            ...DEFAULT_COMPRESSORS[0],
-            ...comp,
-            cylinderVolumeCm3: comp.cylinderVolumeCm3 ?? DEFAULT_COMPRESSORS[0].cylinderVolumeCm3,
-            speedRpm: comp.speedRpm ?? DEFAULT_COMPRESSORS[0].speedRpm,
-            wCoeffs: ensureArrays(comp).wCoeffs || DEFAULT_COMPRESSORS[0].wCoeffs,
-            etaCoeffs: ensureArrays(comp).etaCoeffs || DEFAULT_COMPRESSORS[0].etaCoeffs
-          };
-        }
-        return ensureArrays(comp);
-      });
-      localStorage.setItem("compressorList", JSON.stringify(compressorList));
-    } else {
-      compressorList = [...DEFAULT_COMPRESSORS];
-    }
-    selectedCompressorId = localStorage.getItem("selectedCompressorId") || "EGX80CLC";
-  }
-  function saveCompressors() {
-    localStorage.setItem("compressorList", JSON.stringify(compressorList));
-    localStorage.setItem("selectedCompressorId", selectedCompressorId);
-  }
-  function getCompressorList2() {
-    return compressorList;
-  }
-  function getCurrentCompressor() {
-    return compressorList.find((c) => c.id === selectedCompressorId) || compressorList[0];
-  }
-  function setSelectedCompressor(id) {
-    selectedCompressorId = id;
-    saveCompressors();
-  }
-  function addCompressor(comp) {
-    compressorList.push(ensureArrays(comp));
-    saveCompressors();
-  }
-  function deleteCompressor(id) {
-    compressorList = compressorList.filter((c) => c.id !== id);
-    if (selectedCompressorId === id) selectedCompressorId = compressorList[0]?.id || "";
-    saveCompressors();
-  }
-  loadCompressors();
-
   // src/js/engine/thermo/evaporator.js
   function computeEvaporatorArea(evap) {
     const { width_mm, height_mm, depth_mm, rows, tubeOD_mm, finPitch_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
@@ -2685,12 +2724,13 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   }
   function airSpeed(fanParam, evap) {
     const { fanDiam, fanRPM, fanThick } = fanParam;
-    const fanAirflow_m3h = Math.PI * (fanDiam / 2) ** 2 * fanThick * fanRPM / 1e6 * 3600;
+    const fanAirflow_CFM = Math.PI * (fanDiam / 2) ** 2 * fanThick * fanRPM / 283168466e-1;
+    const fanAirflow_m3h = fanAirflow_CFM * 1.699;
     const frontArea_m2 = evap.width_mm * evap.depth_mm / 1e6;
     return fanAirflow_m3h / frontArea_m2 / 3600;
   }
   function evaporatorAlpha(v_ms) {
-    return 12.93 * Math.pow(v_ms, 0.415);
+    return 12.93 * Math.pow(v_ms, 0.415) * 1.16279;
   }
   function lmtd(T1, T2, TE) {
     const dT1 = T1 - TE;
@@ -2703,6 +2743,15 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   }
 
   // src/js/ui/thermoUI.js
+  function computeFanAirflow(fanParam = {}) {
+    const { fanDiam = 100, fanRPM = 2200 } = fanParam;
+    const D = fanDiam / 1e3;
+    const tipSpeed = Math.PI * D * fanRPM / 60;
+    const axialVelocity = tipSpeed * 0.15;
+    const area = Math.PI * D * D / 4;
+    const flow_m3s = axialVelocity * area;
+    return flow_m3s * 3600;
+  }
   var thermalAdvanced = {
     subcool: SJ54H_COMPONENTS.subcool_K,
     dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
@@ -2710,14 +2759,20 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
     defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
   };
-  var getGeometryFn = null;
-  function initThermoUI(getGeometry) {
-    getGeometryFn = getGeometry;
+  var getGeometryFn = () => null;
+  var thermalModal = null;
+  var thermalModalInputs = {};
+  function initThermoUI(options) {
+    if (typeof options === "function") {
+      getGeometryFn = options;
+    } else if (options && options.getGeometry) {
+      getGeometryFn = options.getGeometry;
+    }
     const panel = document.getElementById("panelThermal");
     if (!panel) return;
     panel.innerHTML = `
     <button id="thermoRunBtn">Run Thermal Analysis</button>
-    <div id="thermoErrors"></div>   <!-- keep errors in the left panel -->
+    <div id="thermoErrors"></div>
     <fieldset>
       <legend>Design Inputs</legend>
       <label>Ambient T0 (\xB0C): <input type="number" id="thermoT0" value="30" step="any"></label>
@@ -2729,24 +2784,24 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           <option value="R-134a">R-134a</option>
         </select>
       </label>
-      <label>Fan airflow (m\xB3/h): <input type="number" id="thermoFanFlow" step="any"></label>
       <button id="thermoAdvancedBtn" type="button">\u2699\uFE0F Advanced</button>
     </fieldset>
   `;
-    document.getElementById("thermoFanFlow").value = SJ54H_COMPONENTS.fan.totalAirflow_m3h;
     const saved = localStorage.getItem("thermoAdvanced");
     if (saved) thermalAdvanced = { ...thermalAdvanced, ...JSON.parse(saved) };
     document.getElementById("thermoAdvancedBtn").addEventListener("click", openThermalSettings);
     document.getElementById("thermoRunBtn").addEventListener("click", handleRun);
+    buildThermalModalOnce();
   }
-  function openThermalSettings() {
-    const modal = document.getElementById("thermalSettingsModal");
-    if (!modal) return;
-    loadCompressors();
-    const compressors = getCompressorList2();
-    const currentComp = getCurrentCompressor();
-    const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
-    modal.innerHTML = `
+  function buildThermalModalOnce() {
+    thermalModal = document.getElementById("thermalSettingsModal");
+    if (!thermalModal) {
+      thermalModal = document.createElement("div");
+      thermalModal.id = "thermalSettingsModal";
+      thermalModal.className = "modal hidden";
+      document.body.appendChild(thermalModal);
+    }
+    thermalModal.innerHTML = `
     <div class="modal-content">
       <span class="close-btn" id="closeThermalSettings">&times;</span>
       <h2>Thermal Design Parameters</h2>
@@ -2754,10 +2809,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       <fieldset>
         <legend>Condenser</legend>
         <label>Side pipe pitch (mm):
-          <input type="number" id="thermoCondSidePitch" value="${cond.sidePipePitch_mm}" step="any">
+          <input type="number" id="thermoCondSidePitch" step="any">
         </label>
         <label>Back pipe pitch (mm):
-          <input type="number" id="thermoCondBackPitch" value="${cond.backPipePitch_mm}" step="any">
+          <input type="number" id="thermoCondBackPitch" step="any">
         </label>
       </fieldset>
 
@@ -2774,45 +2829,44 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
         <label>Side Plates: <input id="evapSidePlateNo" type="number" step="any"></label>
       </fieldset>
+
       <fieldset>
         <legend>Fan Parameters</legend>
         <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
         <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
         <label>Input power (W):
-          <input type="number" id="thermoFanInputPower" value="${thermalAdvanced.fanInputPower}" step="any" min="0">
+          <input type="number" id="thermoFanInputPower" step="any" min="0">
         </label>
-
       </fieldset>
+
       <fieldset>
         <legend>Compressor</legend>
         <label>Current Compressor:
-          <select id="thermoCompressorSelect">
-            ${compressors.map((c) => `<option value="${c.id}" ${c.id === currentComp.id ? "selected" : ""}>${c.name}</option>`).join("")}
-          </select>
+          <select id="thermoCompressorSelect"></select>
         </label>
         <button id="thermoAddCompressorBtn" type="button">Add Compressor</button>
         <button id="thermoEditCompressorBtn" type="button">Edit Selected</button>
         <button id="thermoDeleteCompressorBtn" type="button">Delete Selected</button>
-        <div id="thermoCompressorList"></div>  <!-- can be used for detailed info later -->
       </fieldset>
 
       <fieldset>
         <legend>Subcool &amp; Discharge</legend>
         <label>Subcool (K):
-          <input type="number" id="thermoSubcool" value="${thermalAdvanced.subcool}" step="any">
+          <input type="number" id="thermoSubcool" step="any">
         </label>
         <label>Discharge temp (\xB0C):
-          <input type="number" id="thermoDiscTemp" value="${thermalAdvanced.dischargeTemp}" step="any">
+          <input type="number" id="thermoDiscTemp" step="any">
         </label>
       </fieldset>
 
+      <fieldset>
         <legend>Defrost</legend>
         <label>Heater (W):
-          <input type="number" id="thermoDefHeater" value="${thermalAdvanced.defHeater}" step="any">
+          <input type="number" id="thermoDefHeater" step="any">
         </label>
         <label>On time (min/24h):
-          <input type="number" id="thermoDefOn" value="${thermalAdvanced.defOnMin}" step="any">
+          <input type="number" id="thermoDefOn" step="any">
         </label>
       </fieldset>
 
@@ -2821,197 +2875,119 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       </div>
     </div>
   `;
-    const evap = settings.evaporator || {};
-    document.getElementById("evapWidth").value = evap.width_mm ?? 460;
-    document.getElementById("evapHeight").value = evap.height_mm ?? 150;
-    document.getElementById("evapDepth").value = evap.depth_mm ?? 60;
-    document.getElementById("evapRows").value = evap.rows ?? 2;
-    document.getElementById("evapTubeOD").value = evap.tubeOD_mm ?? 8;
-    document.getElementById("evapFinPitch").value = evap.finPitch_mm ?? 4;
-    document.getElementById("evapFinHeight").value = evap.finHeight_mm ?? 150;
-    document.getElementById("evapFinLength").value = evap.finLength_mm ?? 460;
-    document.getElementById("evapNumFins").value = evap.numFins ?? 32;
-    document.getElementById("evapSidePlateNo").value = evap.sidePlateNo ?? 0;
-    const fanP = settings.fanParam || {};
-    document.getElementById("fanDiam").value = fanP.fanDiam ?? 100;
-    document.getElementById("fanRPM").value = fanP.fanRPM ?? 2200;
-    document.getElementById("fanThick").value = fanP.fanThick ?? 25;
-    modal.classList.remove("hidden");
-    document.getElementById("closeThermalSettings").onclick = () => modal.classList.add("hidden");
-    document.getElementById("thermoAddCompressorBtn").onclick = () => {
-      openAddCompressorModal();
+    thermalModalInputs = {
+      condSidePitch: document.getElementById("thermoCondSidePitch"),
+      condBackPitch: document.getElementById("thermoCondBackPitch"),
+      evapWidth: document.getElementById("evapWidth"),
+      evapHeight: document.getElementById("evapHeight"),
+      evapDepth: document.getElementById("evapDepth"),
+      evapRows: document.getElementById("evapRows"),
+      evapTubeOD: document.getElementById("evapTubeOD"),
+      evapFinPitch: document.getElementById("evapFinPitch"),
+      evapFinHeight: document.getElementById("evapFinHeight"),
+      evapFinLength: document.getElementById("evapFinLength"),
+      evapNumFins: document.getElementById("evapNumFins"),
+      evapSidePlateNo: document.getElementById("evapSidePlateNo"),
+      fanDiam: document.getElementById("fanDiam"),
+      fanRPM: document.getElementById("fanRPM"),
+      fanThick: document.getElementById("fanThick"),
+      fanInputPower: document.getElementById("thermoFanInputPower"),
+      compressorSelect: document.getElementById("thermoCompressorSelect"),
+      subcool: document.getElementById("thermoSubcool"),
+      dischargeTemp: document.getElementById("thermoDiscTemp"),
+      defHeater: document.getElementById("thermoDefHeater"),
+      defOn: document.getElementById("thermoDefOn")
     };
-    document.getElementById("thermoEditCompressorBtn").onclick = () => {
-      openEditCompressorModal();
-    };
+    document.getElementById("closeThermalSettings").onclick = () => thermalModal.classList.add("hidden");
+    document.getElementById("thermoAddCompressorBtn").onclick = openAddCompressorModal;
+    document.getElementById("thermoEditCompressorBtn").onclick = openEditCompressorModal;
     document.getElementById("thermoDeleteCompressorBtn").onclick = () => {
-      const sel = document.getElementById("thermoCompressorSelect");
+      const sel = thermalModalInputs.compressorSelect;
       if (confirm("Delete the selected compressor?")) {
         deleteCompressor(sel.value);
-        openThermalSettings();
+        refreshCompressorSelect();
       }
     };
-    document.getElementById("thermoCompressorSelect").onchange = (e) => {
+    thermalModalInputs.compressorSelect.onchange = (e) => {
       setSelectedCompressor(e.target.value);
     };
-    document.getElementById("saveThermalSettings").onclick = () => {
-      const sidePitch = parseFloat(document.getElementById("thermoCondSidePitch").value) || 50;
-      const backPitch = parseFloat(document.getElementById("thermoCondBackPitch").value) || 50;
-      settings.condenser = {
-        sidePipePitch_mm: sidePitch,
-        backPipePitch_mm: backPitch
-      };
-      settings.evaporator = {
-        width_mm: parseFloat(document.getElementById("evapWidth").value) || 460,
-        height_mm: parseFloat(document.getElementById("evapHeight").value) || 150,
-        depth_mm: parseFloat(document.getElementById("evapDepth").value) || 60,
-        rows: parseInt(document.getElementById("evapRows").value) || 2,
-        tubeOD_mm: parseFloat(document.getElementById("evapTubeOD").value) || 8,
-        finPitch_mm: parseFloat(document.getElementById("evapFinPitch").value) || 4,
-        finHeight_mm: parseFloat(document.getElementById("evapFinHeight").value) || 150,
-        finLength_mm: parseFloat(document.getElementById("evapFinLength").value) || 460,
-        numFins: parseInt(document.getElementById("evapNumFins").value) || 32,
-        sidePlateNo: parseInt(document.getElementById("evapSidePlateNo").value) || 0
-      };
-      settings.fanParam = {
-        fanDiam: parseFloat(document.getElementById("fanDiam").value) || 100,
-        fanRPM: parseFloat(document.getElementById("fanRPM").value) || 2200,
-        fanThick: parseFloat(document.getElementById("fanThick").value) || 25
-      };
-      updateSettings(settings);
-      thermalAdvanced.subcool = parseFloat(document.getElementById("thermoSubcool").value) || SJ54H_COMPONENTS.subcool_K;
-      thermalAdvanced.dischargeTemp = parseFloat(document.getElementById("thermoDiscTemp").value) || SJ54H_COMPONENTS.dischargeTemp_C;
-      thermalAdvanced.fanInputPower = parseFloat(document.getElementById("thermoFanInputPower").value) || SJ54H_COMPONENTS.fan.inputPower_W;
-      thermalAdvanced.defHeater = parseFloat(document.getElementById("thermoDefHeater").value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
-      thermalAdvanced.defOnMin = parseFloat(document.getElementById("thermoDefOn").value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
-      localStorage.setItem("thermoAdvanced", JSON.stringify(thermalAdvanced));
-      const compSelect = document.getElementById("thermoCompressorSelect");
-      if (compSelect) setSelectedCompressor(compSelect.value);
-      modal.classList.add("hidden");
-    };
-    modal.onclick = (e) => {
-      if (e.target === modal) modal.classList.add("hidden");
+    document.getElementById("saveThermalSettings").onclick = saveThermalSettings;
+    thermalModal.onclick = (e) => {
+      if (e.target === thermalModal) thermalModal.classList.add("hidden");
     };
   }
-  function handleRun() {
-    clearMessages();
-    if (!getGeometryFn) {
-      showError("Geometry source not available.");
-      return;
-    }
-    const cabinetGeom = getGeometryFn();
-    const geom = toThermalFormat(cabinetGeom);
-    const T0 = parseFloat(document.getElementById("thermoT0")?.value);
-    const TF = parseFloat(document.getElementById("thermoTF")?.value);
-    const TR = parseFloat(document.getElementById("thermoTR")?.value);
-    if (isNaN(T0) || isNaN(TF) || isNaN(TR)) {
-      showError("Please fill all temperatures.");
-      return;
-    }
-    const refrigerant = document.getElementById("thermoRefrigerant")?.value || "R-600a";
-    const fanFlow = parseFloat(document.getElementById("thermoFanFlow")?.value) || SJ54H_COMPONENTS.fan.totalAirflow_m3h;
-    const comps = cabinetGeom._compartments;
-    const nComps = comps?.length || 0;
-    const hasFreezer = comps && comps[0].type === "freezer";
-    const freezerPosition = nComps === 1 ? "top" : (
-      // single compartment always "top" (no other)
-      hasFreezer ? "top" : "bottom"
-    );
-    const config = buildDefaultConfig({
-      geom,
-      freezerPosition,
-      // now always valid
-      refrigerant,
-      subcool: thermalAdvanced.subcool,
-      dischargeTemp: thermalAdvanced.dischargeTemp,
-      fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-      fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-      electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin }
-    });
-    config.evapGeom = settings.evaporator || {};
-    config.fanParam = settings.fanParam || {};
-    const defaultCompParams = config.compParams;
+  function openThermalSettings() {
     loadCompressors();
-    const compressor = getCurrentCompressor();
-    console.log("Loaded compressor object:", JSON.stringify(compressor, null, 2));
-    if (compressor) {
-      const toArray = (coeffs, keys) => {
-        if (Array.isArray(coeffs)) return coeffs;
-        if (coeffs && typeof coeffs === "object") {
-          return keys.map((k) => coeffs[k]).filter((v) => v !== void 0);
-        }
-        return null;
-      };
-      const wArr = toArray(compressor.wCoeffs, ["AW", "BW", "CW", "DW", "EW"]);
-      const etaArr = toArray(compressor.etaCoeffs, ["A", "B", "C"]);
-      if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
-        config.compParams = {
-          name: compressor.name,
-          cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
-          speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
-          wCoeffs: wArr,
-          etaCoeffs: etaArr
-        };
-      } else {
-        console.warn("Selected compressor missing coefficients \u2013 using default.", compressor);
-      }
-    }
-    config.solverOptions = config.solverOptions || {};
-    config.solverOptions.innerOptions = config.solverOptions.innerOptions || {};
-    config.solverOptions.innerOptions.debug = true;
-    const result = runThermoAnalysis(config);
-    if (!result.success) {
-      showError(result.errors.join("; "));
-      return;
-    }
-    let energy = null;
-    if (result.results && result.results.converged) {
-      try {
-        energy = EnergyConsumption(result.results);
-      } catch (e) {
-        console.warn("EnergyConsumption calculation failed:", e);
-      }
-    }
-    if (result.results && result.results.converged !== false) {
-      try {
-        energy = EnergyConsumption(result.results);
-      } catch (e) {
-        console.error("EnergyConsumption threw:", e);
-      }
-    }
-    let evapDetails = null;
-    const evap = settings.evaporator;
-    const fanP = settings.fanParam;
-    if (evap && fanP && result.results && result.results.converged !== false) {
-      try {
-        const area = computeEvaporatorArea(evap);
-        const v = airSpeed(fanP, evap);
-        const alpha = evaporatorAlpha(v);
-        const TF2 = parseFloat(document.getElementById("thermoTF")?.value) || -18;
-        const TR2 = parseFloat(document.getElementById("thermoTR")?.value) || 3;
-        const MR = result.results.MR || 0;
-        const MF = result.results.MF || 0;
-        const totalFlow = MR + MF;
-        const T1 = totalFlow > 0 ? (MF * TF2 + MR * TR2) / totalFlow : TF2;
-        const T2 = result.results.T2;
-        const TE = result.results.TE;
-        const LMTD = lmtd(T1, T2, TE);
-        const Qevap = evaporatorCapacity(alpha, area, LMTD);
-        evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
-      } catch (e) {
-        console.warn("Evaporator calculation failed:", e);
-      }
-    }
-    if (evapDetails) {
-      result.results.evapDetails = evapDetails;
-    }
-    console.log("Displaying results with QF:", result.results.heatLoads.QF, "QR:", result.results.heatLoads.QR);
-    document.getElementById("tabThermal").click();
-    const thermoRight = document.getElementById("thermoRightPanel");
-    if (thermoRight) thermoRight.innerHTML = "";
-    result.results.configLabel = comps && comps.length === 1 ? `Single ${comps[0].type}` : freezerPosition === "top" ? "Top Freezer" : "Bottom Freezer";
-    displayResults(result.results, energy);
-    if (result.warnings.length) showWarnings(result.warnings);
+    const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
+    thermalModalInputs.condSidePitch.value = cond.sidePipePitch_mm;
+    thermalModalInputs.condBackPitch.value = cond.backPipePitch_mm;
+    const evap = settings.evaporator || {};
+    thermalModalInputs.evapWidth.value = evap.width_mm ?? 460;
+    thermalModalInputs.evapHeight.value = evap.height_mm ?? 150;
+    thermalModalInputs.evapDepth.value = evap.depth_mm ?? 60;
+    thermalModalInputs.evapRows.value = evap.rows ?? 2;
+    thermalModalInputs.evapTubeOD.value = evap.tubeOD_mm ?? 8;
+    thermalModalInputs.evapFinPitch.value = evap.finPitch_mm ?? 4;
+    thermalModalInputs.evapFinHeight.value = evap.finHeight_mm ?? 150;
+    thermalModalInputs.evapFinLength.value = evap.finLength_mm ?? 460;
+    thermalModalInputs.evapNumFins.value = evap.numFins ?? 32;
+    thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
+    const fanP = settings.fanParam || {};
+    thermalModalInputs.fanDiam.value = fanP.fanDiam ?? 100;
+    thermalModalInputs.fanRPM.value = fanP.fanRPM ?? 2200;
+    thermalModalInputs.fanThick.value = fanP.fanThick ?? 25;
+    thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
+    thermalModalInputs.subcool.value = thermalAdvanced.subcool;
+    thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
+    thermalModalInputs.defHeater.value = thermalAdvanced.defHeater;
+    thermalModalInputs.defOn.value = thermalAdvanced.defOnMin;
+    refreshCompressorSelect();
+    thermalModal.classList.remove("hidden");
+  }
+  function refreshCompressorSelect() {
+    const select = thermalModalInputs.compressorSelect;
+    select.innerHTML = "";
+    const compressors = getCompressorList();
+    const currentId = getCurrentCompressor()?.id;
+    compressors.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.name;
+      opt.selected = c.id === currentId;
+      select.appendChild(opt);
+    });
+  }
+  function saveThermalSettings() {
+    const sidePitch = parseFloat(thermalModalInputs.condSidePitch.value) || 50;
+    const backPitch = parseFloat(thermalModalInputs.condBackPitch.value) || 50;
+    settings.condenser = { sidePipePitch_mm: sidePitch, backPipePitch_mm: backPitch };
+    settings.evaporator = {
+      width_mm: parseFloat(thermalModalInputs.evapWidth.value) || 460,
+      height_mm: parseFloat(thermalModalInputs.evapHeight.value) || 150,
+      depth_mm: parseFloat(thermalModalInputs.evapDepth.value) || 60,
+      rows: parseInt(thermalModalInputs.evapRows.value) || 2,
+      tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
+      finPitch_mm: parseFloat(thermalModalInputs.evapFinPitch.value) || 4,
+      finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
+      finLength_mm: parseFloat(thermalModalInputs.evapFinLength.value) || 460,
+      numFins: parseInt(thermalModalInputs.evapNumFins.value) || 32,
+      sidePlateNo: parseInt(thermalModalInputs.evapSidePlateNo.value) || 0
+    };
+    settings.fanParam = {
+      fanDiam: parseFloat(thermalModalInputs.fanDiam.value) || 100,
+      fanRPM: parseFloat(thermalModalInputs.fanRPM.value) || 2200,
+      fanThick: parseFloat(thermalModalInputs.fanThick.value) || 25
+    };
+    updateSettings(settings);
+    thermalAdvanced.subcool = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
+    thermalAdvanced.dischargeTemp = parseFloat(thermalModalInputs.dischargeTemp.value) || SJ54H_COMPONENTS.dischargeTemp_C;
+    thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
+    thermalAdvanced.defHeater = parseFloat(thermalModalInputs.defHeater.value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
+    thermalAdvanced.defOnMin = parseFloat(thermalModalInputs.defOn.value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
+    localStorage.setItem("thermoAdvanced", JSON.stringify(thermalAdvanced));
+    const compSelect = thermalModalInputs.compressorSelect;
+    if (compSelect) setSelectedCompressor(compSelect.value);
+    thermalModal.classList.add("hidden");
   }
   function openAddCompressorModal() {
     const modal = document.getElementById("addCompressorModal");
@@ -3024,9 +3000,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const defaultTE = [-34.4, -23.3, -12.2];
     const defaultTC = [37.8, 46.1, 54.4];
     const Q_matrix = [
-      [70.554507, 67.112824, 61.950299],
-      [129.063122, 126.48186, 121.319335],
-      [215.105204, 210.8031, 203.919733]
+      [70.554507, 67.112824, 61.950299].map((v) => v * 1.16279),
+      [129.063122, 126.48186, 121.319335].map((v) => v * 1.16279),
+      [215.105204, 210.8031, 203.919733].map((v) => v * 1.16279)
     ];
     const W_matrix = [
       [49.7, 51.3, 72],
@@ -3041,8 +3017,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
       ${defaultTC.map((tc, j) => `
         <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;">W<br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">W
         </td>
       `).join("")}
     </tr>
@@ -3188,8 +3164,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const refIdx = comp.refrigerantIndex || 2;
     const defaultTE = [-34.4, -23.3, -12.2];
     const defaultTC = [37.8, 46.1, 54.4];
-    const Q_matrix = [["", "", ""], ["", "", ""], ["", "", ""]];
-    const W_matrix = [["", "", ""], ["", "", ""], ["", "", ""]];
     const headerCells = defaultTC.map((tc, j) => `
     <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
   `).join("");
@@ -3198,8 +3172,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
       ${defaultTC.map((_, j) => `
         <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;"><br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">
+          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;">W<br>
+          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">W
         </td>
       `).join("")}
     </tr>
@@ -3341,6 +3315,116 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       if (e.target === modal) modal.classList.add("hidden");
     };
   }
+  function handleRun() {
+    clearMessages();
+    if (!getGeometryFn) {
+      showError("Geometry source not available.");
+      return;
+    }
+    const cabinetGeom = getGeometryFn();
+    const geom = toThermalFormat(cabinetGeom);
+    const T0 = parseFloat(document.getElementById("thermoT0")?.value);
+    const TF = parseFloat(document.getElementById("thermoTF")?.value);
+    const TR = parseFloat(document.getElementById("thermoTR")?.value);
+    if (isNaN(T0) || isNaN(TF) || isNaN(TR)) {
+      showError("Please fill all temperatures.");
+      return;
+    }
+    const refrigerant = document.getElementById("thermoRefrigerant")?.value || "R-600a";
+    const fanParam = settings.fanParam || {};
+    const fanFlow = computeFanAirflow(fanParam);
+    const comps = cabinetGeom._compartments;
+    const nComps = comps?.length || 0;
+    const hasFreezer = comps && comps[0].type === "freezer";
+    const freezerPosition = nComps === 1 ? "top" : (
+      // single compartment always 'top'
+      hasFreezer ? "top" : "bottom"
+    );
+    const config = buildDefaultConfig({
+      geom,
+      freezerPosition,
+      refrigerant,
+      subcool: thermalAdvanced.subcool,
+      dischargeTemp: thermalAdvanced.dischargeTemp,
+      fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+      fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+      electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin }
+    });
+    config.evapGeom = settings.evaporator || {};
+    config.fanParam = fanParam;
+    const defaultCompParams = config.compParams;
+    loadCompressors();
+    const compressor = getCurrentCompressor();
+    if (compressor) {
+      const toArray = (coeffs, keys) => {
+        if (Array.isArray(coeffs)) return coeffs;
+        if (coeffs && typeof coeffs === "object") {
+          return keys.map((k) => coeffs[k]).filter((v) => v !== void 0);
+        }
+        return null;
+      };
+      const wArr = toArray(compressor.wCoeffs, ["AW", "BW", "CW", "DW", "EW"]);
+      const etaArr = toArray(compressor.etaCoeffs, ["A", "B", "C"]);
+      if (wArr && wArr.length === 5 && etaArr && etaArr.length === 3) {
+        config.compParams = {
+          name: compressor.name,
+          cylinderVolumeCm3: compressor.cylinderVolumeCm3 || defaultCompParams.cylinderVolumeCm3,
+          speedRpm: compressor.speedRpm || defaultCompParams.speedRpm,
+          wCoeffs: wArr,
+          etaCoeffs: etaArr
+        };
+      } else {
+        console.warn("Selected compressor missing coefficients \u2013 using default.", compressor);
+      }
+    }
+    config.solverOptions = config.solverOptions || {};
+    config.solverOptions.innerOptions = config.solverOptions.innerOptions || {};
+    config.solverOptions.innerOptions.debug = true;
+    const result = runThermoAnalysis(config);
+    if (!result.success) {
+      showError(result.errors.join("; "));
+      return;
+    }
+    let energy = null;
+    if (result.results && result.results.converged !== false) {
+      try {
+        energy = EnergyConsumption(result.results);
+      } catch (e) {
+        console.warn("EnergyConsumption failed:", e);
+      }
+    }
+    let evapDetails = null;
+    const evap = settings.evaporator;
+    const fanP = settings.fanParam;
+    if (evap && fanP && result.results && result.results.converged !== false) {
+      try {
+        const area = computeEvaporatorArea(evap);
+        const v = airSpeed(fanP, evap);
+        const alpha = evaporatorAlpha(v);
+        const TF2 = parseFloat(document.getElementById("thermoTF")?.value) || -18;
+        const TR2 = parseFloat(document.getElementById("thermoTR")?.value) || 3;
+        const MR = result.results.MR || 0;
+        const MF = result.results.MF || 0;
+        const totalFlow = MR + MF;
+        const T1 = totalFlow > 0 ? (MF * TF2 + MR * TR2) / totalFlow : TF2;
+        const T2 = result.results.T2;
+        const TE = result.results.TE;
+        const LMTD = lmtd(T1, T2, TE);
+        const Qevap = evaporatorCapacity(alpha, area, LMTD);
+        evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+      } catch (e) {
+        console.warn("Evaporator calculation failed:", e);
+      }
+    }
+    if (evapDetails) result.results.evapDetails = evapDetails;
+    result.results.fanAirflow = fanFlow;
+    document.getElementById("tabThermal").click();
+    const thermoRight = document.getElementById("thermoRightPanel");
+    if (thermoRight) thermoRight.innerHTML = "";
+    result.results.configLabel = comps && comps.length === 1 ? `Single ${comps[0].type}` : freezerPosition === "top" ? "Top Freezer" : "Bottom Freezer";
+    displayResults(result.results, energy);
+    if (result.warnings.length) showWarnings(result.warnings);
+  }
   function displayResults(res, energy) {
     if (!res) return;
     const resultsDiv = document.getElementById("thermoRightPanel");
@@ -3360,9 +3444,12 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const etaV = comp.etaV !== void 0 ? fmtP(comp.etaV) : "\u2014";
     const qComp = comp.coolingCapacity !== void 0 ? fmt(comp.coolingCapacity) : "\u2014";
     const pComp = comp.inputPower !== void 0 ? fmt(comp.inputPower) : "\u2014";
+    const COP = comp.COP !== void 0 ? fmt(comp.COP, 2) : "\u2014";
     const mFlow = comp.massFlow !== void 0 ? fmt(comp.massFlow, 4) : "\u2014";
     const eW = energy ? fmt(energy.EnergyConsumption_W, 3) : "\u2014";
     const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : "\u2014";
+    const fanAirflow_m3h = res.fanAirflow !== void 0 ? res.fanAirflow : 0;
+    const fanAirflow_CFM = fanAirflow_m3h * 0.588578;
     const configLabel = res.configLabel || "Unknown";
     const html = `
     <table class="thermo-results-table">
@@ -3380,28 +3467,32 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         <tr><td>Evap. pressure Pe</td><td>${pe} bar</td></tr>
         <tr><td>Cond. pressure Pc</td><td>${pc} bar</td></tr>
         <tr><td>Vol. efficiency \u03B7<sub>v</sub></td><td>${etaV}</td></tr>
-        <tr><td>Cooling capacity</td><td>${qComp} kcal/h</td></tr>
+        <tr><td>Cooling capacity</td><td>${qComp} W</td></tr>
         <tr><td>Input power</td><td>${pComp} W</td></tr>
+        <tr><td>COP</td><td>${COP}</td></tr>
         <tr><td>Mass flow</td><td>${mFlow} kg/h</td></tr>
 
         <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
         <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
         <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
 
-        <tr class="section-header"><td colspan="2">Heat Loads (kcal/h)</td></tr>
+        <tr class="section-header"><td colspan="2">Heat Loads (W)</td></tr>
         <tr><td>QF \u2014 Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>
         <tr><td>QR \u2014 Refrigerator compartment</td><td>${fmt(res.heatLoads.QR)}</td></tr>
         <tr><td>QEV \u2014 Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
         <tr><td>Fan load</td><td>${fmt(res.heatLoads.fanLoad)}</td></tr>
         <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
+
+        <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
+        <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m\xB3/h)</td></tr>
         ${res.evapDetails ? `
           <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
           <tr><td>Surface area</td><td>${fmt(res.evapDetails.area, 4)} m\xB2</td></tr>
           <tr><td>Air speed</td><td>${fmt(res.evapDetails.v, 3)} m/s</td></tr>
-          <tr><td>Heat transfer coeff \u03B1</td><td>${fmt(res.evapDetails.alpha, 2)} kcal/h\xB7m\xB2\xB7\xB0C</td></tr>
+          <tr><td>Heat transfer coeff \u03B1</td><td>${fmt(res.evapDetails.alpha, 2)} W/(m\xB2\xB7K)</td></tr>
           <tr><td>LMTD</td><td>${fmt(res.evapDetails.LMTD, 2)} \xB0C</td></tr>
           <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} \xB0C</td></tr>
-          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} kcal/h</td></tr>
+          <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} W</td></tr>
           ` : ""}
         <tr class="section-header"><td colspan="2">Solver</td></tr>
         <tr><td>Outer iterations</td><td>${res.outerIterations ?? res.iterations?.outer ?? "\u2014"}</td></tr>
@@ -3854,6 +3945,53 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const width = geom.W - eff.left - eff.right;
     return area * width * settings.mm3ToL;
   }
+  function displayVolumeResults(result) {
+    if (!result.leaves || !result.totals) return;
+    const eff = getEffectiveThicknesses();
+    const bottomIdx = result.leaves.length - 1;
+    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
+    const bottomLeaf = result.leaves[bottomIdx];
+    const oldBottomVol = bottomLeaf.gross;
+    bottomLeaf.gross = accurateBottomVol;
+    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
+    const disp = formatTotalsDisplay({ gross: result.totals.gross });
+    document.getElementById("grossVol").textContent = disp.gross;
+    document.getElementById("grossVolCuft").textContent = disp.grossCuft;
+    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    const usableL = result.totals.gross * (usableFactor / 100);
+    const usableCuft = usableL * settings.lToCuft;
+    document.getElementById("usableVol").textContent = roundForDisplay(usableL, "L");
+    document.getElementById("usableVolCuft").textContent = roundForDisplay(usableCuft, "cuft");
+  }
+  function drawSchematics(config, leaves) {
+    const frontCanvas = document.getElementById("schematicFront");
+    const sideCanvas = document.getElementById("schematicSide");
+    if (!frontCanvas || !sideCanvas || !leaves) return;
+    const rightPanel = document.querySelector(".right-panel");
+    const panelHeight = rightPanel.clientHeight - 30;
+    const panelWidth = rightPanel.clientWidth - 20;
+    frontCanvas.height = panelHeight;
+    sideCanvas.height = panelHeight;
+    frontCanvas.width = panelWidth / 2 - 5;
+    sideCanvas.width = panelWidth / 2 - 5;
+    const effectiveWalls = getEffectiveThicknesses();
+    const fittings = extractFittingsFromLayout(config.cabinet.layout);
+    const drawOptions = {
+      dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
+      compHeights: compartmentsData.map((c) => c.height),
+      doorGap: parseFloat(document.getElementById("geom-doorGap")?.value) || 10,
+      compartments: compartmentsData.map((c) => ({
+        left: c.left,
+        right: c.right,
+        rear: c.rear
+      })),
+      fittings
+    };
+    drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
+    drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+    dirtySchematic = false;
+    schematicOverlay.classList.add("hidden");
+  }
   calculateBtn.addEventListener("click", () => {
     const { config, layout } = buildConfigFromForm();
     currentConfig = config;
@@ -3863,54 +4001,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
     }
     const result = runCalculation(config);
-    if (result.leaves && result.totals) {
-      const eff = getEffectiveThicknesses();
-      const bottomIdx = result.leaves.length - 1;
-      const bottomCompHeight = compartmentsData[bottomIdx].height;
-      const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-      const bottomLeaf = result.leaves[bottomIdx];
-      const oldBottomVol = bottomLeaf.gross;
-      bottomLeaf.gross = accurateBottomVol;
-      result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-      const disp = formatTotalsDisplay({ gross: result.totals.gross });
-      document.getElementById("grossVol").textContent = disp.gross;
-      document.getElementById("grossVolCuft").textContent = disp.grossCuft;
-      const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-      const usableL = result.totals.gross * (usableFactor / 100);
-      const usableCuft = usableL * settings.lToCuft;
-      document.getElementById("usableVol").textContent = roundForDisplay(usableL, "L");
-      document.getElementById("usableVolCuft").textContent = roundForDisplay(usableCuft, "cuft");
-    }
+    displayVolumeResults(result);
     showMessages(result.validationErrors, result.warnings, result.calcErrors);
-    const frontCanvas = document.getElementById("schematicFront");
-    const sideCanvas = document.getElementById("schematicSide");
-    if (frontCanvas && sideCanvas) {
-      const rightPanel = document.querySelector(".right-panel");
-      const panelHeight = rightPanel.clientHeight - 30;
-      const panelWidth = rightPanel.clientWidth - 20;
-      frontCanvas.height = panelHeight;
-      sideCanvas.height = panelHeight;
-      frontCanvas.width = panelWidth / 2 - 5;
-      sideCanvas.width = panelWidth / 2 - 5;
-      const effectiveWalls = getEffectiveThicknesses();
-      const fittings = extractFittingsFromLayout(layout);
-      const drawOptions = {
-        dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-        compHeights: compartmentsData.map((c) => c.height),
-        doorGap: parseFloat(document.getElementById("geom-doorGap")?.value) || 10,
-        compartments: compartmentsData.map((c) => ({
-          left: c.left,
-          right: c.right,
-          rear: c.rear
-        })),
-        fittings
-        // <-- pass to schematic
-      };
-      drawFrontView(frontCanvas, currentGeometry, effectiveWalls, layout, result.leaves, drawOptions);
-      drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-      dirtySchematic = false;
-      schematicOverlay.classList.add("hidden");
-    }
+    drawSchematics(config, result.leaves);
   });
   function extractFittingsFromLayout(node) {
     const fittings = [];
@@ -4005,54 +4098,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
         populateUIFromConfig(config);
         const result = runCalculation(config);
-        if (result.leaves && result.totals) {
-          const eff = getEffectiveThicknesses();
-          const bottomIdx = result.leaves.length - 1;
-          const bottomCompHeight = compartmentsData[bottomIdx].height;
-          const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-          const bottomLeaf = result.leaves[bottomIdx];
-          const oldBottomVol = bottomLeaf.gross;
-          bottomLeaf.gross = accurateBottomVol;
-          result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-          const disp = formatTotalsDisplay({ gross: result.totals.gross });
-          document.getElementById("grossVol").textContent = disp.gross;
-          document.getElementById("grossVolCuft").textContent = disp.grossCuft;
-          const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-          const usableL = result.totals.gross * (usableFactor / 100);
-          const usableCuft = usableL * settings.lToCuft;
-          document.getElementById("usableVol").textContent = roundForDisplay(usableL, "L");
-          document.getElementById("usableVolCuft").textContent = roundForDisplay(usableCuft, "cuft");
-        }
+        displayVolumeResults(result);
         showMessages(result.validationErrors, result.warnings, result.calcErrors);
-        const frontCanvas = document.getElementById("schematicFront");
-        const sideCanvas = document.getElementById("schematicSide");
-        if (frontCanvas && sideCanvas && result.leaves) {
-          const rightPanel = document.querySelector(".right-panel");
-          const panelHeight = rightPanel.clientHeight - 30;
-          const panelWidth = rightPanel.clientWidth - 20;
-          frontCanvas.height = panelHeight;
-          sideCanvas.height = panelHeight;
-          frontCanvas.width = panelWidth / 2 - 5;
-          sideCanvas.width = panelWidth / 2 - 5;
-          const effectiveWalls = getEffectiveThicknesses();
-          const fittings = extractFittingsFromLayout(config.cabinet.layout);
-          const drawOptions = {
-            dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-            compHeights: compartmentsData.map((c) => c.height),
-            doorGap: parseFloat(document.getElementById("geom-doorGap")?.value) || 10,
-            compartments: compartmentsData.map((c) => ({
-              left: c.left,
-              right: c.right,
-              rear: c.rear
-            })),
-            fittings
-            // <-- correct placement at top level
-          };
-          drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, result.leaves, drawOptions);
-          drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
-          dirtySchematic = false;
-          schematicOverlay.classList.add("hidden");
-        }
+        drawSchematics(config, result.leaves);
       } catch (err) {
         alert("Error: " + err.message);
       }
@@ -4212,5 +4260,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     if (frontCanvas) frontCanvas.style.display = "none";
     if (sideCanvas) sideCanvas.style.display = "none";
   });
-  initThermoUI(() => readGeometryFromPanel());
+  initThermoUI({
+    getGeometry: () => readGeometryFromPanel(),
+    setGeometryProvider: null
+    // not needed currently
+  });
 })();

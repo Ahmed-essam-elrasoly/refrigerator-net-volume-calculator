@@ -1,12 +1,18 @@
-// solver.js – Universal thermal solver (Corrected & Finalized)
+// solver.js – Universal thermal solver (SI units, corrected)
 import { calcHeatLoads } from './heatLoad.js';
 import { calcQCout } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
 import { compressorPower, getRefrigerantProperties } from './CompressorPerformance.js';
 
-const RHO_AIR       = PHYSICAL_CONSTANTS.air.density;
-const CP_AIR        = PHYSICAL_CONSTANTS.air.cp;
+const RHO_AIR       = PHYSICAL_CONSTANTS.air.density;   // kg/m³
+const CP_AIR        = PHYSICAL_CONSTANTS.air.cp;        // kJ/(kg·K)
 const KELVIN_OFFSET = 273.16;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper constants for air‑side calculations
+// ─────────────────────────────────────────────────────────────────────────────
+// Volumetric heat capacity: W per (m³/h) per K
+const CV = RHO_AIR * CP_AIR * 1000 / 3600;   // (J/(m³·K)) / 3600 = W/(m³/h·K)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers & Safe Wrappers
@@ -121,8 +127,6 @@ function newton2(F, x0, dx, tol, maxIter, debug = false) {
     }
 
     // ─── 4. Handle PR clamped at physical bound ──────────────────────
-    // If PR is stuck at its limit and the residual remains large after several iterations,
-    // the compressor is likely undersized/oversized for the heat load.
     if ((newX[1] <= 0.001 || newX[1] >= 0.999) && i > 10 && newNorm > 1e-2) {
       return {
         x: newX, converged: false, iterations: i + 1,
@@ -158,7 +162,6 @@ function solveInner(
   } = innerOpts;
 
   const { T0, TF, TR } = fixedTemps;
-  const rho = RHO_AIR, cp = CP_AIR;
 
   const PIPEPITCH = {
     side: condenserConfig.sidePipePitch_mm,
@@ -168,8 +171,8 @@ function solveInner(
   const backCondenser = condenserConfig.backCondenser ?? 'No';
 
   const refIndex = getRefrigerantIndex(refrigerant);
-  let currentMR = fan.totalAirflow * 0.1;
-  let currentMF = fan.totalAirflow * 0.9;
+  let currentMR = fan.totalAirflow * 0.1;   // m³/h
+  let currentMF = fan.totalAirflow * 0.9;   // m³/h
 
   // Residual vector F(T2, PR)
   const F = ([T2, PR]) => {
@@ -205,21 +208,19 @@ function solveInner(
       console.log(`    comp: QComp=${comp.QCompressor}, Power=${comp.CompPower}, Pe=${comp.Pe}, Pc=${comp.Pc}`);
     }
 
-    const denom = fan.totalAirflow * rho * cp * PR;
-    let F1, F2;
-    if (Math.abs(denom) < 1e-12) {
-      F1 = loads.QF;
-    } else {
-      const C_air_WperK = fan.fanAirflow_CFM * 1.699 / 3600 * RHO_AIR * CP_AIR * 1000; // W/K
-      // where CP_AIR in kJ/(kg·K), RHO_AIR in kg/m³    
-      const T3 = T2 + QEV / (C_air_WperK * PR);
-      const MR = QR / (C_air_WperK * (TR - T3) * PR) * 3600;  // m³/h (since C_air_WperK is W/K, QR in W, ΔT in K → dimensionless fraction, then ×3600 to get m³/h?)
-      const MF   = fan.totalAirflow - MR;
-      currentMR  = MR;
-      currentMF  = MF;
-      F1 = loads.QF - MF * rho * cp * (TF - T3) * PR;
-    }
-    F2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
+    // Air side calculations using volumetric heat capacity CV (W per m³/h per K)
+    const C_tot = fan.totalAirflow * CV;               // W/K (total airflow heat capacity rate)
+    const T3 = T2 + loads.QEV / (C_tot * PR);         // °C   (PR may be small; check denom)
+    const denomR = CV * Math.max(0.01, TR - T3) * PR; // W/(m³/h)  (for MR calculation)
+    const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
+    const MF = fan.totalAirflow - MR;                  // m³/h
+    currentMR = MR;
+    currentMF = MF;
+
+    // F1 = QF - MF * CV * (TF - T3) * PR   (W)
+    const F1 = loads.QF - MF * CV * (TF - T3) * PR;
+    // F2 = total heat load - cooling capacity * PR  (W)
+    const F2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
 
     if (debug) console.log(`    F1=${F1.toFixed(4)}, F2=${F2.toFixed(4)}`);
     return [F1, F2];
@@ -232,7 +233,6 @@ function solveInner(
   let res = newton2(F, [T2_guess, PR_guess], dx, tol, maxIter, debug);
   totalIter += res.iterations;
 
-  // If the problem is an undersized compressor, stop here
   if (!res.converged && res.error && res.error.includes('compressor undersized')) {
     return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
   }
@@ -265,12 +265,12 @@ function solveInner(
     heatLoads:  loads,
     compressor: {
       etaV:            comp.VolumetricEfficiency,
-      coolingCapacity: comp.QCompressor,
-      inputPower:      comp.CompPower,
-      COP:             (comp.QCompressor ) / comp.CompPower,   
-      massFlow:        comp.massFlow,
-      Pe:              comp.Pe,
-      Pc:              comp.Pc,
+      coolingCapacity: comp.QCompressor,      // W
+      inputPower:      comp.CompPower,        // W
+      COP:             comp.QCompressor / comp.CompPower,   // dimensionless (W/W)
+      massFlow:        comp.massFlow,         // kg/h
+      Pe:              comp.Pe,               // bar
+      Pc:              comp.Pc,               // bar
     },
     MR: currentMR,
     MF: currentMF,
@@ -309,7 +309,7 @@ export function solveThermalSystem(config, TE_override = null) {
   let TC         = TC0;
   let totalInner = 0;
   let prevF3, prevTC;
-  let prevInner  = null;                          // ← new: holds last converged (T2, PR)
+  let prevInner  = null;
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
     if (debug) console.log(`\nOuter ${iter}, TC=${TC.toFixed(2)}`);
@@ -317,8 +317,7 @@ export function solveThermalSystem(config, TE_override = null) {
     if (TC < T0) TC = T0 + 2;
     if (TC > 90) TC = 90;
 
-    // Use previous solution as initial guess (if available)
-     const baseOpts = prevInner
+    const baseOpts = prevInner
       ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR }
       : innerOptions;
 
@@ -330,13 +329,12 @@ export function solveThermalSystem(config, TE_override = null) {
     console.log('inner.compressor:', inner.compressor);
     console.log('inner.converged:', inner.converged, inner.error || '');
     if (!inner.converged) {
-          // Catch physical limits explicitly before blind backtracking
-          if (inner.error && inner.error.includes('undersized')) {
-            return { 
-              TC, T2: inner.T2, PR: inner.PR, converged: false, 
-              error: `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.` 
-            };
-          }
+      if (inner.error && inner.error.includes('undersized')) {
+        return { 
+          TC, T2: inner.T2, PR: inner.PR, converged: false, 
+          error: `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.` 
+        };
+      }
       if (iter > 0 && typeof prevTC !== 'undefined') {
         const MAX_BACKTRACK = 3;
         let success = false;
@@ -353,7 +351,7 @@ export function solveThermalSystem(config, TE_override = null) {
           if (innerRetry.converged) {
             TC = backtrackTC;
             inner = innerRetry;
-            totalInner += innerRetry.iterations;   // count here only
+            totalInner += innerRetry.iterations;
             prevInner = { T2: inner.T2, PR: inner.PR };
             success = true;
             break;
@@ -368,22 +366,23 @@ export function solveThermalSystem(config, TE_override = null) {
                  error: 'Inner loop failed: ' + inner.error };
       }
     } else {
-      // normal convergence (not backtracked)
       totalInner += inner.iterations;
       prevInner = { T2: inner.T2, PR: inner.PR };
     }
 
-    // ── 2. Condenser heat balance F3 ─────────────────────────────────────────
+    // Condenser heat balance
     const QCout = calcQCout(
       geom, TC, T0, fixedTemps.TF, fixedTemps.TR, inner.PR,
       PIPEPITCH, freezerPosition, backCondenserEfficiency
-    );
+    );  // returns object, QCout.QCout in W
+
     const compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams);
     const Pc = prop.satPressure(TC + KELVIN_OFFSET);
-    const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);
-    const h_liq = prop.liquidEnthalpy(TC - subcool);
-    const QCin = compOuter.massFlow * (h_dis - h_liq)/3.6;  // W (corrected: divide by 3.6 to convert from kJ/h to W)
-    const F3 = QCout.QCout - QCin;
+    const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);   // kJ/kg
+    const h_liq = prop.liquidEnthalpy(TC - subcool);                      // kJ/kg
+    const QCin_W = compOuter.massFlow * (h_dis - h_liq) / 3.6;           // kg/h * kJ/kg = kJ/h → /3.6 → W
+
+    const F3 = QCout.QCout - QCin_W;
 
     if (debug) console.log(
       `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
@@ -409,12 +408,11 @@ export function solveThermalSystem(config, TE_override = null) {
       };
     }
 
-    // ── 3. Numerical derivative dF3/dTC with robust fallbacks ────────────────
+    // Numerical derivative
     let innerPert = null;
     let appliedDH = DH;
     const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR };
 
-    // Forward perturbation
     try {
       innerPert = solveInner(
         TC + appliedDH, geom, compParams, refrigerant, subcool,
@@ -426,7 +424,6 @@ export function solveThermalSystem(config, TE_override = null) {
       innerPert = null;
     }
 
-    // Backward perturbation if forward failed
     if (!innerPert || !innerPert.converged) {
       appliedDH = -DH;
       try {
@@ -452,11 +449,10 @@ export function solveThermalSystem(config, TE_override = null) {
       const Pc_pert = prop.satPressure(TC + appliedDH + KELVIN_OFFSET);
       const h_dis_pert = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc_pert);
       const h_liq_pert = prop.liquidEnthalpy(TC + appliedDH - subcool);
-      QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert);
+      QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert) / 3.6;  // W
       F3_pert = QCout_pert.QCout - QCin_pert;
-      dF3dTC = (F3_pert - F3) / appliedDH;   // **corrected**: use the exact delta
+      dF3dTC = (F3_pert - F3) / appliedDH;
     } else {
-      // Secant fallback using previous outer iteration data
       if (typeof prevF3 !== 'undefined' && typeof prevTC !== 'undefined') {
         const deltaTC = TC - prevTC;
         const safeDeltaTC = Math.abs(deltaTC) < 1e-6 ? 1e-6 * Math.sign(deltaTC || 1) : deltaTC;
@@ -465,7 +461,6 @@ export function solveThermalSystem(config, TE_override = null) {
         const step = F3 / dF3dTC;
         TC -= Math.max(-5, Math.min(5, step));
       } else {
-        // Heuristic directional step (no previous data)
         TC += (F3 > 0 ? -0.5 : 0.5);
       }
       prevF3 = F3;
@@ -473,7 +468,6 @@ export function solveThermalSystem(config, TE_override = null) {
       continue;
     }
 
-    // ── 4. Standard Newton update ────────────────────────────────────────────
     prevF3 = F3;
     prevTC = TC;
 
@@ -511,12 +505,13 @@ export function runThermalAnalysisDynamic(config) {
     const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
     const faceArea = evapWidth_m * evapDepth_m;
     const v_ms     = fan.totalAirflow / faceArea / 3600;
-    const alpha = 12.93 * Math.pow(v_ms, 0.415);
-    const C_air = fan.totalAirflow / 3600 * RHO_AIR * CP_AIR * 1000;   // W/K (continuous flow)
-    const UA_on = alpha * evapArea_m2;                           // full conductance
-    const NTU = UA_on / C_air;
-    const ε = 1 - Math.exp(-NTU);
-    const newTE = T1 - (T1 - T2) / ε;
+    const alpha    = 12.93 * Math.pow(v_ms, 0.415) * 1.16279;   // W/(m²·K) (converted from kcal/(h·m²·°C))
+    const C_air    = fan.totalAirflow / 3600 * RHO_AIR * CP_AIR * 1000;  // W/K
+    const UA_on    = alpha * evapArea_m2;                       // W/K
+    const NTU      = UA_on / C_air;
+    const ε        = 1 - Math.exp(-NTU);
+    const newTE    = T1 - (T1 - T2) / ε;
+
     if (Math.abs(newTE - TE) < 0.1) {
       result.TE = newTE;
       return result;
@@ -544,13 +539,14 @@ export function EnergyConsumption(result) {
   const pwbOff_W = electrical.pwboff_W ?? 0;
   const defrostOn_W    = electrical.defrostOn_W    ?? electrical.defrostHeater_W ?? 0;
   const defrostOn_min  = electrical.defrostOn_min  ?? 0;
+  const timerPeriod_h  = electrical.timerPeriod_h ?? 10.5;
   const fanPower       = fan.inputPower_W ?? 0;
 
   const OnPower_W = (compressor.inputPower ?? 0) + fanPower + pwbOn_W;
 
   const energy_W =
     (OnPower_W * PR + pwbOff_W * (1 - PR)) * 24 / 1000 +
-    defrostOn_min * defrostOn_W * (24 / (10.5 / PR)) / 60 / 1000;
+    defrostOn_min * defrostOn_W * (24 / (timerPeriod_h / PR)) / 60 / 1000;
 
   return {
     EnergyConsumption_W: energy_W,
