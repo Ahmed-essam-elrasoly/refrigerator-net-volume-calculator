@@ -12,7 +12,14 @@ updateSettings(settings);
 
 // ---- DOM references ---------------------------------------------------
 const divHorizInput       = document.getElementById('divHoriz');
-const usableFactorInput   = document.getElementById('usableFactor');
+const evapDepthInput      = document.getElementById('evapDepth');
+const ctrlBoxHInput       = document.getElementById('ctrlBoxH');
+const ctrlBoxWInput       = document.getElementById('ctrlBoxW');
+const ctrlBoxLInput       = document.getElementById('ctrlBoxL');
+const rshowerHInput       = document.getElementById('rshowerH');
+const rshowerWInput       = document.getElementById('rshowerW');
+const rshowerLInput       = document.getElementById('rshowerL');
+const rshowerGroup        = document.getElementById('rshowerGroup');
 const numCompartmentsInput= document.getElementById('numCompartments');
 const compartmentBuilder  = document.getElementById('compartmentBuilder');
 const calculateBtn        = document.getElementById('calculateBtn');
@@ -102,6 +109,7 @@ function initCompartments() {
   }
   syncConstraints();
   buildCompartmentUI();
+  updateRShowerVisibility();
 }
 
 function syncConstraints() {
@@ -162,6 +170,7 @@ function onCompFieldChange(compIdx, field, value) {
     if (compartmentsData.length > 1) {
       const otherIdx = 1 - compIdx;
       compartmentsData[otherIdx].type = (value === 'freezer' ? 'fresh' : 'freezer');
+      updateRShowerVisibility();
     }
     syncDisplay();
     if (settings.autoCalculate) calculateBtn.click();
@@ -228,7 +237,7 @@ function syncDisplay() {
     const topInput = document.getElementById(`comp-${i}-top`);
     if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
     const shelfCountInput = document.getElementById(`comp-${i}-shelfCount`);
-    if (shelfCountInput) shelfCountInput.value = d.shelfCount || 0;
+    if (shelfCountInput) shelfCountInput.value = d.shelfCount || 2;
   }
 }
 
@@ -258,7 +267,7 @@ function buildCompartmentUI() {
       <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
       <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
       <!-- NEW shelf count input -->
-      <label>Number of Shelves: <input type="number" id="comp-${i}-shelfCount" min="0" step="1" value="${d.shelfCount || 0}"></label>
+      <label>Number of Shelves: <input type="number" id="comp-${i}-shelfCount" min="0" step="1" value="${d.shelfCount || 2}"></label>
       <fieldset>
         <legend>Wall Thicknesses (mm)</legend>
         ${ count === 1 || i === 0 ? `<label>Top: <input type="number" id="comp-${i}-top" value="${d.top}" step="any"></label>` : '' }
@@ -321,9 +330,9 @@ function fillGeometryDefaults() {
   set('geom-railHeight', 20);
   set('geom-railWidth', 10);
   set('geom-railDepthPct', 50);
-  set('geom-doorDikeHeight', 20);
-  set('geom-doorDikeBaseWidth', 10);
-  set('geom-doorDikeTopWidth', 5);
+  set('geom-doorDikeHeight', 50);
+  set('geom-doorDikeBaseWidth', 30);
+  set('geom-doorDikeTopWidth', 15);
 }
 
 // ---- Read geometry from panel -----------------------------------------
@@ -376,9 +385,9 @@ function readGeometryFromPanel() {
       railHeight:    g('geom-railHeight')    ?? 20,
       railWidth:     g('geom-railWidth')     ?? 10,
       railDepthPct:  g('geom-railDepthPct')  ?? 50,
-      doorDikeHeight: g('geom-doorDikeHeight') ?? 20,
-      doorDikeBaseWidth: g('geom-doorDikeBaseWidth') ?? 10,
-      doorDikeTopWidth:  g('geom-doorDikeTopWidth')  ?? 5,
+      doorDikeHeight: g('geom-doorDikeHeight') ?? 50,
+      doorDikeBaseWidth: g('geom-doorDikeBaseWidth') ?? 30,
+      doorDikeTopWidth:  g('geom-doorDikeTopWidth')  ?? 15,
     },
     _compartments: comps
   };
@@ -524,10 +533,41 @@ function computeAccurateBottomVolume(geom, eff) {
   const width = geom.W - eff.left - eff.right;
   return area * width * settings.mm3ToL;
 }
+// Show/hide R‑Shower section based on presence of a fresh compartment
+function updateRShowerVisibility() {
+  const hasFresh = compartmentsData.some(c => c.type === 'fresh');
+  rshowerGroup.style.display = hasFresh ? '' : 'none';
+}
 
+// Calculate total subtracted volume from the three elements (in litres)
+function computeSubtractedVolumes() {
+  const evapDepth = parseFloat(evapDepthInput.value) || 85;
+  const ctrlH = parseFloat(ctrlBoxHInput.value) || 150;
+  const ctrlW = parseFloat(ctrlBoxWInput.value) || 500;
+  const ctrlL = parseFloat(ctrlBoxLInput.value) || 100;
+  const rshowerH = parseFloat(rshowerHInput.value) || 700;
+  const rshowerW = parseFloat(rshowerWInput.value) || 500;
+  const rshowerL = parseFloat(rshowerLInput.value) || 50;
+
+  // Find the freezer compartment (or use the only one)
+  let freezerIdx = 0;
+  if (compartmentsData.length > 1) {
+    freezerIdx = compartmentsData.findIndex(c => c.type === 'freezer');
+    if (freezerIdx === -1) freezerIdx = 0;
+  }
+  const f = compartmentsData[freezerIdx];
+  const internalHeight = f.height;
+  const internalWidth = currentGeometry.W - f.left - f.right;
+
+  const evapVol = evapDepth * internalHeight * internalWidth;       // mm³
+  const ctrlVol = ctrlH * ctrlW * ctrlL;                            // mm³
+  const rshowerVol = rshowerH * rshowerW * rshowerL;                // mm³
+
+  return (evapVol + ctrlVol + rshowerVol) * settings.mm3ToL;
+}
 function displayVolumeResults(result) {
   if (!result.leaves || !result.totals) return;
-  
+
   const eff = getEffectiveThicknesses();
   const bottomIdx = result.leaves.length - 1;
   const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
@@ -537,15 +577,95 @@ function displayVolumeResults(result) {
   bottomLeaf.gross = accurateBottomVol;
   result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
 
-  const disp = formatTotalsDisplay({ gross: result.totals.gross });
-  document.getElementById('grossVol').textContent      = disp.gross;
-  document.getElementById('grossVolCuft').textContent  = disp.grossCuft;
+  // ---- Extract geometry & special parameters ----
+  const geometry = currentGeometry;
+  const special = geometry.special || {};
+  const railHeight = special.railHeight || 0;
+  const railWidth = special.railWidth || 0;
+  const railDepthPct = (special.railDepthPct || 0) / 100;
+  const dikeHeight = special.doorDikeHeight || 0;
+  const dikeBaseWidth = special.doorDikeBaseWidth || 0;
+  const dikeTopWidth = special.doorDikeTopWidth || 0;
 
-  const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-  const usableL = result.totals.gross * (usableFactor / 100);
-  const usableCuft = usableL * settings.lToCuft;
-  document.getElementById('usableVol').textContent      = roundForDisplay(usableL, 'L');
-  document.getElementById('usableVolCuft').textContent  = roundForDisplay(usableCuft, 'cuft');
+  const internalDepth = geometry.D - eff.rear - eff.door;
+  const innerWidth = geometry.W - eff.left - eff.right;
+
+  // ---- 1. Subtract rail & dike volumes from compartment gross volumes ----
+  let totalSubtracted = 0;
+  const dikeVolumes = [];   // store mm³ for later use in door PU
+
+  for (let i = 0; i < result.leaves.length; i++) {
+    const leaf = result.leaves[i];
+    const comp = compartmentsData[i];
+    const shelfCount = comp.shelfCount || 0;
+
+    // Rails (two per shelf)
+    const railVol = railHeight * railWidth * railDepthPct * internalDepth * shelfCount * 2;
+
+    // Dike around this compartment's door opening (perimeter = 2*(innerWidth + comp.height))
+    const dikeVol = dikeHeight * (dikeBaseWidth + dikeTopWidth) / 2 *
+                    2 * (innerWidth + comp.height);
+    dikeVolumes.push(dikeVol);
+
+    const subtractVol = (railVol + dikeVol) * settings.mm3ToL;
+    leaf.gross = Math.max(0, leaf.gross - subtractVol);
+    totalSubtracted += subtractVol;
+  }
+
+  // Recalculate total gross after subtractions
+  result.totals.gross = result.leaves.reduce((sum, leaf) => sum + leaf.gross, 0);
+
+  // ---- 2. Total usable volume (after further subtracted elements) ----
+  const subtractedL = computeSubtractedVolumes();
+  const totalL = Math.max(0, result.totals.gross - subtractedL);
+  const totalCuft = totalL * settings.lToCuft;
+
+  // ---- 3. Compute door PU volumes (insulation + dike) ----
+  let FDoorPUVolL = 0;
+  let RDoorPUVolL = 0;
+
+  for (let i = 0; i < compartmentsData.length; i++) {
+    const comp = compartmentsData[i];
+    const doorThickness = comp.door || 0;        // mm
+    const compHeight = comp.height;              // mm
+
+    // Flat part of the door insulation
+    const baseDoorVol = doorThickness * compHeight * innerWidth * settings.mm3ToL;
+
+    // Total door volume = flat insulation + dike
+    const totalDoorVol = baseDoorVol + dikeVolumes[i] * settings.mm3ToL;
+
+    if (comp.type === 'freezer') {
+      FDoorPUVolL = totalDoorVol;
+    } else if (comp.type === 'fresh') {
+      RDoorPUVolL = totalDoorVol;
+    }
+  }
+
+  // ---- 4. Cabinet body PU volume (all walls except doors) ----
+  // Approximate using external volume minus internal volume minus door volumes
+  const externalBoxVol = geometry.H * geometry.W * geometry.D;                     // mm³
+  const cutoutVol = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W; // mm³ (wedge approx)
+  const externalVol = (externalBoxVol - cutoutVol) * settings.mm3ToL;
+  const CabPUVolL = externalVol - result.totals.gross - FDoorPUVolL - RDoorPUVolL;
+
+  // ---- 5. Update the UI ----
+  document.getElementById('grossVol').textContent      = roundForDisplay(result.totals.gross, 'L');
+  document.getElementById('grossVolCuft').textContent  = roundForDisplay(result.totals.gross * settings.lToCuft, 'cuft');
+  document.getElementById('totalVol').textContent      = roundForDisplay(totalL, 'L');
+  document.getElementById('totalVolCuft').textContent  = roundForDisplay(totalCuft, 'cuft');
+
+  document.getElementById('cabpuVol').textContent      = roundForDisplay(CabPUVolL, 'L');
+  document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(CabPUVolL * settings.lToCuft, 'cuft');
+  document.getElementById('cabpuweight').textContent   = roundForDisplay(CabPUVolL * 32 / 1000, 'kg');
+
+  document.getElementById('fdoorpuVol').textContent    = roundForDisplay(FDoorPUVolL, 'L');
+  document.getElementById('fdoorpuVolCuft').textContent = roundForDisplay(FDoorPUVolL * settings.lToCuft, 'cuft');
+  document.getElementById('fdoorpuweight').textContent = roundForDisplay(FDoorPUVolL * 32 / 1000, 'kg');
+
+  document.getElementById('rdoorpuVol').textContent    = roundForDisplay(RDoorPUVolL, 'L');
+  document.getElementById('rdoorpuVolCuft').textContent = roundForDisplay(RDoorPUVolL * settings.lToCuft, 'cuft');
+  document.getElementById('rdoorpuweight').textContent = roundForDisplay(RDoorPUVolL * 32 / 1000, 'kg');
 }
 
 function drawSchematics(config, leaves) {
@@ -563,18 +683,7 @@ function drawSchematics(config, leaves) {
 
   const effectiveWalls = getEffectiveThicknesses();
   const fittings = extractFittingsFromLayout(config.cabinet.layout);
-  const drawOptions = {
-    dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
-    compHeights: compartmentsData.map(c => c.height),
-    doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
-    compartments: compartmentsData.map(c => ({
-      left: c.left,
-      right: c.right,
-      rear: c.rear
-    })),
-    fittings
-  };
-  // After computing effectiveWalls and before drawOptions
+  
   const geom = currentGeometry;
   const H = geom.H, D = geom.D;
   const eff = effectiveWalls;
@@ -589,7 +698,7 @@ function drawSchematics(config, leaves) {
     parseFloat(document.getElementById('geom-bottom3')?.value) || 40
   );
   // Shelf count per compartment (from compartmentsData)
-  const shelfCounts = compartmentsData.map(c => c.shelfCount || 0);
+  const shelfCounts = compartmentsData.map(c => c.shelfCount || 2);
 
   const drawOptions = {
     dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
@@ -602,7 +711,7 @@ function drawSchematics(config, leaves) {
     })),
     fittings,
     // New fields
-    shelfCounts,                // array of integers per leaf
+    shelfCounts,
     railHeight: geom.special.railHeight,
     railWidth: geom.special.railWidth,
     railDepthPct: geom.special.railDepthPct,
@@ -720,9 +829,9 @@ function populateUIFromConfig(config) {
       set('geom-railHeight', 20);
       set('geom-railWidth', 10);
       set('geom-railDepthPct', 50);
-      set('geom-doorDikeHeight', 20);
-      set('geom-doorDikeBaseWidth', 10);
-      set('geom-doorDikeTopWidth', 5);
+      set('geom-doorDikeHeight', 50);
+      set('geom-doorDikeBaseWidth', 30);
+      set('geom-doorDikeTopWidth', 15);
     }
   } else if (config.cabinet?.external) {
     const ext = config.cabinet.external;
@@ -746,6 +855,7 @@ function populateUIFromConfig(config) {
   }
 
   buildCompartmentUI();
+  updateRShowerVisibility();
   syncConstraints();
   syncDisplay();
 }
@@ -812,9 +922,9 @@ resetAllBtn.addEventListener('click', () => {
   document.getElementById('geom-railHeight').value = 20;
   document.getElementById('geom-railWidth').value = 10;
   document.getElementById('geom-railDepthPct').value = 50;
-  document.getElementById('geom-doorDikeHeight').value = 20;
-  document.getElementById('geom-doorDikeBaseWidth').value = 10;
-  document.getElementById('geom-doorDikeTopWidth').value = 5;
+  document.getElementById('geom-doorDikeHeight').value = 50;
+  document.getElementById('geom-doorDikeBaseWidth').value = 30;
+  document.getElementById('geom-doorDikeTopWidth').value = 15;
   divHorizInput.value = 20;
   numCompartmentsInput.value = 2;
 
@@ -823,7 +933,7 @@ resetAllBtn.addEventListener('click', () => {
   document.getElementById('grossVol').textContent      = '--';
   document.getElementById('grossVolCuft').textContent  = '--';
   document.getElementById('usableVol').textContent      = '--';
-  document.getElementById('usableVolCuft').textContent  = '--';
+  document.getElementById('TTLVolCuft').textContent  = '--';
 
   messagesDiv.innerHTML = '';
   messagesFieldset.style.display = 'none';
@@ -888,14 +998,18 @@ function buildComparisonTable(resultA, resultB) {
   if (!resultA && !resultB) { comparisonContent.innerHTML = '<p>No configurations stored.</p>'; return; }
   const hasLeavesA = resultA && resultA.leaves && resultA.totals;
   const hasLeavesB = resultB && resultB.leaves && resultB.totals;
+
+  const subtractedL = computeSubtractedVolumes(); // use current UI values
+
   const fmtTotals = (totals) => {
-    if (!totals) return { gross:'-', usable:'-', grossCuft:'-', usableCuft:'-' };
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+    if (!totals) return { gross:'-', total:'-', grossCuft:'-', totalCuft:'-' };
+    const gross = totals.gross;
+    const total = Math.max(0, gross - subtractedL);
     return {
-      gross: roundForDisplay(totals.gross, 'L'),
-      usable: roundForDisplay(totals.gross * (usableFactor / 100), 'L'),
-      grossCuft: roundForDisplay(totals.gross * settings.lToCuft, 'cuft'),
-      usableCuft: roundForDisplay(totals.gross * (usableFactor / 100) * settings.lToCuft, 'cuft'),
+      gross: roundForDisplay(gross, 'L'),
+      total: roundForDisplay(total, 'L'),
+      grossCuft: roundForDisplay(gross * settings.lToCuft, 'cuft'),
+      totalCuft: roundForDisplay(total * settings.lToCuft, 'cuft'),
     };
   };
   const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
@@ -905,25 +1019,18 @@ function buildComparisonTable(resultA, resultB) {
       <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
       <tbody>
       <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
-      <tr><td><strong>Usable</strong></td><td>${tA.usable}</td><td>${tA.usableCuft}</td><td>${tB.usable}</td><td>${tB.usableCuft}</td></tr>
+      <tr><td><strong>Total</strong></td><td>${tA.total}</td><td>${tA.totalCuft}</td><td>${tB.total}</td><td>${tB.totalCuft}</td></tr>
       </tbody></table>`;
   if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
-    html += `<h3>Per‑Compartment Breakdown</h3>`;
+    html += `<h3>Per‑Compartment Breakdown (Gross)</h3>`;
     const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
     html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <tr><th>Compartment</th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
-      <tr><th></th><th>Gross</th><th>Usable</th><th>Gross</th><th>Usable</th></tr>`;
+      <tr><th>Compartment</th><th>Slot A</th><th>Slot B</th></tr>`;
     for (let i = 0; i < maxLeaves; i++) {
       const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
-      const fmtA = leafA ? {
-        gross: roundForDisplay(leafA.gross, 'L'),
-        usable: roundForDisplay(leafA.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
-      } : { gross:'-', usable:'-' };
-      const fmtB = leafB ? {
-        gross: roundForDisplay(leafB.gross, 'L'),
-        usable: roundForDisplay(leafB.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, 'L'),
-      } : { gross:'-', usable:'-' };
-      html += `<tr><td>Comp ${i+1}</td><td>${fmtA.gross}</td><td>${fmtA.usable}</td><td>${fmtB.gross}</td><td>${fmtB.usable}</td></tr>`;
+      const gA = leafA ? roundForDisplay(leafA.gross, 'L') : '-';
+      const gB = leafB ? roundForDisplay(leafB.gross, 'L') : '-';
+      html += `<tr><td>Comp ${i+1}</td><td>${gA}</td><td>${gB}</td></tr>`;
     }
     html += `</table>`;
   }
@@ -973,3 +1080,4 @@ enableCoordinateTooltip(
   document.getElementById('schematicSide'),
   () => readGeometryFromPanel()   // returns { H, W, D, … } required by the tooltip
 );
+updateRShowerVisibility();
