@@ -127,7 +127,7 @@ function buildThermalModalOnce() {
         <legend>Evaporator</legend>
         <label>Width (mm): <input id="evapWidth" type="number" step="any"></label>
         <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
-        <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
+        <label>Depth (mm): <input id="thermoEvapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
@@ -188,7 +188,7 @@ function buildThermalModalOnce() {
     condBackPitch: document.getElementById('thermoCondBackPitch'),
     evapWidth: document.getElementById('evapWidth'),
     evapHeight: document.getElementById('evapHeight'),
-    evapDepth: document.getElementById('evapDepth'),
+    thermoEvapDepth: document.getElementById('thermoEvapDepth'),
     evapRows: document.getElementById('evapRows'),
     evapTubeOD: document.getElementById('evapTubeOD'),
     evapFinHeight: document.getElementById('evapFinHeight'),
@@ -243,7 +243,7 @@ function openThermalSettings() {
   const evap = settings.evaporator || {};
   thermalModalInputs.evapWidth.value       = evap.width_mm ?? 460;
   thermalModalInputs.evapHeight.value      = evap.height_mm ?? 150;
-  thermalModalInputs.evapDepth.value       = evap.depth_mm ?? 60;
+  thermalModalInputs.thermoEvapDepth.value       = evap.depth_mm ?? 60;
   thermalModalInputs.evapRows.value        = evap.rows ?? 2;
   thermalModalInputs.evapTubeOD.value      = evap.tubeOD_mm ?? 8;
   thermalModalInputs.evapFinHeight.value   = evap.finHeight_mm ?? 150;
@@ -297,7 +297,7 @@ function saveThermalSettings() {
   settings.evaporator = {
     width_mm:       parseFloat(thermalModalInputs.evapWidth.value) || 460,
     height_mm:      parseFloat(thermalModalInputs.evapHeight.value) || 150,
-    depth_mm:       parseFloat(thermalModalInputs.evapDepth.value) || 60,
+    depth_mm:       parseFloat(thermalModalInputs.thermoEvapDepth.value) || 60,
     rows:           parseInt(thermalModalInputs.evapRows.value) || 2,
     tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
     finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
@@ -686,6 +686,8 @@ function handleRun() {
   if (!getGeometryFn) { showError('Geometry source not available.'); return; }
   const cabinetGeom = getGeometryFn();
   const geom = toThermalFormat(cabinetGeom);
+  const evapDepthMain = parseFloat(document.getElementById('evapDepth')?.value) || 60;
+  geom.tEvaBack = evapDepthMain;
 
   const T0 = parseFloat(document.getElementById('thermoT0')?.value);
   const TF = parseFloat(document.getElementById('thermoTF')?.value);

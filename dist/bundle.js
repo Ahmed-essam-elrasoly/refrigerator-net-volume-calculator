@@ -1146,8 +1146,7 @@
     const cbLen = Math.sqrt(cbDx * cbDx + cbDy * cbDy);
     let slopeStartX = Db1;
     let slopeEndX = Db2;
-    let nx = 1;
-    let ny = 0;
+    let nx = 1, ny = 0;
     if (cbLen > 0) {
       nx = cbDy / cbLen;
       ny = -cbDx / cbLen;
@@ -1163,62 +1162,52 @@
         slopeEndX = px;
       }
     }
-    const topH = compHeights[0];
-    const topRearX = compRear[0] * scale;
-    const topY = innerTop * scale;
-    const topCompH = topH * scale;
-    ctx.beginPath();
-    ctx.rect(0, 0, D * scale, topY + topCompH);
-    ctx.moveTo(topRearX, topCompH);
-    ctx.lineTo(innerDoor * scale, topY);
-    ctx.lineTo(innerDoor * scale, topY + topCompH);
-    ctx.lineTo(topRearX, topY + topCompH);
-    ctx.closePath();
-    ctx.fillStyle = "#f0f0f0";
-    ctx.fill();
-    if (compHeights.length === 2) {
+    if (compHeights.length === 1) {
+      ctx.fillStyle = "#f0f0f0";
+      ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
+      const topRearX = compRear[0] * scale;
+      const topY = innerTop * scale;
+      ctx.beginPath();
+      ctx.moveTo(topRearX, topY);
+      ctx.lineTo(innerDoor * scale, topY);
+      ctx.lineTo(innerDoor * scale, floorLowerY * scale);
+      ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+      ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+      ctx.lineTo(topRearX, floorRaisedY * scale);
+      ctx.closePath();
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "#0066cc";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else if (compHeights.length === 2) {
+      const topH = compHeights[0];
+      const topRearX = compRear[0] * scale;
+      const topY = innerTop * scale;
+      const topCompH = topH * scale;
+      ctx.beginPath();
+      ctx.rect(0, 0, D * scale, topY + topCompH);
+      ctx.moveTo(topRearX, topCompH);
+      ctx.lineTo(innerDoor * scale, topY);
+      ctx.lineTo(innerDoor * scale, topY + topCompH);
+      ctx.lineTo(topRearX, topY + topCompH);
+      ctx.closePath();
+      ctx.fillStyle = "#f0f0f0";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "#0066cc";
+      ctx.stroke();
       const bottomH = compHeights[1];
       const bottomRearX = compRear[1] * scale;
       const bottomY = (innerTop + topH + dividerThickness) * scale;
       const bottomCompH = bottomH * scale;
       ctx.beginPath();
       ctx.rect(0, bottomY, D * scale, bottomCompH);
-      ctx.moveTo(bottomRearX, bottomY);
-      ctx.lineTo(innerDoor * scale, bottomY);
-      ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
-      ctx.lineTo(innerDoor * scale, floorLowerY * scale);
-      ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
-      ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-      ctx.lineTo(bottomRearX, floorRaisedY * scale);
-      ctx.closePath();
       ctx.fillStyle = "#f0f0f0";
       ctx.fill();
-    }
-    ctx.beginPath();
-    ctx.moveTo(0, H * scale);
-    ctx.lineTo(0, yTopCB * scale);
-    ctx.lineTo(xTopCB * scale, yTopCB * scale);
-    ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
-    ctx.closePath();
-    ctx.fillStyle = "#ddd";
-    ctx.fill();
-    ctx.strokeStyle = "#999";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = "#555";
-    ctx.font = "bold 11px sans-serif";
-    ctx.fillText("Comp.", 6, yTopCB * scale + 14);
-    ctx.beginPath();
-    ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-    ctx.strokeStyle = "#0066cc";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    if (compHeights.length === 2) {
-      const bottomRearX = compRear[1] * scale;
-      const bottomY = (innerTop + topH + dividerThickness) * scale;
-      const bottomCompH = compHeights[1] * scale;
       ctx.beginPath();
       ctx.moveTo(bottomRearX, bottomY);
       ctx.lineTo(innerDoor * scale, bottomY);
@@ -1234,9 +1223,23 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+    ctx.beginPath();
+    ctx.moveTo(0, H * scale);
+    ctx.lineTo(0, yTopCB * scale);
+    ctx.lineTo(xTopCB * scale, yTopCB * scale);
+    ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
+    ctx.closePath();
+    ctx.fillStyle = "#ddd";
+    ctx.fill();
+    ctx.strokeStyle = "#999";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#555";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("Comp.", 6, yTopCB * scale + 14);
     let drawnDoors = [];
     if (compHeights.length === 2 && dividerThickness > 0) {
-      const dividerY = innerTop + topH;
+      const dividerY = innerTop + compHeights[0];
       const dividerH = dividerThickness;
       const dividerLeftX = compRear[1] * scale;
       ctx.fillStyle = "#aaa";
@@ -1259,12 +1262,6 @@
       const topDoorBottom = (dividerY + dividerH / 2) * scale - doorGap / 2 * scale;
       const bottomDoorTop = (dividerY + dividerH / 2) * scale + doorGap / 2 * scale;
       const bottomDoorBottom = H * scale;
-      ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
-      ctx.fillRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
-      ctx.fillRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
-      ctx.strokeStyle = "#555";
-      ctx.strokeRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
-      ctx.strokeRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
       drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
       drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
       drawDim(
@@ -1277,7 +1274,15 @@
         `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`
       );
     } else {
-      drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
+      drawnDoors.push({ top: 0 * scale, bottom: H * scale });
+    }
+    for (const door of drawnDoors) {
+      const doorLeftX = innerDoor * scale;
+      const doorWidth = tDoor * scale;
+      ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
+      ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+      ctx.strokeStyle = "#555";
+      ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
     }
     if (dikeHeight > 0 && doorX != null) {
       const dikeH_dike = dikeHeight * scale;
@@ -2938,7 +2943,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         <legend>Evaporator</legend>
         <label>Width (mm): <input id="evapWidth" type="number" step="any"></label>
         <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
-        <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
+        <label>Depth (mm): <input id="thermoEvapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
@@ -2997,7 +3002,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       condBackPitch: document.getElementById("thermoCondBackPitch"),
       evapWidth: document.getElementById("evapWidth"),
       evapHeight: document.getElementById("evapHeight"),
-      evapDepth: document.getElementById("evapDepth"),
+      thermoEvapDepth: document.getElementById("thermoEvapDepth"),
       evapRows: document.getElementById("evapRows"),
       evapTubeOD: document.getElementById("evapTubeOD"),
       evapFinHeight: document.getElementById("evapFinHeight"),
@@ -3040,7 +3045,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const evap = settings.evaporator || {};
     thermalModalInputs.evapWidth.value = evap.width_mm ?? 460;
     thermalModalInputs.evapHeight.value = evap.height_mm ?? 150;
-    thermalModalInputs.evapDepth.value = evap.depth_mm ?? 60;
+    thermalModalInputs.thermoEvapDepth.value = evap.depth_mm ?? 60;
     thermalModalInputs.evapRows.value = evap.rows ?? 2;
     thermalModalInputs.evapTubeOD.value = evap.tubeOD_mm ?? 8;
     thermalModalInputs.evapFinHeight.value = evap.finHeight_mm ?? 150;
@@ -3079,7 +3084,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     settings.evaporator = {
       width_mm: parseFloat(thermalModalInputs.evapWidth.value) || 460,
       height_mm: parseFloat(thermalModalInputs.evapHeight.value) || 150,
-      depth_mm: parseFloat(thermalModalInputs.evapDepth.value) || 60,
+      depth_mm: parseFloat(thermalModalInputs.thermoEvapDepth.value) || 60,
       rows: parseInt(thermalModalInputs.evapRows.value) || 2,
       tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
       finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
@@ -3437,6 +3442,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     }
     const cabinetGeom = getGeometryFn();
     const geom = toThermalFormat(cabinetGeom);
+    const evapDepthMain = parseFloat(document.getElementById("evapDepth")?.value) || 60;
+    geom.tEvaBack = evapDepthMain;
     const T0 = parseFloat(document.getElementById("thermoT0")?.value);
     const TF = parseFloat(document.getElementById("thermoTF")?.value);
     const TR = parseFloat(document.getElementById("thermoTR")?.value);
