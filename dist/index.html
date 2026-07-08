@@ -52,6 +52,16 @@
           <label>t.Bottom2 (mm): <input type="number" id="geom-bottom2" step="any"></label>
           <label>t.Bottom3 (mm): <input type="number" id="geom-bottom3" step="any"></label>
         </fieldset>
+
+        <fieldset>
+          <legend>Special Geometries</legend>
+          <label>Shelves' Rails Height (mm): <input type="number" id="geom-railHeight" step="any" value="20"></label>
+          <label>Shelves' Rails Width (mm): <input type="number" id="geom-railWidth" step="any" value="10"></label>
+          <label>Shelves' Rail Depth (% of inner depth): <input type="number" id="geom-railDepthPct" step="any" min="0" max="100" value="50"></label>
+          <label>Door Dike Height (mm): <input type="number" id="geom-doorDikeHeight" step="any" value="50"></label>
+          <label>Door Dike Base Width (mm): <input type="number" id="geom-doorDikeBaseWidth" step="any" value="30"></label>
+          <label>Door Dike Top Width (mm): <input type="number" id="geom-doorDikeTopWidth" step="any" value="15"></label>
+        </fieldset>
       </fieldset>
 
       <!-- COMPARTMENTS -->
@@ -66,18 +76,39 @@
         <div id="compartmentBuilder"></div>
       </fieldset>
 
-      <!-- USABLE FACTOR -->
+      <!-- TOTAL VOLUME ELEMENTS -->
       <fieldset>
-        <legend>Usable Volume Factor</legend>
-        <label>Usable volume factor (%): <input type="number" id="usableFactor" value="97" step="any" min="0" max="100"></label>
+        <legend>Total Volume Elements</legend>
+        <label>Evaporator area Depth (mm): <input type="number" id="evapDepth" value="85" step="any" min="0"></label>
+        <fieldset>
+          <legend>Control Box</legend>
+          <label>Height (mm): <input type="number" id="ctrlBoxH" value="150" step="any" min="0"></label>
+          <label>Width (mm): <input type="number" id="ctrlBoxW" value="500" step="any" min="0"></label>
+          <label>Length (mm): <input type="number" id="ctrlBoxL" value="100" step="any" min="0"></label>
+        </fieldset>
+        <fieldset id="rshowerGroup">
+          <legend>R-Shower</legend>
+          <label>Height (mm): <input type="number" id="rshowerH" value="700" step="any" min="0"></label>
+          <label>Width (mm): <input type="number" id="rshowerW" value="500" step="any" min="0"></label>
+          <label>Length (mm): <input type="number" id="rshowerL" value="50" step="any" min="0"></label>
+        </fieldset>
       </fieldset>
-
       <!-- RESULTS -->
       <fieldset>
         <legend>Calculated Volumes</legend>
         <div id="results">
           <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
-          <p>Usable Volume: <span id="usableVol">--</span> L (<span id="usableVolCuft">--</span> cu. ft.)</p>
+          <p>Total Volume: <span id="totalVol">--</span> L (<span id="totalVolCuft">--</span> cu. ft.)</p>
+                  <fieldset>
+          <legend>PU Estimation</legend>
+          <p>Estimated Cabinet PU Volume: <span id="cabpuVol">--</span> L (<span id="cabpuVolCuft">--</span> cu. ft.)</p>
+          <p>Estimated Cabinet PU Weight: <span id="cabpuweight">--</span> kg</p>
+          <p>Estimated F-Door PU Volume: <span id="fdoorpuVol">--</span> L (<span id="fdoorpuVolCuft">--</span> cu. ft.)</p>
+          <p>Estimated F-Door PU Weight: <span id="fdoorpuweight">--</span> kg</p>
+          <p>Estimated R-Door PU Volume: <span id="rdoorpuVol">--</span> L (<span id="rdoorpuVolCuft">--</span> cu. ft.)</p>
+          <p>Estimated R-Door PU Weight: <span id="rdoorpuweight">--</span> kg</p>
+        </fieldset>
+
         </div>
       </fieldset>
 
