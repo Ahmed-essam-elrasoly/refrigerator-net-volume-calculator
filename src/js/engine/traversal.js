@@ -1,233 +1,114 @@
-import { calcLeafGross } from './calc.js';
-import { settings } from '../settings.js';
+// js/engine/traversal.js
+import { calcLeafGrossPrecise } from './calc.js';
 
-const DIM_TOL   = 0.01;
-const RATIO_TOL = 0.001;
+const DIM_TOL = 0.01;
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
-
-export function traverseAndCompute(rootNode, rootSpace) {
+/**
+ * Traverse the layout tree and compute volumes using per‑compartment geometry.
+ * @param {object} rootNode   – layout node (horizontal)
+ * @param {object} geometry   – full cabinet.geometry object
+ * @returns {{ leaves: array, errors: array, warnings: array }}
+ */
+export function traverseAndComputePrecise(rootNode, geometry) {
   const errors   = [];
   const warnings = [];
   const leaves   = [];
 
-  traverseNode(rootNode, rootSpace, errors, warnings, leaves);
-
-  return { leaves, errors, warnings };
-}
-
-// ---------------------------------------------------------------------------
-// Recursive node traversal
-// ---------------------------------------------------------------------------
-
-function traverseNode(node, space, errors, warnings, leaves) {
-  switch (node.nodeType) {
-    case 'leaf':
-      processLeaf(node, space, errors, warnings, leaves);
-      break;
-    case 'horizontal':
-      processHorizontal(node, space, errors, warnings, leaves);
-      break;
-    case 'vertical':
-      processVertical(node, space, errors, warnings, leaves);
-      break;
+  if (rootNode.nodeType !== 'horizontal') {
+    errors.push({ rule: 'layout', message: 'Root node must be horizontal for precise calc' });
+    return { leaves, errors, warnings };
   }
-}
 
-// ---------------------------------------------------------------------------
-// Horizontal split
-// ---------------------------------------------------------------------------
+  // Determine top insulation from first child
+  const firstChild = rootNode.children[0]?.node;
+  if (!firstChild || firstChild.nodeType !== 'leaf') {
+    errors.push({ rule: 'layout', message: 'First child must be a leaf' });
+    return { leaves, errors, warnings };
+  }
+  const topWallKey = firstChild.type === 'fresh' ? 'refrigerator' : firstChild.type;
+  const topWalls = geometry.walls[topWallKey];
+  if (!topWalls) {
+    errors.push({ rule: 'layout', message: `Unknown wall type: ${firstChild.type}` });
+    return { leaves, errors, warnings };
+  }
+  const topInsul = topWalls.top;
+  const topY = topInsul;   // absolute Y of inner top
 
-function processHorizontal(node, space, errors, warnings, leaves) {
-  const { children, dividers, id } = node;
-  const mode = children[0].heightMode;
+  // Determine bottom insulation of last child (for available height)
+  const lastChild = rootNode.children[rootNode.children.length - 1]?.node;
+  if (!lastChild || lastChild.nodeType !== 'leaf') {
+    errors.push({ rule: 'layout', message: 'Last child must be a leaf' });
+    return { leaves, errors, warnings };
+  }
+  const bottomWallKey = lastChild.type === 'fresh' ? 'refrigerator' : lastChild.type;
+  const bottomWalls = geometry.walls[bottomWallKey];
+  if (!bottomWalls) {
+    errors.push({ rule: 'layout', message: `Unknown wall type: ${lastChild.type}` });
+    return { leaves, errors, warnings };
+  }
 
+  // Compute total available height for the stack (from inner top to raised floor)
+  let floorRaisedY;
+  if (lastChild.type === 'fresh') {
+    // Stepped floor: raised level = H - Hb - bottom1
+    if (bottomWalls.bottom1 === undefined) {
+      errors.push({ rule: 'layout', message: 'Fresh compartment missing bottom1 thickness' });
+      return { leaves, errors, warnings };
+    }
+    floorRaisedY = geometry.H - geometry.Hb - bottomWalls.bottom1;
+  } else {
+    // Flat floor: bottom is outer H minus bottom insulation (use 'bottom' if present, else 0)
+    const bottomInsul = bottomWalls.bottom || 0;
+    floorRaisedY = geometry.H - bottomInsul;
+  }
+  const totalAvailableHeight = floorRaisedY - topY;
+
+  // Divider sum
+  const dividers = rootNode.dividers || [];
+  const totalDividerH = dividers.reduce((s, d) => s + (d.thickness || 0), 0);
+
+  // Height mode
+  const mode = rootNode.children[0].heightMode;
   let childHeights;
   if (mode === 'ratio') {
-    const totalDividerH = dividers.reduce((s, d) => s + d.thickness, 0);
-    const usableH = space.height - totalDividerH;
-    childHeights = children.map(c => usableH * c.heightValue);
-  } else {
-    const sumHeights   = children.reduce((s, c) => s + c.heightValue, 0);
-    const sumDividers  = dividers.reduce((s, d) => s + d.thickness, 0);
-    const total        = sumHeights + sumDividers;
-
-    if (Math.abs(total - space.height) > DIM_TOL) {
+    const usableH = totalAvailableHeight - totalDividerH;
+    childHeights = rootNode.children.map(c => usableH * c.heightValue);
+  } else { // explicit
+    const sumHeights = rootNode.children.reduce((s, c) => s + c.heightValue, 0);
+    const total = sumHeights + totalDividerH;
+    if (Math.abs(total - totalAvailableHeight) > DIM_TOL) {
       errors.push({
-        rule:           'heightBalance_explicit',
-        nodeId:         id,
-        message:        `Sum of heights (${sumHeights}) + dividers (${sumDividers}) = ${total} ≠ availableHeight (${space.height})`,
+        rule: 'heightBalance_explicit',
+        nodeId: rootNode.id,
+        message: `Sum of heights (${sumHeights}) + dividers (${totalDividerH}) = ${total} ≠ availableHeight (${totalAvailableHeight})`,
         childrenSkipped: true,
       });
-      return;
+      return { leaves, errors, warnings };
     }
-    childHeights = children.map(c => c.heightValue);
+    childHeights = rootNode.children.map(c => c.heightValue);
   }
 
-  for (let i = 0; i < children.length; i++) {
-    const childSpace = {
-      width:  space.width,
-      height: childHeights[i],
-      depth:  space.depth,
-    };
-    traverseNode(children[i].node, childSpace, errors, warnings, leaves);
-  }
-}
+  // Iterate children
+  let yOffset = topY;
+  for (let i = 0; i < rootNode.children.length; i++) {
+    const childNode = rootNode.children[i].node;
+    const height = childHeights[i];
+    const isBottommost = (i === rootNode.children.length - 1);
 
-// ---------------------------------------------------------------------------
-// Vertical split
-// ---------------------------------------------------------------------------
-
-function processVertical(node, space, errors, warnings, leaves) {
-  const { dividerThickness, leftWidthRatio, left, right, id } = node;
-
-  if (dividerThickness >= space.width) {
-    errors.push({
-      rule:           'verticalDividerBounds',
-      nodeId:         id,
-      message:        `dividerThickness (${dividerThickness}) ≥ availableWidth (${space.width})`,
-      childrenSkipped: true,
-    });
-    return;
-  }
-
-  const usableW  = space.width - dividerThickness;
-  const leftW    = usableW * leftWidthRatio;
-  const rightW   = usableW * (1 - leftWidthRatio);
-
-  traverseNode(left,  { width: leftW,  height: space.height, depth: space.depth }, errors, warnings, leaves);
-  traverseNode(right, { width: rightW, height: space.height, depth: space.depth }, errors, warnings, leaves);
-}
-
-// ---------------------------------------------------------------------------
-// Leaf: keep fitting dimension validation, but compute only gross
-// ---------------------------------------------------------------------------
-
-function processLeaf(node, space, errors, warnings, leaves) {
-  const { fittings, id } = node;
-
-  if (fittings.shelves && fittings.shelves.length > 0) {
-    // existing detailed validation
-    for (const shelf of fittings.shelves) {
-      errors.push(...validateShelf(shelf, space, id));
+    if (childNode.nodeType === 'leaf') {
+      // Calculate precise volume for this leaf
+      const result = calcLeafGrossPrecise(childNode, height, geometry, yOffset, isBottommost);
+      leaves.push(result);
+    } else {
+      errors.push({ rule: 'layout', message: 'Nested splits not supported in precise model' });
     }
-  } else if (fittings.shelfCount != null) {
-    // No detailed shelves → no dimensional checks needed
-    // Optionally add a soft warning that shelf dimensions are not verified
-    warnings.push({
-      rule: 'shelfCountOnly',
-      nodeId: id,
-      message: `Using shelfCount=${fittings.shelfCount}; shelf dimensions/positions not checked`
-    });
+
+    yOffset += height;
+    // Add divider after this child (if not last)
+    if (i < rootNode.children.length - 1) {
+      yOffset += dividers[i]?.thickness || 0;
+    }
   }
 
-  // Drawers, door bins validation unchanged …
-  // Compute gross volume (unchanged)
-  const leafResult = calcLeafGross(node, space);
-  leaves.push(leafResult);
-}
-// ---------------------------------------------------------------------------
-// Fitting validators (unchanged, except we don't need excludedFittingIds)
-// ---------------------------------------------------------------------------
-
-function validateShelf(shelf, space, nodeId) {
-  const errs = [];
-  const topEdge = shelf.positionFromFloor + shelf.thickness;
-
-  if (shelf.positionFromFloor <= 0) {
-    errs.push({ rule: 'shelfPosition', nodeId,
-      message: `Shelf positionFromFloor must be > 0, got ${shelf.positionFromFloor}` });
-  } else if (topEdge >= space.height) {
-    errs.push({ rule: 'shelfPosition', nodeId,
-      message: `Shelf top (${topEdge} mm) exceeds compartment height (${space.height} mm)` });
-  }
-
-  if (shelf.depth > space.depth) {
-    errs.push({ rule: 'shelfDepth', nodeId,
-      message: `Shelf depth (${shelf.depth}) exceeds availableDepth (${space.depth})` });
-  }
-
-  if (shelf.width != null && shelf.width > space.width) {
-    errs.push({ rule: 'shelfWidth', nodeId,
-      message: `Shelf width (${shelf.width}) exceeds availableWidth (${space.width})` });
-  }
-
-  return errs;
-}
-
-function validateDrawer(drawer, space, nodeId) {
-  const errs = [];
-  const { outerWidth: oW, outerDepth: oD, outerHeight: oH, wallThickness: t } = drawer;
-
-  if (oW > space.width) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerWidth (${oW}) exceeds availableWidth (${space.width})` });
-  }
-  if (oD > space.depth) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerDepth (${oD}) exceeds availableDepth (${space.depth})` });
-  }
-  if (oH >= space.height) {
-    errs.push({ rule: 'drawerBounds', nodeId,
-      message: `Drawer outerHeight (${oH}) must be < compartment height (${space.height})` });
-  }
-
-  const minOuter = Math.min(oW, oD, oH);
-  if (t >= minOuter * 0.5) {
-    errs.push({ rule: 'drawerWall', nodeId,
-      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
-  }
-
-  const innerW = oW - 2 * t;
-  const innerD = oD - 2 * t;
-  const innerH = oH - t;
-  if (innerW <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
-  if (innerD <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
-  if (innerH <= 0) errs.push({ rule: 'drawerInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
-
-  return errs;
-}
-
-function validateDoorBin(bin, space, nodeId) {
-  const errs = [];
-  const { outerWidth: oW, outerHeight: oH, outerDepth: oD, wallThickness: t } = bin;
-
-  const minOuter = Math.min(oW, oH, oD);
-  if (t >= minOuter * 0.5) {
-    errs.push({ rule: 'doorBinWall', nodeId,
-      message: `wallThickness (${t}) ≥ 50% of smallest outer dimension (${minOuter})` });
-  }
-
-  const innerW = oW - 2 * t;
-  const innerH = oH - 2 * t;
-  const innerD = oD - t;
-  if (innerW <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerWidth ≤ 0` });
-  if (innerH <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerHeight ≤ 0` });
-  if (innerD <= 0) errs.push({ rule: 'doorBinInnerPositive', nodeId, message: `Derived innerDepth ≤ 0` });
-
-  return errs;
-}
-
-function checkDoorBinDepth(fittings, space, nodeId) {
-  const bins    = fittings.doorBins ?? [];
-  const shelves = fittings.shelves ?? [];
-  if (!bins.length) return null;
-
-  const totalBinDepth = bins.reduce((s, b) => s + b.outerDepth, 0);
-  const minShelfDepth = shelves.length
-    ? Math.min(...shelves.map(s => s.depth))
-    : 0;
-
-  const threshold = space.depth - minShelfDepth;
-
-  if (totalBinDepth > threshold) {
-    return {
-      rule:    'doorBinDepth',
-      nodeId,
-      message: `Σ bin depths (${totalBinDepth} mm) exceeds availableDepth − minShelfDepth (${threshold} mm)`,
-    };
-  }
-  return null;
+  return { leaves, errors, warnings };
 }

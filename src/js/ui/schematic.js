@@ -858,7 +858,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
           const railStartXWorld = (evapDepth > 0 && (numCompartments === 1 || isFreezer(i)))
             ? compRear[i] + evapDepth
             : compRear[i];
-            
+
           const usableDepthWorld = doorX - railStartXWorld;
           const railDepthPx = (railDepthPct / 100) * usableDepthWorld * scale;
           const railH = railHeight * scale;
@@ -882,7 +882,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
   // Dimension lines
   drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
-  drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
+  drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
   drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
 
   drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);

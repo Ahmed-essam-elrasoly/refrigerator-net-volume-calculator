@@ -707,7 +707,6 @@ function handleRun() {
   const freezerPosition =
       nComps === 1 ? 'top' :                // single compartment always 'top'
       hasFreezer ? 'top' : 'bottom';
-
   const config = buildDefaultConfig({
     geom,
     freezerPosition,
@@ -718,6 +717,8 @@ function handleRun() {
     fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
   });
+  console.log(geom);
+
   config.evapGeom = settings.evaporator || {};
   config.fanParam = fanParam;
 
