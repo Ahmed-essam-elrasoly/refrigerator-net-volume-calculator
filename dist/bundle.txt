@@ -218,9 +218,22 @@
   function checkPositiveFittingValues(node, errors) {
     if (!node.fittings) return;
     const f = node.fittings;
-    for (const shelf of f.shelves ?? []) {
-      checkPositive(shelf, ["positionFromFloor", "thickness", "depth"], errors, node.id);
-      if (shelf.width != null) checkPositive(shelf, ["width"], errors, node.id);
+    if (f.shelfCount != null) {
+      if (!Number.isInteger(f.shelfCount) || f.shelfCount <= 0) {
+        errors.push({
+          rule: "positiveValues",
+          nodeId: node.id,
+          message: `shelfCount must be a positive integer, got ${f.shelfCount}`
+        });
+      }
+      if (f.shelves && f.shelves.length > 0) {
+        errors.push({
+          rule: "ambiguousShelves",
+          nodeId: node.id,
+          message: "Provide either shelfCount or shelves, not both"
+        });
+      }
+      return;
     }
     for (const drawer of f.drawers ?? []) {
       checkPositive(drawer, ["outerWidth", "outerDepth", "outerHeight", "wallThickness"], errors, node.id);
@@ -405,17 +418,17 @@
   }
   function processLeaf(node, space, errors, warnings, leaves) {
     const { fittings, id } = node;
-    for (const shelf of fittings.shelves ?? []) {
-      errors.push(...validateShelf(shelf, space, id));
+    if (fittings.shelves && fittings.shelves.length > 0) {
+      for (const shelf of fittings.shelves) {
+        errors.push(...validateShelf(shelf, space, id));
+      }
+    } else if (fittings.shelfCount != null) {
+      warnings.push({
+        rule: "shelfCountOnly",
+        nodeId: id,
+        message: `Using shelfCount=${fittings.shelfCount}; shelf dimensions/positions not checked`
+      });
     }
-    for (const drawer of fittings.drawers ?? []) {
-      errors.push(...validateDrawer(drawer, space, id));
-    }
-    for (const bin of fittings.doorBins ?? []) {
-      errors.push(...validateDoorBin(bin, space, id));
-    }
-    const binDepthWarning = checkDoorBinDepth(fittings, space, id);
-    if (binDepthWarning) warnings.push(binDepthWarning);
     const leafResult = calcLeafGross(node, space);
     leaves.push(leafResult);
   }
@@ -450,81 +463,6 @@
       });
     }
     return errs;
-  }
-  function validateDrawer(drawer, space, nodeId) {
-    const errs = [];
-    const { outerWidth: oW, outerDepth: oD, outerHeight: oH, wallThickness: t } = drawer;
-    if (oW > space.width) {
-      errs.push({
-        rule: "drawerBounds",
-        nodeId,
-        message: `Drawer outerWidth (${oW}) exceeds availableWidth (${space.width})`
-      });
-    }
-    if (oD > space.depth) {
-      errs.push({
-        rule: "drawerBounds",
-        nodeId,
-        message: `Drawer outerDepth (${oD}) exceeds availableDepth (${space.depth})`
-      });
-    }
-    if (oH >= space.height) {
-      errs.push({
-        rule: "drawerBounds",
-        nodeId,
-        message: `Drawer outerHeight (${oH}) must be < compartment height (${space.height})`
-      });
-    }
-    const minOuter = Math.min(oW, oD, oH);
-    if (t >= minOuter * 0.5) {
-      errs.push({
-        rule: "drawerWall",
-        nodeId,
-        message: `wallThickness (${t}) \u2265 50% of smallest outer dimension (${minOuter})`
-      });
-    }
-    const innerW = oW - 2 * t;
-    const innerD = oD - 2 * t;
-    const innerH = oH - t;
-    if (innerW <= 0) errs.push({ rule: "drawerInnerPositive", nodeId, message: `Derived innerWidth \u2264 0` });
-    if (innerD <= 0) errs.push({ rule: "drawerInnerPositive", nodeId, message: `Derived innerDepth \u2264 0` });
-    if (innerH <= 0) errs.push({ rule: "drawerInnerPositive", nodeId, message: `Derived innerHeight \u2264 0` });
-    return errs;
-  }
-  function validateDoorBin(bin, space, nodeId) {
-    const errs = [];
-    const { outerWidth: oW, outerHeight: oH, outerDepth: oD, wallThickness: t } = bin;
-    const minOuter = Math.min(oW, oH, oD);
-    if (t >= minOuter * 0.5) {
-      errs.push({
-        rule: "doorBinWall",
-        nodeId,
-        message: `wallThickness (${t}) \u2265 50% of smallest outer dimension (${minOuter})`
-      });
-    }
-    const innerW = oW - 2 * t;
-    const innerH = oH - 2 * t;
-    const innerD = oD - t;
-    if (innerW <= 0) errs.push({ rule: "doorBinInnerPositive", nodeId, message: `Derived innerWidth \u2264 0` });
-    if (innerH <= 0) errs.push({ rule: "doorBinInnerPositive", nodeId, message: `Derived innerHeight \u2264 0` });
-    if (innerD <= 0) errs.push({ rule: "doorBinInnerPositive", nodeId, message: `Derived innerDepth \u2264 0` });
-    return errs;
-  }
-  function checkDoorBinDepth(fittings, space, nodeId) {
-    const bins = fittings.doorBins ?? [];
-    const shelves = fittings.shelves ?? [];
-    if (!bins.length) return null;
-    const totalBinDepth = bins.reduce((s, b) => s + b.outerDepth, 0);
-    const minShelfDepth = shelves.length ? Math.min(...shelves.map((s) => s.depth)) : 0;
-    const threshold = space.depth - minShelfDepth;
-    if (totalBinDepth > threshold) {
-      return {
-        rule: "doorBinDepth",
-        nodeId,
-        message: `\u03A3 bin depths (${totalBinDepth} mm) exceeds availableDepth \u2212 minShelfDepth (${threshold} mm)`
-      };
-    }
-    return null;
   }
 
   // src/js/engine/geometry.js
@@ -577,14 +515,6 @@
         right: walls.freezer.right,
         rear: walls.freezer.rear,
         door: walls.freezer.door
-      },
-      flex: {
-        top: walls.refrigerator.top,
-        bottom: walls.refrigerator.bottom1,
-        left: walls.refrigerator.left,
-        right: walls.refrigerator.right,
-        rear: walls.refrigerator.rear,
-        door: walls.refrigerator.door
       }
     };
     return {
@@ -700,7 +630,7 @@
     const boundaryTypes = { top: /* @__PURE__ */ new Set(), bottom: /* @__PURE__ */ new Set(), left: /* @__PURE__ */ new Set(), right: /* @__PURE__ */ new Set() };
     walkBoundaries(layout, boundaryTypes, true, true, true, true);
     const effective = {};
-    const allTypes = ["fresh", "freezer", "flex"];
+    const allTypes = ["fresh", "freezer"];
     for (const face of ["top", "bottom", "left", "right"]) {
       let max = 0;
       for (const t of boundaryTypes[face]) {
@@ -982,8 +912,18 @@
   };
   function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
     const ctx = canvas.getContext("2d");
-    const { H, W } = geometry;
-    const { dividerThickness = 0, compHeights = [], compartments = [] } = options;
+    const { H, W, Hb = 0, walls = {} } = geometry;
+    const {
+      dividerThickness = 0,
+      compHeights = [],
+      compartments = [],
+      fittings,
+      shelfCounts = [],
+      innerLeftX,
+      innerRightX,
+      railHeight = 0,
+      railWidth = 0
+    } = options;
     const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
     const drawW = canvas.width - PAD.left - PAD.right;
     const drawH = canvas.height - PAD.top - PAD.bottom;
@@ -991,13 +931,12 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(PAD.left, PAD.top);
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, W * scale, H * scale);
     const innerLeft = compartments.map((c) => c.left);
     const innerRight = compartments.map((c) => W - c.right);
     const intTop = effectiveWalls.top;
     const intBottom = H - effectiveWalls.bottom;
+    const tRbottom1 = walls.refrigerator?.bottom1 || 0;
+    const floorRaisedY = H - Hb - tRbottom1;
     ctx.beginPath();
     ctx.rect(0, 0, W * scale, H * scale);
     let y = intTop;
@@ -1013,8 +952,6 @@
       ctx.lineTo(rightX, y * scale);
       y += h;
       ctx.lineTo(rightX, y * scale);
-      if (i < compHeights.length - 1) {
-      }
     }
     ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
     ctx.closePath();
@@ -1046,12 +983,46 @@
         y += dividerThickness;
       }
     }
-    if (options.fittings && leaves) {
+    if (shelfCounts && shelfCounts.length > 0) {
+      let yOffset = intTop;
+      for (let i = 0; i < compHeights.length; i++) {
+        const n = shelfCounts[i] || 0;
+        const compH = compHeights[i];
+        const compY = yOffset * scale;
+        if (n > 0) {
+          let usableH = compH;
+          if (i === compHeights.length - 1) {
+            usableH = Math.min(compH, floorRaisedY - yOffset);
+          }
+          const spacing = usableH * scale / (n + 1);
+          for (let s = 1; s <= n; s++) {
+            const shelfYpx = compY + spacing * s;
+            ctx.beginPath();
+            ctx.moveTo(innerLeft[i] * scale, shelfYpx);
+            ctx.lineTo(innerRight[i] * scale, shelfYpx);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#666";
+            ctx.stroke();
+            const railW = railWidth * scale;
+            const railH = railHeight * scale;
+            const leftRailX = innerLeft[i] * scale;
+            ctx.fillStyle = "#aaa";
+            ctx.fillRect(leftRailX, shelfYpx, railW, railH);
+            ctx.strokeStyle = "#333";
+            ctx.strokeRect(leftRailX, shelfYpx, railW, railH);
+            const rightRailX = innerRight[i] * scale - railW;
+            ctx.fillRect(rightRailX, shelfYpx, railW, railH);
+            ctx.strokeRect(rightRailX, shelfYpx, railW, railH);
+          }
+        }
+        yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+      }
+    } else if (fittings && leaves) {
       const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
       let yOffset = effectiveWalls.top;
       for (let i = 0; i < compHeights.length; i++) {
         const compH = compHeights[i];
-        const fittingsForLeaf = options.fittings.find((f) => f.leafId === leaves[i]?.leafId);
+        const fittingsForLeaf = fittings.find((f) => f.leafId === leaves[i]?.leafId);
         if (!fittingsForLeaf) {
           yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
           continue;
@@ -1090,6 +1061,29 @@
         yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
       }
     }
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, W * scale, H * scale);
+    const hbY = (H - Hb - tRbottom1) * scale;
+    let yAcc = intTop;
+    let compIdx = -1;
+    for (let i = 0; i < compHeights.length; i++) {
+      if (hbY >= yAcc * scale && hbY <= (yAcc + compHeights[i]) * scale) {
+        compIdx = i;
+        break;
+      }
+      yAcc += compHeights[i];
+      if (i < compHeights.length - 1) yAcc += dividerThickness;
+    }
+    if (compIdx === -1) compIdx = compHeights.length - 1;
+    ctx.save();
+    ctx.strokeStyle = "#e67e22";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(innerLeft[compIdx] * scale, hbY);
+    ctx.lineTo(innerRight[compIdx] * scale, hbY);
+    ctx.stroke();
+    ctx.restore();
     const dimX = -35;
     y = intTop;
     for (let i = 0; i < compHeights.length; i++) {
@@ -1110,10 +1104,24 @@
   function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const ctx = canvas.getContext("2d");
     const { H, D, Hb, Db1, Db2, walls } = geometry;
-    const { dividerThickness = 0, compHeights = [], doorGap = 0, compartments = [] } = options;
+    const {
+      dividerThickness = 0,
+      compHeights = [],
+      doorGap = 0,
+      compartments = [],
+      shelfCounts = [],
+      innerTopY,
+      innerBottomY,
+      innerRearX,
+      doorX,
+      railHeight = 0,
+      railDepthPct = 0,
+      dikeHeight = 0,
+      dikeBaseWidth = 0,
+      dikeTopWidth = 0
+    } = options;
     const tTop = effectiveWalls.top;
     const tDoor = effectiveWalls.door;
-    const tRear = effectiveWalls.rear;
     const tRbottom1 = walls.refrigerator.bottom1;
     const tRbottom2 = walls.refrigerator.bottom2;
     const tRbottom3 = walls.refrigerator.bottom3;
@@ -1125,87 +1133,81 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.translate(PAD.left, PAD.top);
-    ctx.strokeStyle = "#333";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(0, 0, D * scale, H * scale);
-    const innerDoor = D - tDoor;
+    const innerDoor = D;
     const innerTop = tTop;
     const floorLowerY = H - tRbottom3;
     const floorRaisedY = H - Hb - tRbottom1;
-    const bottomRear = compRear.length === 2 ? compRear[1] : compRear[0];
-    const slopeStartX = bottomRear + Db1;
-    const slopeEndX = bottomRear + Db2;
-    const topH = compHeights[0];
-    const topRearX = compRear[0] * scale;
-    const topY = innerTop * scale;
-    const topCompH = topH * scale;
-    ctx.beginPath();
-    ctx.rect(0, 0, D * scale, topY + topCompH);
-    ctx.moveTo(topRearX, topCompH);
-    ctx.lineTo(innerDoor * scale, topY);
-    ctx.lineTo(innerDoor * scale, topY + topCompH);
-    ctx.lineTo(topRearX, topY + topCompH);
-    ctx.closePath();
-    ctx.fillStyle = "#f0f0f0";
-    ctx.fill();
-    if (compHeights.length === 2) {
+    const xTopCB = Db1;
+    const yTopCB = H - Hb;
+    const xBottomCB = Db2;
+    const yBottomCB = H;
+    const cbDx = xBottomCB - xTopCB;
+    const cbDy = yBottomCB - yTopCB;
+    const cbLen = Math.sqrt(cbDx * cbDx + cbDy * cbDy);
+    let slopeStartX = Db1;
+    let slopeEndX = Db2;
+    let nx = 1, ny = 0;
+    if (cbLen > 0) {
+      nx = cbDy / cbLen;
+      ny = -cbDx / cbLen;
+      const px = xTopCB + nx * tRbottom2;
+      const py = yTopCB + ny * tRbottom2;
+      if (cbDy !== 0) {
+        const tStart = (floorRaisedY - py) / cbDy;
+        slopeStartX = px + cbDx * tStart;
+        const tEnd = (floorLowerY - py) / cbDy;
+        slopeEndX = px + cbDx * tEnd;
+      } else {
+        slopeStartX = px;
+        slopeEndX = px;
+      }
+    }
+    if (compHeights.length === 1) {
+      ctx.fillStyle = "#f0f0f0";
+      ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
+      const topRearX = compRear[0] * scale;
+      const topY = innerTop * scale;
+      ctx.beginPath();
+      ctx.moveTo(topRearX, topY);
+      ctx.lineTo(innerDoor * scale, topY);
+      ctx.lineTo(innerDoor * scale, floorLowerY * scale);
+      ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
+      ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
+      ctx.lineTo(topRearX, floorRaisedY * scale);
+      ctx.closePath();
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "#0066cc";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    } else if (compHeights.length === 2) {
+      const topH = compHeights[0];
+      const topRearX = compRear[0] * scale;
+      const topY = innerTop * scale;
+      const topCompH = topH * scale;
+      ctx.beginPath();
+      ctx.rect(0, 0, D * scale, topY + topCompH);
+      ctx.moveTo(topRearX, topCompH);
+      ctx.lineTo(innerDoor * scale, topY);
+      ctx.lineTo(innerDoor * scale, topY + topCompH);
+      ctx.lineTo(topRearX, topY + topCompH);
+      ctx.closePath();
+      ctx.fillStyle = "#f0f0f0";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
+      ctx.fillStyle = "#ffffff";
+      ctx.fill();
+      ctx.strokeStyle = "#0066cc";
+      ctx.stroke();
       const bottomH = compHeights[1];
       const bottomRearX = compRear[1] * scale;
       const bottomY = (innerTop + topH + dividerThickness) * scale;
       const bottomCompH = bottomH * scale;
       ctx.beginPath();
       ctx.rect(0, bottomY, D * scale, bottomCompH);
-      ctx.moveTo(bottomRearX, bottomY);
-      ctx.lineTo(innerDoor * scale, bottomY);
-      ctx.lineTo(innerDoor * scale, bottomY + bottomCompH);
-      ctx.lineTo(innerDoor * scale, floorLowerY * scale);
-      ctx.lineTo(slopeEndX * scale, floorLowerY * scale);
-      ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
-      ctx.lineTo(bottomRearX, floorRaisedY * scale);
-      ctx.closePath();
       ctx.fillStyle = "#f0f0f0";
       ctx.fill();
-    }
-    const slopeDx = slopeEndX - slopeStartX;
-    const slopeDy = floorLowerY - floorRaisedY;
-    const slopeLen = Math.sqrt(slopeDx * slopeDx + slopeDy * slopeDy);
-    let nx = slopeDy / slopeLen;
-    let ny = -slopeDx / slopeLen;
-    if (ny < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-    const yTopCB = floorRaisedY + tRbottom1;
-    const sTop = slopeDy !== 0 ? (yTopCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-    const xTopCB = slopeStartX + sTop * slopeDx + nx * tRbottom2;
-    const yBottomCB = H;
-    const sBottom = slopeDy !== 0 ? (yBottomCB - floorRaisedY - ny * tRbottom2) / slopeDy : 0;
-    const xBottomCB = slopeStartX + sBottom * slopeDx + nx * tRbottom2;
-    ctx.beginPath();
-    ctx.moveTo(0, H * scale);
-    ctx.lineTo(0, yTopCB * scale);
-    ctx.lineTo(xTopCB * scale, yTopCB * scale);
-    ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
-    ctx.closePath();
-    ctx.fillStyle = "#ddd";
-    ctx.fill();
-    ctx.strokeStyle = "#999";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = "#555";
-    ctx.font = "bold 11px sans-serif";
-    ctx.fillText("Comp.", 6, yTopCB * scale + 14);
-    ctx.beginPath();
-    ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-    ctx.strokeStyle = "#0066cc";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    if (compHeights.length === 2) {
-      const bottomRearX = compRear[1] * scale;
-      const bottomY = (innerTop + topH + dividerThickness) * scale;
-      const bottomCompH = compHeights[1] * scale;
       ctx.beginPath();
       ctx.moveTo(bottomRearX, bottomY);
       ctx.lineTo(innerDoor * scale, bottomY);
@@ -1221,36 +1223,45 @@
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+    ctx.beginPath();
+    ctx.moveTo(0, H * scale);
+    ctx.lineTo(0, yTopCB * scale);
+    ctx.lineTo(xTopCB * scale, yTopCB * scale);
+    ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
+    ctx.closePath();
+    ctx.fillStyle = "#ddd";
+    ctx.fill();
+    ctx.strokeStyle = "#999";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#555";
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText("Comp.", 6, yTopCB * scale + 14);
     let drawnDoors = [];
     if (compHeights.length === 2 && dividerThickness > 0) {
-      const dividerY = innerTop + topH;
+      const dividerY = innerTop + compHeights[0];
       const dividerH = dividerThickness;
+      const dividerLeftX = compRear[1] * scale;
       ctx.fillStyle = "#aaa";
       ctx.fillRect(
-        0,
+        dividerLeftX,
         dividerY * scale,
-        innerDoor * scale,
+        (innerDoor - compRear[1]) * scale,
         dividerH * scale
       );
       ctx.strokeStyle = "#666";
       ctx.strokeRect(
-        0,
+        dividerLeftX,
         dividerY * scale,
-        innerDoor * scale,
+        (innerDoor - compRear[1]) * scale,
         dividerH * scale
       );
       const doorLeftX = innerDoor * scale;
-      const doorWidth = (D - innerDoor) * scale;
+      const doorWidth = tDoor * scale;
       const topDoorTop = 0;
       const topDoorBottom = (dividerY + dividerH / 2) * scale - doorGap / 2 * scale;
       const bottomDoorTop = (dividerY + dividerH / 2) * scale + doorGap / 2 * scale;
       const bottomDoorBottom = H * scale;
-      ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
-      ctx.fillRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
-      ctx.fillRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
-      ctx.strokeStyle = "#555";
-      ctx.strokeRect(doorLeftX, topDoorTop, doorWidth, topDoorBottom - topDoorTop);
-      ctx.strokeRect(doorLeftX, bottomDoorTop, doorWidth, bottomDoorBottom - bottomDoorTop);
       drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
       drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
       drawDim(
@@ -1263,14 +1274,92 @@
         `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`
       );
     } else {
-      drawnDoors.push({ top: innerTop * scale, bottom: floorLowerY * scale });
+      drawnDoors.push({ top: 0 * scale, bottom: H * scale });
     }
+    for (const door of drawnDoors) {
+      const doorLeftX = innerDoor * scale;
+      const doorWidth = tDoor * scale;
+      ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
+      ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+      ctx.strokeStyle = "#555";
+      ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+    }
+    if (dikeHeight > 0 && doorX != null) {
+      const dikeH_dike = dikeHeight * scale;
+      const baseW_dike = dikeBaseWidth * scale;
+      const topW_dike = dikeTopWidth * scale;
+      const doorX_dike = innerDoor * scale;
+      const leftX_dike = (innerDoor - dikeHeight) * scale;
+      let yComp = innerTop;
+      for (let i = 0; i < compHeights.length; i++) {
+        const compTopY = yComp * scale;
+        const compBottomY = (yComp + compHeights[i]) * scale;
+        ctx.beginPath();
+        ctx.moveTo(doorX_dike, compTopY);
+        ctx.lineTo(doorX_dike, compTopY + baseW_dike);
+        ctx.lineTo(leftX_dike, compTopY + (baseW_dike - topW_dike) / 2 + topW_dike);
+        ctx.lineTo(leftX_dike, compTopY + (baseW_dike - topW_dike) / 2);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
+        ctx.fill();
+        ctx.strokeStyle = "#555";
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(doorX_dike, compBottomY - baseW_dike);
+        ctx.lineTo(doorX_dike, compBottomY);
+        ctx.lineTo(leftX_dike, compBottomY - (baseW_dike - topW_dike) / 2);
+        ctx.lineTo(leftX_dike, compBottomY - (baseW_dike + topW_dike) / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        yComp += compHeights[i];
+        if (i < compHeights.length - 1) {
+          yComp += dividerThickness;
+        }
+      }
+    }
+    if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
+      let yOffset = innerTop;
+      for (let i = 0; i < compHeights.length; i++) {
+        const n = shelfCounts[i] || 0;
+        const compH = compHeights[i];
+        const compY = yOffset * scale;
+        if (n > 0) {
+          let usableH = compH;
+          if (i === compHeights.length - 1) {
+            usableH = Math.min(compH, floorRaisedY - yOffset);
+          }
+          const spacing = usableH * scale / (n + 1);
+          for (let s = 1; s <= n; s++) {
+            const shelfYpx = compY + spacing * s;
+            ctx.beginPath();
+            ctx.moveTo(innerRearX * scale, shelfYpx);
+            ctx.lineTo(doorX * scale, shelfYpx);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#666";
+            ctx.stroke();
+            const usableDepth = (doorX - innerRearX) * scale;
+            const railDepthPx = railDepthPct / 100 * usableDepth;
+            const railH = railHeight * scale;
+            const railY = shelfYpx;
+            ctx.fillStyle = "#aaa";
+            ctx.fillRect(innerRearX * scale, railY, railDepthPx, railH);
+            ctx.strokeStyle = "#333";
+            ctx.strokeRect(innerRearX * scale, railY, railDepthPx, railH);
+          }
+        }
+        yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
+      }
+    }
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, D * scale, H * scale);
     drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
     drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
     drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-    drawDim(ctx, bottomRear * scale, floorRaisedY * scale, slopeStartX * scale, floorRaisedY * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-    drawDim(ctx, bottomRear * scale, floorLowerY * scale, slopeEndX * scale, floorLowerY * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
-    const topMidX = (tRear + innerDoor) / 2 * scale;
+    drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
+    drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+    const topMidX = (compRear[0] + innerDoor) / 2 * scale;
     drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
     drawnDoors.forEach((door) => {
       const doorMidY = (door.top + door.bottom) / 2.5;
@@ -1287,15 +1376,13 @@
     }
     const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
     drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
-    const midSlopeX = (slopeStartX + slopeEndX) / 2;
-    const midSlopeY = (floorRaisedY + floorLowerY) / 2;
-    const innerPX = midSlopeX * scale;
-    const innerPY = midSlopeY * scale;
-    const outerPX = innerPX + nx * (tRbottom2 * scale);
-    const outerPY = innerPY + ny * (tRbottom2 * scale);
-    drawDim(ctx, innerPX, innerPY, outerPX, outerPY, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
+    const midCbX = (xTopCB + xBottomCB) / 2;
+    const midCbY = (yTopCB + yBottomCB) / 2;
+    const inPX = midCbX + nx * tRbottom2;
+    const inPY = midCbY + ny * tRbottom2;
+    drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
     if (compHeights.length === 2) {
-      const dimX = D * scale + 20;
+      const dimX = (D + tDoor) * scale + 20;
       let yPos = innerTop;
       compHeights.forEach((h, idx) => {
         const bottomY = yPos + h;
@@ -1306,15 +1393,51 @@
     } else if (compHeights.length === 1) {
       drawDim(
         ctx,
-        D * scale + 20,
+        (D + tDoor) * scale + 20,
         innerTop * scale,
-        D * scale + 20,
+        (D + tDoor) * scale + 20,
         (innerTop + compHeights[0]) * scale,
         0,
         `[h= ${compHeights[0].toFixed(0)}]`
       );
     }
     ctx.restore();
+  }
+  function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn2) {
+    const tooltip = document.getElementById("schematicTooltip");
+    function handleClick(canvas, isFront) {
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const pixelX = (e.clientX - rect.left) * scaleX;
+        const pixelY = (e.clientY - rect.top) * scaleY;
+        const geometry = getGeometryFn2();
+        if (!geometry) return;
+        let worldX, worldY;
+        if (isFront) {
+          const PAD = { left: 50, top: 40 };
+          const drawW = canvas.width - PAD.left - 40;
+          const drawH = canvas.height - PAD.top - 40;
+          const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
+          worldX = (pixelX - PAD.left) / scale;
+          worldY = (pixelY - PAD.top) / scale;
+        } else {
+          const PAD = { left: 60, top: 40 };
+          const drawW = canvas.width - PAD.left - 60;
+          const drawH = canvas.height - PAD.top - 40;
+          const scale = Math.min(drawW / geometry.D, drawH / geometry.H);
+          worldX = (pixelX - PAD.left) / scale;
+          worldY = (pixelY - PAD.top) / scale;
+        }
+        tooltip.classList.remove("hidden");
+        tooltip.style.left = e.clientX + 10 + "px";
+        tooltip.style.top = e.clientY - 30 + "px";
+        tooltip.textContent = `X: ${worldX.toFixed(1)} mm, Y: ${worldY.toFixed(1)} mm`;
+      });
+    }
+    handleClick(frontCanvas, true);
+    handleClick(sideCanvas, false);
   }
 
   // src/js/engine/thermo/defaultComponents.js
@@ -2714,7 +2837,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
 
   // src/js/engine/thermo/evaporator.js
   function computeEvaporatorArea(evap) {
-    const { width_mm, height_mm, depth_mm, rows, tubeOD_mm, finPitch_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
+    const { width_mm, height_mm, depth_mm, rows, tubeOD_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
     const tubeCrossArea = Math.PI * (tubeOD_mm / 2) ** 2;
     const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6;
     const totalFinArea = finAreaPerFin * numFins;
@@ -2820,10 +2943,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         <legend>Evaporator</legend>
         <label>Width (mm): <input id="evapWidth" type="number" step="any"></label>
         <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
-        <label>Depth (mm): <input id="evapDepth" type="number" step="any"></label>
+        <label>Depth (mm): <input id="thermoEvapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
-        <label>Fin Pitch (mm): <input id="evapFinPitch" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
         <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
         <label>Number of Fins: <input id="evapNumFins" type="number" step="any"></label>
@@ -2880,10 +3002,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       condBackPitch: document.getElementById("thermoCondBackPitch"),
       evapWidth: document.getElementById("evapWidth"),
       evapHeight: document.getElementById("evapHeight"),
-      evapDepth: document.getElementById("evapDepth"),
+      thermoEvapDepth: document.getElementById("thermoEvapDepth"),
       evapRows: document.getElementById("evapRows"),
       evapTubeOD: document.getElementById("evapTubeOD"),
-      evapFinPitch: document.getElementById("evapFinPitch"),
       evapFinHeight: document.getElementById("evapFinHeight"),
       evapFinLength: document.getElementById("evapFinLength"),
       evapNumFins: document.getElementById("evapNumFins"),
@@ -2924,10 +3045,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const evap = settings.evaporator || {};
     thermalModalInputs.evapWidth.value = evap.width_mm ?? 460;
     thermalModalInputs.evapHeight.value = evap.height_mm ?? 150;
-    thermalModalInputs.evapDepth.value = evap.depth_mm ?? 60;
+    thermalModalInputs.thermoEvapDepth.value = evap.depth_mm ?? 60;
     thermalModalInputs.evapRows.value = evap.rows ?? 2;
     thermalModalInputs.evapTubeOD.value = evap.tubeOD_mm ?? 8;
-    thermalModalInputs.evapFinPitch.value = evap.finPitch_mm ?? 4;
     thermalModalInputs.evapFinHeight.value = evap.finHeight_mm ?? 150;
     thermalModalInputs.evapFinLength.value = evap.finLength_mm ?? 460;
     thermalModalInputs.evapNumFins.value = evap.numFins ?? 32;
@@ -2964,10 +3084,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     settings.evaporator = {
       width_mm: parseFloat(thermalModalInputs.evapWidth.value) || 460,
       height_mm: parseFloat(thermalModalInputs.evapHeight.value) || 150,
-      depth_mm: parseFloat(thermalModalInputs.evapDepth.value) || 60,
+      depth_mm: parseFloat(thermalModalInputs.thermoEvapDepth.value) || 60,
       rows: parseInt(thermalModalInputs.evapRows.value) || 2,
       tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
-      finPitch_mm: parseFloat(thermalModalInputs.evapFinPitch.value) || 4,
       finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
       finLength_mm: parseFloat(thermalModalInputs.evapFinLength.value) || 460,
       numFins: parseInt(thermalModalInputs.evapNumFins.value) || 32,
@@ -3323,6 +3442,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     }
     const cabinetGeom = getGeometryFn();
     const geom = toThermalFormat(cabinetGeom);
+    const evapDepthMain = parseFloat(document.getElementById("evapDepth")?.value) || 60;
+    geom.tEvaBack = evapDepthMain;
     const T0 = parseFloat(document.getElementById("thermoT0")?.value);
     const TF = parseFloat(document.getElementById("thermoTF")?.value);
     const TR = parseFloat(document.getElementById("thermoTR")?.value);
@@ -3528,7 +3649,14 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   // src/js/main.js
   updateSettings(settings);
   var divHorizInput = document.getElementById("divHoriz");
-  var usableFactorInput = document.getElementById("usableFactor");
+  var evapDepthInput = document.getElementById("evapDepth");
+  var ctrlBoxHInput = document.getElementById("ctrlBoxH");
+  var ctrlBoxWInput = document.getElementById("ctrlBoxW");
+  var ctrlBoxLInput = document.getElementById("ctrlBoxL");
+  var rshowerHInput = document.getElementById("rshowerH");
+  var rshowerWInput = document.getElementById("rshowerW");
+  var rshowerLInput = document.getElementById("rshowerL");
+  var rshowerGroup = document.getElementById("rshowerGroup");
   var numCompartmentsInput = document.getElementById("numCompartments");
   var compartmentBuilder = document.getElementById("compartmentBuilder");
   var calculateBtn = document.getElementById("calculateBtn");
@@ -3599,16 +3727,19 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         type: i === 0 ? "freezer" : "fresh",
         ...defaultWalls,
         height: 0,
-        ratio: i === 0 ? 0.4 : 0.6
+        ratio: i === 0 ? 0.4 : 0.6,
+        shelfCount: 0
+        // ← NEW
       });
     }
     syncConstraints();
     buildCompartmentUI();
+    updateRShowerVisibility();
   }
   function syncConstraints() {
     const count = compartmentsData.length;
     const H = parseFloat(document.getElementById("geom-H")?.value) || 1680;
-    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
     const totalInsulTop = compartmentsData[0].top;
     const totalInsulBottom = parseFloat(document.getElementById("geom-bottom3")?.value) || 40;
     let internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
@@ -3624,6 +3755,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       compartmentsData[0].height = internalH;
       compartmentsData[0].ratio = 1;
       return;
+    }
+    if (count === 2) {
+      compartmentsData[1].top = dividerThick;
     }
     let h0 = compartmentsData[0].height;
     let h1 = compartmentsData[1].height;
@@ -3655,6 +3789,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       if (compartmentsData.length > 1) {
         const otherIdx = 1 - compIdx;
         compartmentsData[otherIdx].type = value === "freezer" ? "fresh" : "freezer";
+        updateRShowerVisibility();
       }
       syncDisplay();
       if (settings.autoCalculate) calculateBtn.click();
@@ -3665,7 +3800,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     if (field === "height" || field === "ratio") {
       const count = compartmentsData.length;
       const H = parseFloat(document.getElementById("geom-H")?.value) || 1680;
-      const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+      const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
       const topInsul = compartmentsData[0].top;
       const bottomInsul = parseFloat(document.getElementById("geom-bottom3")?.value) || 40;
       const internalH = H - topInsul - bottomInsul - (count - 1) * dividerThick;
@@ -3712,6 +3847,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
       }
       if (typeSelect) typeSelect.value = d.type;
+      const topInput = document.getElementById(`comp-${i}-top`);
+      if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
+      const shelfCountInput = document.getElementById(`comp-${i}-shelfCount`);
+      if (shelfCountInput) shelfCountInput.value = d.shelfCount || 2;
     }
   }
   function buildCompartmentUI() {
@@ -3736,9 +3875,11 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       </label>
       <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
       <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
+      <!-- NEW shelf count input -->
+      <label>Number of Shelves: <input type="number" id="comp-${i}-shelfCount" min="0" step="1" value="${d.shelfCount || 2}"></label>
       <fieldset>
         <legend>Wall Thicknesses (mm)</legend>
-        <label>Top:    <input type="number" id="comp-${i}-top"    value="${d.top}"    step="any"></label>
+        ${count === 1 || i === 0 ? `<label>Top: <input type="number" id="comp-${i}-top" value="${d.top}" step="any"></label>` : ""}
         <label>Left:   <input type="number" id="comp-${i}-left"   value="${d.left}"   step="any"></label>
         <label>Right:  <input type="number" id="comp-${i}-right"  value="${d.right}"  step="any"></label>
         <label>Rear:   <input type="number" id="comp-${i}-rear"   value="${d.rear}"   step="any"></label>
@@ -3758,11 +3899,21 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         onCompFieldChange(i, "ratio", parseFloat(e.target.value) || 10);
       });
       for (const face of ["top", "left", "right", "rear", "door"]) {
-        document.getElementById(`comp-${i}-${face}`).addEventListener("input", (e) => {
+        const el = document.getElementById(`comp-${i}-${face}`);
+        if (!el) continue;
+        el.addEventListener("input", (e) => {
           compartmentsData[i][face] = parseFloat(e.target.value) || 0;
           syncConstraints();
           syncDisplay();
           markDirty();
+        });
+      }
+      const shelfCountEl = document.getElementById(`comp-${i}-shelfCount`);
+      if (shelfCountEl) {
+        shelfCountEl.addEventListener("input", (e) => {
+          const val = parseInt(e.target.value) || 0;
+          compartmentsData[i].shelfCount = Math.max(0, val);
+          if (settings.autoCalculate) calculateBtn.click();
         });
       }
     }
@@ -3784,12 +3935,18 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     set("geom-bottom1", 40);
     set("geom-bottom2", 40);
     set("geom-bottom3", 40);
+    set("geom-railHeight", 20);
+    set("geom-railWidth", 10);
+    set("geom-railDepthPct", 50);
+    set("geom-doorDikeHeight", 50);
+    set("geom-doorDikeBaseWidth", 30);
+    set("geom-doorDikeTopWidth", 15);
   }
   function readGeometryFromPanel() {
     const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
     const comps = compartmentsData;
     const count = comps.length;
-    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
+    const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
     let freezerComp = comps.find((c) => c.type === "freezer");
     let freshComp = comps.find((c) => c.type === "fresh");
     const defWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
@@ -3826,6 +3983,14 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       Hf: freezerComp ? freezerComp.height : 0,
       Hr: freshComp ? freshComp.height : 0,
       walls,
+      special: {
+        railHeight: g("geom-railHeight") ?? 20,
+        railWidth: g("geom-railWidth") ?? 10,
+        railDepthPct: g("geom-railDepthPct") ?? 50,
+        doorDikeHeight: g("geom-doorDikeHeight") ?? 50,
+        doorDikeBaseWidth: g("geom-doorDikeBaseWidth") ?? 30,
+        doorDikeTopWidth: g("geom-doorDikeTopWidth") ?? 15
+      },
       _compartments: comps
     };
   }
@@ -3873,7 +4038,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           id: `comp${i}`,
           type: comp.type,
           fittings: {
-            shelves: [],
+            // Use simple count if specified, otherwise keep empty shelves array
+            ...comp.shelfCount > 0 ? { shelfCount: comp.shelfCount } : { shelves: [] },
             drawers: [],
             doorBins: [],
             iceMakerHousing: { volume: null },
@@ -3945,6 +4111,31 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const width = geom.W - eff.left - eff.right;
     return area * width * settings.mm3ToL;
   }
+  function updateRShowerVisibility() {
+    const hasFresh = compartmentsData.some((c) => c.type === "fresh");
+    rshowerGroup.style.display = hasFresh ? "" : "none";
+  }
+  function computeSubtractedVolumes() {
+    const evapDepth = parseFloat(evapDepthInput.value) || 85;
+    const ctrlH = parseFloat(ctrlBoxHInput.value) || 150;
+    const ctrlW = parseFloat(ctrlBoxWInput.value) || 500;
+    const ctrlL = parseFloat(ctrlBoxLInput.value) || 100;
+    const rshowerH = parseFloat(rshowerHInput.value) || 700;
+    const rshowerW = parseFloat(rshowerWInput.value) || 500;
+    const rshowerL = parseFloat(rshowerLInput.value) || 50;
+    let freezerIdx = 0;
+    if (compartmentsData.length > 1) {
+      freezerIdx = compartmentsData.findIndex((c) => c.type === "freezer");
+      if (freezerIdx === -1) freezerIdx = 0;
+    }
+    const f = compartmentsData[freezerIdx];
+    const internalHeight = f.height;
+    const internalWidth = currentGeometry.W - f.left - f.right;
+    const evapVol = evapDepth * internalHeight * internalWidth;
+    const ctrlVol = ctrlH * ctrlW * ctrlL;
+    const rshowerVol = rshowerH * rshowerW * rshowerL;
+    return (evapVol + ctrlVol + rshowerVol) * settings.mm3ToL;
+  }
   function displayVolumeResults(result) {
     if (!result.leaves || !result.totals) return;
     const eff = getEffectiveThicknesses();
@@ -3954,14 +4145,64 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const oldBottomVol = bottomLeaf.gross;
     bottomLeaf.gross = accurateBottomVol;
     result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-    const disp = formatTotalsDisplay({ gross: result.totals.gross });
-    document.getElementById("grossVol").textContent = disp.gross;
-    document.getElementById("grossVolCuft").textContent = disp.grossCuft;
-    const usableFactor = parseFloat(usableFactorInput?.value) || 97;
-    const usableL = result.totals.gross * (usableFactor / 100);
-    const usableCuft = usableL * settings.lToCuft;
-    document.getElementById("usableVol").textContent = roundForDisplay(usableL, "L");
-    document.getElementById("usableVolCuft").textContent = roundForDisplay(usableCuft, "cuft");
+    const geometry = currentGeometry;
+    const special = geometry.special || {};
+    const railHeight = special.railHeight || 0;
+    const railWidth = special.railWidth || 0;
+    const railDepthPct = (special.railDepthPct || 0) / 100;
+    const dikeHeight = special.doorDikeHeight || 0;
+    const dikeBaseWidth = special.doorDikeBaseWidth || 0;
+    const dikeTopWidth = special.doorDikeTopWidth || 0;
+    const internalDepth = geometry.D - eff.rear - eff.door;
+    const innerWidth = geometry.W - eff.left - eff.right;
+    let totalSubtracted = 0;
+    const dikeVolumes = [];
+    for (let i = 0; i < result.leaves.length; i++) {
+      const leaf = result.leaves[i];
+      const comp = compartmentsData[i];
+      const shelfCount = comp.shelfCount || 0;
+      const railVol = railHeight * railWidth * railDepthPct * internalDepth * shelfCount * 2;
+      const dikeVol = dikeHeight * (dikeBaseWidth + dikeTopWidth) / 2 * 2 * (innerWidth + comp.height);
+      dikeVolumes.push(dikeVol);
+      const subtractVol = (railVol + dikeVol) * settings.mm3ToL;
+      leaf.gross = Math.max(0, leaf.gross - subtractVol);
+      totalSubtracted += subtractVol;
+    }
+    result.totals.gross = result.leaves.reduce((sum, leaf) => sum + leaf.gross, 0);
+    const subtractedL = computeSubtractedVolumes();
+    const totalL = Math.max(0, result.totals.gross - subtractedL);
+    const totalCuft = totalL * settings.lToCuft;
+    let FDoorPUVolL = 0;
+    let RDoorPUVolL = 0;
+    for (let i = 0; i < compartmentsData.length; i++) {
+      const comp = compartmentsData[i];
+      const doorThickness = comp.door || 0;
+      const compHeight = comp.height;
+      const baseDoorVol = doorThickness * compHeight * innerWidth * settings.mm3ToL;
+      const totalDoorVol = baseDoorVol + dikeVolumes[i] * settings.mm3ToL;
+      if (comp.type === "freezer") {
+        FDoorPUVolL = totalDoorVol;
+      } else if (comp.type === "fresh") {
+        RDoorPUVolL = totalDoorVol;
+      }
+    }
+    const externalBoxVol = geometry.H * geometry.W * geometry.D;
+    const cutoutVol = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
+    const externalVol = (externalBoxVol - cutoutVol) * settings.mm3ToL;
+    const CabPUVolL = externalVol - result.totals.gross - FDoorPUVolL - RDoorPUVolL;
+    document.getElementById("grossVol").textContent = roundForDisplay(result.totals.gross, "L");
+    document.getElementById("grossVolCuft").textContent = roundForDisplay(result.totals.gross * settings.lToCuft, "cuft");
+    document.getElementById("totalVol").textContent = roundForDisplay(totalL, "L");
+    document.getElementById("totalVolCuft").textContent = roundForDisplay(totalCuft, "cuft");
+    document.getElementById("cabpuVol").textContent = roundForDisplay(CabPUVolL, "L");
+    document.getElementById("cabpuVolCuft").textContent = roundForDisplay(CabPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("cabpuweight").textContent = roundForDisplay(CabPUVolL * 32 / 1e3, "kg");
+    document.getElementById("fdoorpuVol").textContent = roundForDisplay(FDoorPUVolL, "L");
+    document.getElementById("fdoorpuVolCuft").textContent = roundForDisplay(FDoorPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("fdoorpuweight").textContent = roundForDisplay(FDoorPUVolL * 32 / 1e3, "kg");
+    document.getElementById("rdoorpuVol").textContent = roundForDisplay(RDoorPUVolL, "L");
+    document.getElementById("rdoorpuVolCuft").textContent = roundForDisplay(RDoorPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("rdoorpuweight").textContent = roundForDisplay(RDoorPUVolL * 32 / 1e3, "kg");
   }
   function drawSchematics(config, leaves) {
     const frontCanvas = document.getElementById("schematicFront");
@@ -3976,6 +4217,20 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     sideCanvas.width = panelWidth / 2 - 5;
     const effectiveWalls = getEffectiveThicknesses();
     const fittings = extractFittingsFromLayout(config.cabinet.layout);
+    const geom = currentGeometry;
+    const H = geom.H, D = geom.D;
+    const eff = effectiveWalls;
+    const innerTopY = eff.top;
+    const innerLeftX = eff.left;
+    const innerRightX = geom.W - eff.right;
+    const innerRearX = eff.rear;
+    const doorX = D - eff.door;
+    const innerBottomY = H - Math.max(
+      parseFloat(document.getElementById("geom-bottom1")?.value) || 40,
+      parseFloat(document.getElementById("geom-bottom2")?.value) || 40,
+      parseFloat(document.getElementById("geom-bottom3")?.value) || 40
+    );
+    const shelfCounts = compartmentsData.map((c) => c.shelfCount || 2);
     const drawOptions = {
       dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
       compHeights: compartmentsData.map((c) => c.height),
@@ -3985,7 +4240,24 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         right: c.right,
         rear: c.rear
       })),
-      fittings
+      fittings,
+      // New fields
+      shelfCounts,
+      railHeight: geom.special.railHeight,
+      railWidth: geom.special.railWidth,
+      railDepthPct: geom.special.railDepthPct,
+      dikeHeight: geom.special.doorDikeHeight,
+      dikeBaseWidth: geom.special.doorDikeBaseWidth,
+      dikeTopWidth: geom.special.doorDikeTopWidth,
+      innerTopY,
+      innerBottomY,
+      innerLeftX,
+      innerRightX,
+      innerRearX,
+      doorX,
+      cabinetDepth: D,
+      cabinetWidth: geom.W,
+      cabinetHeight: H
     };
     drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
     drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
@@ -4009,10 +4281,12 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const fittings = [];
     function walk(n) {
       if (n.nodeType === "leaf" && n.fittings) {
+        const shelves = n.fittings.shelves || [];
+        const safeShelves = n.fittings.shelfCount != null ? [] : shelves;
         fittings.push({
           leafId: n.id,
           type: n.type,
-          shelves: n.fittings.shelves || [],
+          shelves: safeShelves,
           drawers: n.fittings.drawers || [],
           doorBins: n.fittings.doorBins || []
         });
@@ -4037,6 +4311,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       set("geom-Db2", geometry.Db2);
       set("geom-packingPos", geometry.packingPos);
       set("geom-doorGap", geometry.doorGap);
+      set("geom-doorDikeHeight", geometry.doorDikeHeight);
+      set("geom-doorDikeBaseWidth", geometry.doorDikeBaseWidth);
+      set("geom-doorDikeTopWidth", geometry.doorDikeTopWidth);
       const rw = geometry.walls?.refrigerator;
       if (rw) {
         set("geom-bottom1", rw.bottom1);
@@ -4046,7 +4323,11 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       const savedComps = geometry._compartments;
       if (savedComps?.length > 0) {
         numCompartmentsInput.value = savedComps.length;
-        compartmentsData = savedComps.map((c) => ({ ...c }));
+        compartmentsData = savedComps.map((c) => ({
+          ...c,
+          shelfCount: c.shelfCount ?? 0
+          // fallback for older configs
+        }));
         const layout = config.cabinet.layout;
         if (layout?.nodeType === "horizontal" && layout.dividers?.length > 0) {
           divHorizInput.value = layout.dividers[0].thickness ?? 20;
@@ -4055,6 +4336,21 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         initCompartments();
       }
       currentGeometry = { ...geometry };
+      if (geometry.special) {
+        set("geom-railHeight", geometry.special.railHeight);
+        set("geom-railWidth", geometry.special.railWidth);
+        set("geom-railDepthPct", geometry.special.railDepthPct);
+        set("geom-doorDikeHeight", geometry.special.doorDikeHeight);
+        set("geom-doorDikeBaseWidth", geometry.special.doorDikeBaseWidth);
+        set("geom-doorDikeTopWidth", geometry.special.doorDikeTopWidth);
+      } else {
+        set("geom-railHeight", 20);
+        set("geom-railWidth", 10);
+        set("geom-railDepthPct", 50);
+        set("geom-doorDikeHeight", 50);
+        set("geom-doorDikeBaseWidth", 30);
+        set("geom-doorDikeTopWidth", 15);
+      }
     } else if (config.cabinet?.external) {
       const ext = config.cabinet.external;
       set("geom-H", ext.height);
@@ -4073,6 +4369,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       return;
     }
     buildCompartmentUI();
+    updateRShowerVisibility();
     syncConstraints();
     syncDisplay();
   }
@@ -4130,13 +4427,19 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     document.getElementById("geom-bottom1").value = 40;
     document.getElementById("geom-bottom2").value = 40;
     document.getElementById("geom-bottom3").value = 40;
+    document.getElementById("geom-railHeight").value = 20;
+    document.getElementById("geom-railWidth").value = 10;
+    document.getElementById("geom-railDepthPct").value = 50;
+    document.getElementById("geom-doorDikeHeight").value = 50;
+    document.getElementById("geom-doorDikeBaseWidth").value = 30;
+    document.getElementById("geom-doorDikeTopWidth").value = 15;
     divHorizInput.value = 20;
     numCompartmentsInput.value = 2;
     initCompartments();
     document.getElementById("grossVol").textContent = "--";
     document.getElementById("grossVolCuft").textContent = "--";
     document.getElementById("usableVol").textContent = "--";
-    document.getElementById("usableVolCuft").textContent = "--";
+    document.getElementById("TTLVolCuft").textContent = "--";
     messagesDiv.innerHTML = "";
     messagesFieldset.style.display = "none";
     const frontCanvas = document.getElementById("schematicFront");
@@ -4195,14 +4498,16 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     }
     const hasLeavesA = resultA && resultA.leaves && resultA.totals;
     const hasLeavesB = resultB && resultB.leaves && resultB.totals;
+    const subtractedL = computeSubtractedVolumes();
     const fmtTotals = (totals) => {
-      if (!totals) return { gross: "-", usable: "-", grossCuft: "-", usableCuft: "-" };
-      const usableFactor = parseFloat(usableFactorInput?.value) || 97;
+      if (!totals) return { gross: "-", total: "-", grossCuft: "-", totalCuft: "-" };
+      const gross = totals.gross;
+      const total = Math.max(0, gross - subtractedL);
       return {
-        gross: roundForDisplay(totals.gross, "L"),
-        usable: roundForDisplay(totals.gross * (usableFactor / 100), "L"),
-        grossCuft: roundForDisplay(totals.gross * settings.lToCuft, "cuft"),
-        usableCuft: roundForDisplay(totals.gross * (usableFactor / 100) * settings.lToCuft, "cuft")
+        gross: roundForDisplay(gross, "L"),
+        total: roundForDisplay(total, "L"),
+        grossCuft: roundForDisplay(gross * settings.lToCuft, "cuft"),
+        totalCuft: roundForDisplay(total * settings.lToCuft, "cuft")
       };
     };
     const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
@@ -4212,25 +4517,18 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
       <tbody>
       <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
-      <tr><td><strong>Usable</strong></td><td>${tA.usable}</td><td>${tA.usableCuft}</td><td>${tB.usable}</td><td>${tB.usableCuft}</td></tr>
+      <tr><td><strong>Total</strong></td><td>${tA.total}</td><td>${tA.totalCuft}</td><td>${tB.total}</td><td>${tB.totalCuft}</td></tr>
       </tbody></table>`;
     if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
-      html += `<h3>Per\u2011Compartment Breakdown</h3>`;
+      html += `<h3>Per\u2011Compartment Breakdown (Gross)</h3>`;
       const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
       html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <tr><th>Compartment</th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
-      <tr><th></th><th>Gross</th><th>Usable</th><th>Gross</th><th>Usable</th></tr>`;
+      <tr><th>Compartment</th><th>Slot A</th><th>Slot B</th></tr>`;
       for (let i = 0; i < maxLeaves; i++) {
         const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
-        const fmtA = leafA ? {
-          gross: roundForDisplay(leafA.gross, "L"),
-          usable: roundForDisplay(leafA.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, "L")
-        } : { gross: "-", usable: "-" };
-        const fmtB = leafB ? {
-          gross: roundForDisplay(leafB.gross, "L"),
-          usable: roundForDisplay(leafB.gross * (parseFloat(usableFactorInput?.value) || 97) / 100, "L")
-        } : { gross: "-", usable: "-" };
-        html += `<tr><td>Comp ${i + 1}</td><td>${fmtA.gross}</td><td>${fmtA.usable}</td><td>${fmtB.gross}</td><td>${fmtB.usable}</td></tr>`;
+        const gA = leafA ? roundForDisplay(leafA.gross, "L") : "-";
+        const gB = leafB ? roundForDisplay(leafB.gross, "L") : "-";
+        html += `<tr><td>Comp ${i + 1}</td><td>${gA}</td><td>${gB}</td></tr>`;
       }
       html += `</table>`;
     }
@@ -4263,6 +4561,12 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   initThermoUI({
     getGeometry: () => readGeometryFromPanel(),
     setGeometryProvider: null
-    // not needed currently
   });
+  enableCoordinateTooltip(
+    document.getElementById("schematicFront"),
+    document.getElementById("schematicSide"),
+    () => readGeometryFromPanel()
+    // returns { H, W, D, … } required by the tooltip
+  );
+  updateRShowerVisibility();
 })();
