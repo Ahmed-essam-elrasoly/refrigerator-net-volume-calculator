@@ -295,10 +295,12 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ─── Control Box & R‑Shower (right‑aligned, only in fresh compartment) ───
+  // ─── Control Box & R‑Shower (right‑aligned) ───
+  // For single compartment, always show the control box, no R‑shower
   let freshIdx = -1;
   if (numCompartments === 1) {
-    if (compartmentTypes[0] === 'fresh') freshIdx = 0;
+    // force control box to always appear in single‑compartment mode
+    freshIdx = 0;
   } else {
     freshIdx = compartmentTypes.findIndex(t => t === 'fresh');
   }
@@ -317,7 +319,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
 
   // Control box – right side, top of fresh compartment
   if (freshIdx >= 0 && ctrlBoxH > 0 && ctrlBoxW > 0) {
-    const x = (innerRightX - ctrlBoxW) * scale;
+    const x = (W/2 - ctrlBoxW/2) * scale;
     const y = freshTopY * scale;
     const h = Math.min(ctrlBoxH, freshHeight) * scale;
     const w = ctrlBoxW * scale;
@@ -332,13 +334,13 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     ctx.fillText('Ctrl Box', x + w/2, y + h/2 + 3);
   }
 
-  // R‑Shower – right side, below control box (if fresh)
+  // R‑Shower – only for multi‑compartment with a fresh compartment
   if (freshIdx >= 0 && numCompartments === 2 && rshowerH > 0 && rshowerW > 0 && ctrlBoxH > 0) {
     const topY = (freshTopY + ctrlBoxH) * scale;
     if (topY < (freshTopY + freshHeight) * scale) {
       const h = Math.min(rshowerH, freshHeight - ctrlBoxH) * scale;
       const w = rshowerW * scale;
-      const x = (innerRightX - rshowerW) * scale;
+      const x = (W/2 - rshowerW/2) * scale;
 
       ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
       ctx.fillRect(x, topY, w, h);
@@ -430,6 +432,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     numCompartments = 2,
     compartmentTypes = [],
   } = options;
+
+  // Declare obstruction variables that will be used later
+  let ctrlBoxFrontX = null, ctrlBoxTop = null, ctrlBoxBottom = null;
+  let rshowerFrontX = null, rshowerTop = null, rshowerBottom = null;
 
   const tTop      = effectiveWalls.top;
   const tDoor     = effectiveWalls.door;
@@ -651,124 +657,151 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   // ── Obstruction data ──
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
 
-  // Find fresh compartment
-  let freshCompIdx = -1;
-  let freshTopWorld = 0, freshBottomWorld = 0;
-  if (compHeights.length === 1) {
-    if (compartmentTypes[0] === 'fresh') {
-      freshCompIdx = 0;
-      freshTopWorld = innerTopY;
-      freshBottomWorld = innerBottomY;
-    }
-  } else {
-    for (let i = 0; i < compHeights.length; i++) {
-      if (compartmentTypes[i] === 'fresh') {
-        freshCompIdx = i;
-        break;
-      }
-    }
-    let yAcc = innerTopY;
-    for (let i = 0; i < freshCompIdx; i++) {
-      yAcc += compHeights[i];
-      if (i < freshCompIdx - 1) yAcc += dividerThickness;
-    }
-    if (freshCompIdx > 0) yAcc += dividerThickness;
-    freshTopWorld = yAcc;
-    freshBottomWorld = yAcc + compHeights[freshCompIdx];
-  }
-
-  const freshHeightWorld = freshBottomWorld - freshTopWorld;
-
-  // Control box positions (against rear wall)
-  let ctrlBoxFrontX = null;
-  let ctrlBoxTop = null, ctrlBoxBottom = null;
-  if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-    const boxH = Math.min(ctrlBoxH, freshHeightWorld);
-    ctrlBoxTop = freshTopWorld;
-    ctrlBoxBottom = ctrlBoxTop + boxH;
-    ctrlBoxFrontX = innerRearX + ctrlBoxL;   // front face is at rear + length
-  }
-
-  // R‑Shower (below control box, against rear)
-  let rshowerFrontX = null;
-  let rshowerTop = null, rshowerBottom = null;
-  if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
-    const top = freshTopWorld + ctrlBoxH;
-    if (top < freshBottomWorld) {
-      const h = Math.min(rshowerH, freshBottomWorld - top);
-      rshowerTop = top;
-      rshowerBottom = top + h;
-      rshowerFrontX = innerRearX + rshowerL;
-    }
-  }
-
-  // ─── Evaporator wall (freezer compartments) ───
-  if (evapDepth > 0) {
-    let yOffset = innerTopY;
-    for (let i = 0; i < compHeights.length; i++) {
-      if (isFreezer(i)) {
-        const compTopY = yOffset;
-        const compBottomY = yOffset + compHeights[i];
-        const evapX = (innerRearX + evapDepth) * scale;
-        ctx.save();
-        ctx.strokeStyle = '#cc0000';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 3]);
-        ctx.beginPath();
-        ctx.moveTo(evapX, compTopY * scale);
-        ctx.lineTo(evapX, compBottomY * scale);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.fillStyle = '#cc0000';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Evap', evapX, compTopY * scale + 10);
-      }
-      yOffset += compHeights[i];
-      if (i < compHeights.length - 1) yOffset += dividerThickness;
-    }
-  }
-
-  // ─── Control box (fresh compartment, against rear) ───
-  if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-    const boxX = innerRearX * scale;
-    const boxY = freshTopWorld * scale;
-    const boxH = Math.min(ctrlBoxH, freshHeightWorld) * scale;
-    const boxW = ctrlBoxL * scale;
-
-    ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
-    ctx.strokeStyle = '#aa6600';
-    ctx.strokeRect(boxX, boxY, boxW, boxH);
-    ctx.fillStyle = '#333';
+  // ─── Single‑compartment special handling ───
+  // In single mode, always show evaporator wall and control box, never R‑shower.
+  if (numCompartments === 1 && evapDepth > 0) {
+    // Evaporator wall across the whole compartment
+    const evapX = (innerRearX + evapDepth) * scale;
+    ctx.save();
+    ctx.strokeStyle = '#cc0000';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.moveTo(evapX, innerTopY * scale);
+    ctx.lineTo(evapX, (H - Hb) * scale);
+    ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#cc0000';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
-  }
+    ctx.fillText('Evap', evapX, innerTopY * scale + 10);
 
-  // ─── R‑Shower (fresh compartment, below control box, against rear) ───
-  if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
-    const rTop = freshTopWorld + ctrlBoxH;
-    if (rTop < freshBottomWorld) {
-      const h = Math.min(rshowerH, freshBottomWorld - rTop);
-      const boxX = innerRearX * scale;
-      const boxY = rTop * scale;
-      const boxW = rshowerL * scale;
-      const boxH = h * scale;
+    // Control box – placed against the evaporator wall and the top
+    if (ctrlBoxH > 0 && ctrlBoxL > 0) {
+      const boxRearX = innerRearX + evapDepth;   // touch evaporator wall
+      const boxX = boxRearX * scale;
+      const boxY = innerTopY * scale;
+      const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
+      const boxW = ctrlBoxL * scale;
 
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
       ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#0066aa';
+      ctx.strokeStyle = '#aa6600';
       ctx.strokeRect(boxX, boxY, boxW, boxH);
       ctx.fillStyle = '#333';
       ctx.font = '9px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('R-Shower', boxX + boxW/2, boxY + boxH/2 + 3);
+      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
+
+      // Set obstruction variables
+      ctrlBoxFrontX = boxRearX + ctrlBoxL;
+      ctrlBoxTop = innerTopY;
+      ctrlBoxBottom = innerTopY + Math.min(ctrlBoxH, innerBottomY - innerTopY);
+    }
+  }
+  // ─── Multi‑compartment (2 compartments) ───
+  else {
+    // Find fresh compartment
+    let freshCompIdx = -1;
+    let freshTopWorld = 0, freshBottomWorld = 0;
+    if (compHeights.length === 1) {
+      // already handled above, but just in case
+      freshCompIdx = 0;
+      freshTopWorld = innerTopY;
+      freshBottomWorld = innerBottomY;
+    } else {
+      for (let i = 0; i < compHeights.length; i++) {
+        if (compartmentTypes[i] === 'fresh') {
+          freshCompIdx = i;
+          break;
+        }
+      }
+      let yAcc = innerTopY;
+      for (let i = 0; i < freshCompIdx; i++) {
+        yAcc += compHeights[i];
+        if (i < freshCompIdx - 1) yAcc += dividerThickness;
+      }
+      if (freshCompIdx > 0) yAcc += dividerThickness;
+      freshTopWorld = yAcc;
+      freshBottomWorld = yAcc + compHeights[freshCompIdx];
+    }
+
+    // Evaporator wall in freezer compartments
+    if (evapDepth > 0) {
+      let yOffset = innerTopY;
+      for (let i = 0; i < compHeights.length; i++) {
+        if (isFreezer(i)) {
+          const compTopY = yOffset;
+          const compBottomY = yOffset + compHeights[i];
+          const evapX = (innerRearX + evapDepth) * scale;
+          ctx.save();
+          ctx.strokeStyle = '#cc0000';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 3]);
+          ctx.beginPath();
+          ctx.moveTo(evapX, compTopY * scale);
+          ctx.lineTo(evapX, compBottomY * scale);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.fillStyle = '#cc0000';
+          ctx.font = '9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Evap', evapX, compTopY * scale + 10);
+        }
+        yOffset += compHeights[i];
+        if (i < compHeights.length - 1) yOffset += dividerThickness;
+      }
+    }
+
+    // Control box (fresh compartment, against rear wall, below divider)
+    if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
+      const boxX = innerRearX * scale;
+      const boxY = freshTopWorld * scale;
+      const boxH = Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld)) * scale;
+      const boxW = ctrlBoxL * scale;
+
+      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+      ctx.strokeStyle = '#aa6600';
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
+
+      ctrlBoxFrontX = innerRearX + ctrlBoxL;
+      ctrlBoxTop = freshTopWorld;
+      ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld));
+    }
+
+    // R‑Shower (fresh compartment, below control box, against rear)
+    if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
+      const rTop = freshTopWorld + ctrlBoxH;
+      if (rTop < freshBottomWorld) {
+        const h = Math.min(rshowerH, freshBottomWorld - rTop);
+        const boxX = innerRearX * scale;
+        const boxY = rTop * scale;
+        const boxW = rshowerL * scale;
+        const boxH = h * scale;
+
+        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = '#0066aa';
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        ctx.fillStyle = '#333';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('R-Shower', boxX + boxW/2, boxY + boxH/2 + 3);
+
+        rshowerFrontX = innerRearX + rshowerL;
+        rshowerTop = rTop;
+        rshowerBottom = rTop + h;
+      }
     }
   }
 
-  // ── Shelves and rails ──
+  // ── Shelves and rails (shared between single and multi) ──
   if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
     let yOffset = innerTop;
     for (let i = 0; i < compHeights.length; i++) {
@@ -789,17 +822,17 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
           let startXWorld = innerRearX;
 
-          // Evaporator wall (freezer)
-          if (evapDepth > 0 && isFreezer(i)) {
+          // Evaporator wall obstruction
+          if (evapDepth > 0 && (numCompartments === 1 || isFreezer(i))) {
             startXWorld = Math.max(startXWorld, innerRearX + evapDepth);
           }
 
-          // Control box (fresh)
+          // Control box obstruction
           if (ctrlBoxTop != null && shelfYWorld >= ctrlBoxTop && shelfYWorld <= ctrlBoxBottom) {
             startXWorld = Math.max(startXWorld, ctrlBoxFrontX);
           }
 
-          // R‑Shower (fresh)
+          // R‑shower obstruction
           if (rshowerTop != null && shelfYWorld >= rshowerTop && shelfYWorld <= rshowerBottom) {
             startXWorld = Math.max(startXWorld, rshowerFrontX);
           }
@@ -815,7 +848,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
           ctx.stroke();
 
           // Rail start
-          const railStartXWorld = (evapDepth > 0 && isFreezer(i))
+          const railStartXWorld = (evapDepth > 0 && (numCompartments === 1 || isFreezer(i)))
             ? innerRearX + evapDepth
             : innerRearX;
 
