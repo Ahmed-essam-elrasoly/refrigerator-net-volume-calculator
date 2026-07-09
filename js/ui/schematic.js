@@ -578,43 +578,56 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
   // Divider & doors
-  let drawnDoors = [];
-  if (compHeights.length === 2 && dividerThickness > 0) {
-    const dividerY = innerTop + compHeights[0];
-    const dividerH = dividerThickness;
-    const dividerLeftX = compRear[1] * scale;
+// ----- Divider & doors (using per‑compartment door thickness) -----
+let drawnDoors = [];
+if (compHeights.length === 2 && dividerThickness > 0) {
+  const dividerY = innerTop + compHeights[0];
+  const dividerH = dividerThickness;
+  const dividerLeftX = compRear[1] * scale;
 
-    ctx.fillStyle = '#aaa';
-    ctx.fillRect(dividerLeftX, dividerY * scale,
-                (innerDoor - compRear[1]) * scale, dividerH * scale);
-    ctx.strokeStyle = '#666';
-    ctx.strokeRect(dividerLeftX, dividerY * scale,
-                  (innerDoor - compRear[1]) * scale, dividerH * scale);
+  // divider rectangle unchanged...
+  ctx.fillStyle = '#aaa';
+  ctx.fillRect(dividerLeftX, dividerY * scale,
+               (innerDoor - compRear[1]) * scale, dividerH * scale);
+  ctx.strokeStyle = '#666';
+  ctx.strokeRect(dividerLeftX, dividerY * scale,
+                 (innerDoor - compRear[1]) * scale, dividerH * scale);
 
-    const doorLeftX = innerDoor * scale;
-    const doorWidth = tDoor * scale;
-    const topDoorTop = 0;
-    const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
-    const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
-    const bottomDoorBottom = H * scale;
+  const doorLeftX = D * scale; // outer face of cabinet
+  const topDoorTop = 0;
+  const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
+  const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
+  const bottomDoorBottom = H * scale;
 
-    drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
-    drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
+  // Assign compartment indices
+  drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom, compIndex: 0 });
+  drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom, compIndex: 1 });
 
-    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
-            `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
-  } else {
-    drawnDoors.push({ top: 0 * scale, bottom: H * scale });
-  }
+  drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
+          `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
+} else {
+  // Single compartment – use index 0
+  drawnDoors.push({ top: 0, bottom: H * scale, compIndex: 0 });
+}
 
-  for (const door of drawnDoors) {
-    const doorLeftX = innerDoor * scale;
-    const doorWidth = tDoor * scale;
-    ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
-    ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
-    ctx.strokeStyle = '#555';
-    ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
-  }
+// Draw each door with its own thickness
+for (const door of drawnDoors) {
+  const compIdx = door.compIndex;
+  const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
+                        ? compartments[compIdx].door : (effectiveWalls.door || 60); // fallback
+  const doorLeftX = D * scale;
+  const doorWidth = doorThickness * scale;
+
+  ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+  ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+  ctx.strokeStyle = '#555';
+  ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+
+  // Dimension label with the actual compartment door thickness
+  const doorMidY = (door.top + door.bottom) / 2.5;
+  drawDim(ctx, D * scale, doorMidY, D * scale, doorMidY, 0,
+          `[tDoor= ${doorThickness.toFixed(0)}]`);
+}
 
   // Door dikes
   if (dikeHeight > 0 && doorX != null) {
@@ -891,11 +904,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const topMidX = (compRear[0] + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
 
-  drawnDoors.forEach(door => {
-    const doorMidY = (door.top + door.bottom) / 2.5;
-    drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
-  });
-
   for (let i = 0; i < compHeights.length; i++) {
     if (i === 0 || compRear[i] !== compRear[i-1]) {
       let compY = innerTop;
@@ -915,18 +923,16 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const inPY = midCbY + ny * tRbottom2;
   drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
 
+    const maxActualDoor = Math.max(
+    ...drawnDoors.map(d => {
+      const idx = d.compIndex;
+      return (compartments[idx] && compartments[idx].door != null)
+             ? compartments[idx].door : (effectiveWalls.door || 60);
+    })
+  );
+
   if (compHeights.length === 2) {
-    const dimX = (D + tDoor) * scale + 20;
-    let yPos = innerTop;
-    compHeights.forEach((h, idx) => {
-      const bottomY = yPos + h;
-      drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
-      yPos = bottomY;
-      if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
-    });
-  } else if (compHeights.length === 1) {
-    drawDim(ctx, (D + tDoor) * scale + 20, innerTop * scale, (D + tDoor) * scale + 20, (innerTop + compHeights[0]) * scale, 0,
-            `[h= ${compHeights[0].toFixed(0)}]`);
+    const dimX = (D + maxActualDoor) * scale + 20;
   }
 
   ctx.restore();
