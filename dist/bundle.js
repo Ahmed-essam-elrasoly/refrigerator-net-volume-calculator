@@ -55,72 +55,6 @@
   }
 
   // src/js/engine/calc.js
-  function deriveRootSpace(cabinet, layout) {
-    const { external, wallThicknessesByType, airGap } = cabinet;
-    const boundaryTypes = {
-      top: /* @__PURE__ */ new Set(),
-      bottom: /* @__PURE__ */ new Set(),
-      left: /* @__PURE__ */ new Set(),
-      right: /* @__PURE__ */ new Set()
-    };
-    walkBoundaries(layout, boundaryTypes, true, true, true, true);
-    const allTypes = ["fresh", "freezer", "flex"];
-    const effective = {};
-    for (const face of ["top", "bottom", "left", "right"]) {
-      const typesForFace = boundaryTypes[face];
-      let maxVal = 0;
-      for (const type of typesForFace) {
-        const val = wallThicknessesByType[type]?.[face] ?? 0;
-        if (val > maxVal) maxVal = val;
-      }
-      if (typesForFace.size === 0) {
-        for (const type of allTypes) {
-          const val = wallThicknessesByType[type]?.[face] ?? 0;
-          if (val > maxVal) maxVal = val;
-        }
-      }
-      effective[face] = maxVal;
-    }
-    effective.rear = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.rear ?? 0));
-    effective.door = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.door ?? 0));
-    return {
-      width: external.width - effective.left - effective.right,
-      height: external.height - effective.top - effective.bottom,
-      depth: external.depth - effective.rear
-    };
-  }
-  function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
-    if (node.nodeType === "leaf") {
-      if (topMost) boundary.top.add(node.type);
-      if (bottomMost) boundary.bottom.add(node.type);
-      if (leftMost) boundary.left.add(node.type);
-      if (rightMost) boundary.right.add(node.type);
-    } else if (node.nodeType === "horizontal") {
-      const children = node.children;
-      for (let i = 0; i < children.length; i++) {
-        const isFirst = i === 0;
-        const isLast = i === children.length - 1;
-        walkBoundaries(
-          children[i].node,
-          boundary,
-          topMost && isFirst,
-          bottomMost && isLast,
-          leftMost,
-          rightMost
-        );
-      }
-    } else if (node.nodeType === "vertical") {
-      walkBoundaries(node.left, boundary, topMost, bottomMost, true, false);
-      walkBoundaries(node.right, boundary, topMost, bottomMost, false, true);
-    }
-  }
-  function calcLeafGross(leaf, space) {
-    const gross = space.width * space.height * space.depth * settings.mm3ToL;
-    return {
-      leafId: leaf.id,
-      gross
-    };
-  }
   function formatLeafDisplay(leaf) {
     return {
       gross: roundForDisplay(leaf.gross, "L"),
@@ -140,567 +74,73 @@
     const precision = unit === "cuft" ? settings.displayPrecisionCuft : settings.displayPrecisionL;
     return Math.round(val * Math.pow(10, precision)) / Math.pow(10, precision);
   }
-
-  // src/js/engine/validationPass1.js
-  var VALID_TYPES = /* @__PURE__ */ new Set(["fresh", "freezer", "flex"]);
-  var VALID_MODES = /* @__PURE__ */ new Set(["ratio", "explicit"]);
-  var MAX_LEAVES = 8;
-  var RATIO_TOL = 1e-3;
-  function validateStructure(rootNode) {
-    const errors = [];
-    const leafCount = countLeaves(rootNode);
-    if (leafCount > MAX_LEAVES) {
-      errors.push({
-        rule: "maxLeaves",
-        message: `${leafCount} leaves exceed maximum of ${MAX_LEAVES}`
-      });
+  function calcLeafGrossPrecise(leafNode, height, geom, compTopY, isBottommost) {
+    const rawType = leafNode.type;
+    const wallKey = rawType === "fresh" ? "refrigerator" : rawType;
+    const walls = geom.walls[wallKey];
+    if (!walls) {
+      throw new Error(`Unknown wall type: ${rawType} (mapped to ${wallKey})`);
     }
-    walkStructure(rootNode, errors);
-    return errors;
-  }
-  function countLeaves(node) {
-    if (node.nodeType === "leaf") return 1;
-    if (node.nodeType === "vertical") {
-      return countLeaves(node.left) + countLeaves(node.right);
-    }
-    if (node.nodeType === "horizontal") {
-      return node.children.reduce((sum, c) => sum + countLeaves(c.node), 0);
-    }
-    return 0;
-  }
-  function walkStructure(node, errors) {
-    if (!node || typeof node !== "object") {
-      errors.push({ rule: "malformedNode", message: "Node is null or not an object" });
-      return;
-    }
-    switch (node.nodeType) {
-      case "leaf":
-        checkLeafStructure(node, errors);
-        break;
-      case "horizontal":
-        checkHorizontalShape(node, errors);
-        checkHeightRatios(node, errors);
-        for (const child of node.children) walkStructure(child.node, errors);
-        break;
-      case "vertical":
-        checkVerticalShape(node, errors);
-        walkStructure(node.left, errors);
-        walkStructure(node.right, errors);
-        break;
-      default:
-        errors.push({
-          rule: "unknownNodeType",
-          nodeId: node.id,
-          message: `Unknown nodeType: "${node.nodeType}"`
-        });
-    }
-  }
-  function checkLeafStructure(node, errors) {
-    checkEnums(node, errors);
-    checkPositiveFittingValues(node, errors);
-  }
-  function checkEnums(node, errors) {
-    if (!VALID_TYPES.has(node.type)) {
-      errors.push({
-        rule: "checkEnums",
-        nodeId: node.id,
-        message: `Unknown compartment type: ${node.type}`
-      });
-    }
-    if (!node.fittings) {
-      errors.push({
-        rule: "missingFittings",
-        nodeId: node.id,
-        message: "LeafNode is missing fittings object"
-      });
-    }
-  }
-  function checkPositiveFittingValues(node, errors) {
-    if (!node.fittings) return;
-    const f = node.fittings;
-    if (f.shelfCount != null) {
-      if (!Number.isInteger(f.shelfCount) || f.shelfCount <= 0) {
-        errors.push({
-          rule: "positiveValues",
-          nodeId: node.id,
-          message: `shelfCount must be a positive integer, got ${f.shelfCount}`
-        });
-      }
-      if (f.shelves && f.shelves.length > 0) {
-        errors.push({
-          rule: "ambiguousShelves",
-          nodeId: node.id,
-          message: "Provide either shelfCount or shelves, not both"
-        });
-      }
-      return;
-    }
-    for (const drawer of f.drawers ?? []) {
-      checkPositive(drawer, ["outerWidth", "outerDepth", "outerHeight", "wallThickness"], errors, node.id);
-    }
-    for (const bin of f.doorBins ?? []) {
-      checkPositive(bin, ["outerWidth", "outerHeight", "outerDepth", "wallThickness"], errors, node.id);
-    }
-    if (f.iceMakerHousing?.volume != null && f.iceMakerHousing.volume <= 0) {
-      errors.push({
-        rule: "positiveValues",
-        nodeId: node.id,
-        message: "iceMakerHousing.volume must be > 0"
-      });
-    }
-    if (f.lightHousing?.volume != null && f.lightHousing.volume <= 0) {
-      errors.push({
-        rule: "positiveValues",
-        nodeId: node.id,
-        message: "lightHousing.volume must be > 0"
-      });
-    }
-  }
-  function checkHorizontalShape(node, errors) {
-    const { children, dividers, id } = node;
-    const expectedDividers = children.length - 1;
-    if (dividers.length !== expectedDividers) {
-      errors.push({
-        rule: "dividerCount",
-        nodeId: id,
-        message: `Expected ${expectedDividers} divider(s), found ${dividers.length}`
-      });
-    }
-    const seen = /* @__PURE__ */ new Set();
-    for (const d of dividers) {
-      if (seen.has(d.afterChildIndex)) {
-        errors.push({
-          rule: "afterChildIndex_unique",
-          nodeId: id,
-          message: `Duplicate afterChildIndex: ${d.afterChildIndex}`
-        });
-      }
-      seen.add(d.afterChildIndex);
-      if (d.afterChildIndex < 0 || d.afterChildIndex > children.length - 2) {
-        errors.push({
-          rule: "afterChildIndex_range",
-          nodeId: id,
-          message: `afterChildIndex ${d.afterChildIndex} out of range [0, ${children.length - 2}]`
-        });
-      }
-    }
-    const modes = new Set(children.map((c) => c.heightMode));
-    if (modes.size > 1) {
-      errors.push({
-        rule: "heightMode_uniform",
-        nodeId: id,
-        message: "Mixed heightMode in same HorizontalSplitNode"
-      });
-      return;
-    }
-    for (const child of children) {
-      if (!VALID_MODES.has(child.heightMode)) {
-        errors.push({
-          rule: "heightMode_unknown",
-          nodeId: id,
-          message: `Unknown heightMode: "${child.heightMode}"`
-        });
-      }
-    }
-  }
-  function checkHeightRatios(node, errors) {
-    if (!node.children.length) return;
-    const mode = node.children[0].heightMode;
-    if (mode !== "ratio") return;
-    const sum = node.children.reduce((acc, c) => acc + c.heightValue, 0);
-    if (Math.abs(sum - 1) > RATIO_TOL) {
-      errors.push({
-        rule: "heightBalance_ratio",
-        nodeId: node.id,
-        message: `Ratio sum ${sum.toFixed(4)} deviates from 1.0 by more than ${RATIO_TOL}`
-      });
-    }
-  }
-  function checkVerticalShape(node, errors) {
-    const { leftWidthRatio, dividerThickness, id } = node;
-    if (leftWidthRatio <= 0 || leftWidthRatio >= 1) {
-      errors.push({
-        rule: "leftWidthRatio_bounds",
-        nodeId: id,
-        message: `leftWidthRatio must satisfy 0 < value < 1, got ${leftWidthRatio}`
-      });
-    }
-    if (dividerThickness <= 0) {
-      errors.push({
-        rule: "positiveValues",
-        nodeId: id,
-        message: `VerticalSplitNode dividerThickness must be > 0, got ${dividerThickness}`
-      });
-    }
-  }
-  function checkPositive(obj, fields, errors, nodeId) {
-    for (const field of fields) {
-      if (obj[field] <= 0) {
-        errors.push({
-          rule: "positiveValues",
-          nodeId,
-          message: `${field} must be > 0, got ${obj[field]}`
-        });
-      }
-    }
-  }
-
-  // src/js/engine/traversal.js
-  var DIM_TOL = 0.01;
-  function traverseAndCompute(rootNode, rootSpace) {
-    const errors = [];
-    const warnings = [];
-    const leaves = [];
-    traverseNode(rootNode, rootSpace, errors, warnings, leaves);
-    return { leaves, errors, warnings };
-  }
-  function traverseNode(node, space, errors, warnings, leaves) {
-    switch (node.nodeType) {
-      case "leaf":
-        processLeaf(node, space, errors, warnings, leaves);
-        break;
-      case "horizontal":
-        processHorizontal(node, space, errors, warnings, leaves);
-        break;
-      case "vertical":
-        processVertical(node, space, errors, warnings, leaves);
-        break;
-    }
-  }
-  function processHorizontal(node, space, errors, warnings, leaves) {
-    const { children, dividers, id } = node;
-    const mode = children[0].heightMode;
-    let childHeights;
-    if (mode === "ratio") {
-      const totalDividerH = dividers.reduce((s, d) => s + d.thickness, 0);
-      const usableH = space.height - totalDividerH;
-      childHeights = children.map((c) => usableH * c.heightValue);
+    const innerW = geom.W - walls.left - walls.right;
+    let area;
+    const rearX = walls.rear;
+    const frontX = geom.D;
+    if (!isBottommost) {
+      const innerD = frontX - rearX;
+      area = height * innerD;
     } else {
-      const sumHeights = children.reduce((s, c) => s + c.heightValue, 0);
-      const sumDividers = dividers.reduce((s, d) => s + d.thickness, 0);
-      const total = sumHeights + sumDividers;
-      if (Math.abs(total - space.height) > DIM_TOL) {
-        errors.push({
-          rule: "heightBalance_explicit",
-          nodeId: id,
-          message: `Sum of heights (${sumHeights}) + dividers (${sumDividers}) = ${total} \u2260 availableHeight (${space.height})`,
-          childrenSkipped: true
-        });
-        return;
+      const Hb = geom.Hb;
+      const tRb1 = walls.bottom1;
+      const tRb2 = walls.bottom2;
+      const tRb3 = walls.bottom3;
+      const floorRaisedY = geom.H - Hb - tRb1;
+      const floorLowerY = geom.H - tRb3;
+      const xTopCB = geom.Db1;
+      const yTopCB = geom.H - Hb;
+      const xBottomCB = geom.Db2;
+      const yBottomCB = geom.H;
+      const cbDx = xBottomCB - xTopCB;
+      const cbDy = yBottomCB - yTopCB;
+      const cbLen = Math.sqrt(cbDx * cbDx + cbDy * cbDy);
+      let slopeStartX, slopeEndX;
+      if (cbLen === 0) {
+        slopeStartX = xTopCB + tRb2;
+        slopeEndX = slopeStartX;
+      } else {
+        const nx = cbDy / cbLen;
+        const ny = -cbDx / cbLen;
+        const px = xTopCB + nx * tRb2;
+        const py = yTopCB + ny * tRb2;
+        const tStart = (floorRaisedY - py) / cbDy;
+        slopeStartX = px + cbDx * tStart;
+        const tEnd = (floorLowerY - py) / cbDy;
+        slopeEndX = px + cbDx * tEnd;
       }
-      childHeights = children.map((c) => c.heightValue);
+      const poly = [
+        [rearX, compTopY],
+        [frontX, compTopY],
+        [frontX, floorLowerY],
+        [slopeEndX, floorLowerY],
+        [slopeStartX, floorRaisedY],
+        [rearX, floorRaisedY]
+      ];
+      area = polygonArea(poly);
     }
-    for (let i = 0; i < children.length; i++) {
-      const childSpace = {
-        width: space.width,
-        height: childHeights[i],
-        depth: space.depth
-      };
-      traverseNode(children[i].node, childSpace, errors, warnings, leaves);
-    }
-  }
-  function processVertical(node, space, errors, warnings, leaves) {
-    const { dividerThickness, leftWidthRatio, left, right, id } = node;
-    if (dividerThickness >= space.width) {
-      errors.push({
-        rule: "verticalDividerBounds",
-        nodeId: id,
-        message: `dividerThickness (${dividerThickness}) \u2265 availableWidth (${space.width})`,
-        childrenSkipped: true
-      });
-      return;
-    }
-    const usableW = space.width - dividerThickness;
-    const leftW = usableW * leftWidthRatio;
-    const rightW = usableW * (1 - leftWidthRatio);
-    traverseNode(left, { width: leftW, height: space.height, depth: space.depth }, errors, warnings, leaves);
-    traverseNode(right, { width: rightW, height: space.height, depth: space.depth }, errors, warnings, leaves);
-  }
-  function processLeaf(node, space, errors, warnings, leaves) {
-    const { fittings, id } = node;
-    if (fittings.shelves && fittings.shelves.length > 0) {
-      for (const shelf of fittings.shelves) {
-        errors.push(...validateShelf(shelf, space, id));
-      }
-    } else if (fittings.shelfCount != null) {
-      warnings.push({
-        rule: "shelfCountOnly",
-        nodeId: id,
-        message: `Using shelfCount=${fittings.shelfCount}; shelf dimensions/positions not checked`
-      });
-    }
-    const leafResult = calcLeafGross(node, space);
-    leaves.push(leafResult);
-  }
-  function validateShelf(shelf, space, nodeId) {
-    const errs = [];
-    const topEdge = shelf.positionFromFloor + shelf.thickness;
-    if (shelf.positionFromFloor <= 0) {
-      errs.push({
-        rule: "shelfPosition",
-        nodeId,
-        message: `Shelf positionFromFloor must be > 0, got ${shelf.positionFromFloor}`
-      });
-    } else if (topEdge >= space.height) {
-      errs.push({
-        rule: "shelfPosition",
-        nodeId,
-        message: `Shelf top (${topEdge} mm) exceeds compartment height (${space.height} mm)`
-      });
-    }
-    if (shelf.depth > space.depth) {
-      errs.push({
-        rule: "shelfDepth",
-        nodeId,
-        message: `Shelf depth (${shelf.depth}) exceeds availableDepth (${space.depth})`
-      });
-    }
-    if (shelf.width != null && shelf.width > space.width) {
-      errs.push({
-        rule: "shelfWidth",
-        nodeId,
-        message: `Shelf width (${shelf.width}) exceeds availableWidth (${space.width})`
-      });
-    }
-    return errs;
-  }
-
-  // src/js/engine/geometry.js
-  var DEFAULT_CABINET = Object.freeze({
-    H: 1680,
-    W: 800,
-    D: 630,
-    Hb: 260,
-    Db1: 210,
-    Db2: 230,
-    doorGap: 10,
-    packingPos: 15,
-    airGap: 5,
-    walls: {
-      freezer: {
-        top: 59.4,
-        bottom: 70,
-        left: 59.4,
-        right: 59.4,
-        door: 59.4,
-        rear: 60
-      },
-      refrigerator: {
-        top: 70,
-        bottom1: 40,
-        bottom2: 40,
-        bottom3: 40,
-        left: 40,
-        right: 40,
-        door: 40,
-        rear: 60
-      }
-    }
-  });
-  function toVolumeFormat(geom) {
-    const { H, W, D, walls } = geom;
-    const t = {
-      fresh: {
-        top: walls.refrigerator.top,
-        bottom: walls.refrigerator.bottom1,
-        left: walls.refrigerator.left,
-        right: walls.refrigerator.right,
-        rear: walls.refrigerator.rear,
-        door: walls.refrigerator.door
-      },
-      freezer: {
-        top: walls.freezer.top,
-        bottom: walls.freezer.bottom,
-        left: walls.freezer.left,
-        right: walls.freezer.right,
-        rear: walls.freezer.rear,
-        door: walls.freezer.door
-      }
-    };
+    const volumeL = area * innerW * settings.mm3ToL;
     return {
-      external: { height: H, width: W, depth: D },
-      wallThicknessesByType: t,
-      airGap: 0
+      leafId: leafNode.id,
+      gross: volumeL
     };
   }
-  function toThermalFormat(geom) {
-    const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
-    return {
-      H,
-      W,
-      D,
-      Hf,
-      Hr,
-      Hb,
-      Db1,
-      Db2,
-      doorGap,
-      packingPos,
-      // Freezer walls
-      tFtop: walls.freezer.top,
-      tFleft: walls.freezer.left,
-      tFright: walls.freezer.right,
-      tFbottom: walls.freezer.bottom,
-      tFdoor: walls.freezer.door,
-      tFback: walls.freezer.rear,
-      tEvaBack: walls.freezer.rear,
-      // Refrigerator walls
-      tRtop: walls.refrigerator.top,
-      tRleft: walls.refrigerator.left,
-      tRright: walls.refrigerator.right,
-      tRback: walls.refrigerator.rear,
-      tRbottom1: walls.refrigerator.bottom1,
-      tRbottom2: walls.refrigerator.bottom2,
-      tRbottom3: walls.refrigerator.bottom3,
-      tRdoor: walls.refrigerator.door,
-      // Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
-      // These are the same cabinet bottom‑insulation values as the refrigerator's,
-      // because the stepped floor exists regardless of compartment type.
-      tFfloor1: walls.refrigerator.bottom1,
-      tFfloor2: walls.refrigerator.bottom2,
-      tFfloor3: walls.refrigerator.bottom3,
-      // Refrigerator interior floor (used for partition in two‑compartment bottom‑freezer)
-      // In a single‑fresh configuration this is the exterior floor; value is still correct.
-      tRfloor: walls.refrigerator.bottom1
-      // or bottom1, whichever is the raised floor
-    };
-  }
-  function upgradeConfig(oldConfig) {
-    if (!oldConfig?.cabinet) throw new Error("Invalid old config");
-    const { external, wallThicknessesByType, airGap, layout } = oldConfig.cabinet;
-    const def = DEFAULT_CABINET;
-    const walls = {
-      freezer: {
-        top: wallThicknessesByType?.freezer?.top ?? def.walls.freezer.top,
-        bottom: wallThicknessesByType?.freezer?.bottom ?? def.walls.freezer.bottom,
-        left: wallThicknessesByType?.freezer?.left ?? def.walls.freezer.left,
-        right: wallThicknessesByType?.freezer?.right ?? def.walls.freezer.right,
-        door: wallThicknessesByType?.freezer?.door ?? def.walls.freezer.door,
-        rear: def.walls.freezer.rear
-        // old format had no "rear" for freezer
-      },
-      refrigerator: {
-        top: wallThicknessesByType?.fresh?.top ?? def.walls.refrigerator.top,
-        bottom1: wallThicknessesByType?.fresh?.bottom ?? def.walls.refrigerator.bottom1,
-        bottom2: def.walls.refrigerator.bottom2,
-        bottom3: def.walls.refrigerator.bottom3,
-        left: wallThicknessesByType?.fresh?.left ?? def.walls.refrigerator.left,
-        right: wallThicknessesByType?.fresh?.right ?? def.walls.refrigerator.right,
-        door: wallThicknessesByType?.fresh?.door ?? def.walls.refrigerator.door,
-        rear: def.walls.refrigerator.rear
-      }
-    };
-    const geom = {
-      H: external.height,
-      W: external.width,
-      D: external.depth,
-      Hf: def.Hf,
-      Hr: def.Hr,
-      Hb: def.Hb,
-      Db1: def.Db1,
-      Db2: def.Db2,
-      doorGap: def.doorGap,
-      packingPos: def.packingPos,
-      airGap: airGap ?? def.airGap,
-      walls
-    };
-    return {
-      schemaVersion: "2.0",
-      meta: {
-        ...oldConfig.meta,
-        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        upgradedFrom: oldConfig.schemaVersion
-      },
-      cabinet: {
-        geometry: geom,
-        layout
-      }
-    };
-  }
-
-  // src/js/engine/index.js
-  function validateCabinet(cabinet) {
-    const errors = [];
-    const { external, wallThicknessesByType, layout, airGap } = cabinet;
-    for (const [key, val] of Object.entries(external)) {
-      if (val <= 0) {
-        errors.push({ rule: "positiveValues", message: `external.${key} must be > 0, got ${val}` });
-      }
+  function polygonArea(vertices) {
+    let area = 0;
+    const n = vertices.length;
+    for (let i = 0; i < n; i++) {
+      const [x1, y1] = vertices[i];
+      const [x2, y2] = vertices[(i + 1) % n];
+      area += x1 * y2 - x2 * y1;
     }
-    const boundaryTypes = { top: /* @__PURE__ */ new Set(), bottom: /* @__PURE__ */ new Set(), left: /* @__PURE__ */ new Set(), right: /* @__PURE__ */ new Set() };
-    walkBoundaries(layout, boundaryTypes, true, true, true, true);
-    const effective = {};
-    const allTypes = ["fresh", "freezer"];
-    for (const face of ["top", "bottom", "left", "right"]) {
-      let max = 0;
-      for (const t of boundaryTypes[face]) {
-        const val = wallThicknessesByType[t]?.[face] ?? 0;
-        if (val > max) max = val;
-      }
-      if (boundaryTypes[face].size === 0) {
-        for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
-      }
-      effective[face] = max;
-    }
-    effective.rear = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.rear ?? 0));
-    effective.door = Math.max(...allTypes.map((t) => wallThicknessesByType[t]?.door ?? 0));
-    const pairs = [
-      ["top", external.height, "height"],
-      ["bottom", external.height, "height"],
-      ["left", external.width, "width"],
-      ["right", external.width, "width"],
-      ["rear", external.depth, "depth"],
-      ["door", external.depth, "depth"]
-    ];
-    for (const [face, extDim, dimName] of pairs) {
-      const thickness = effective[face];
-      if (thickness >= extDim * 0.5) {
-        errors.push({
-          rule: "wallRatio",
-          message: `${face} wall (${thickness} mm) exceeds 50% of external ${dimName} (${extDim * 0.5} mm)`
-        });
-      }
-    }
-    if (errors.length === 0) {
-      const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
-      for (const [dim, val] of Object.entries(rootSpace)) {
-        if (val <= 0) {
-          errors.push({
-            rule: "internalPositive",
-            message: `Derived internal ${dim} (${val} mm) is \u2264 0 after wall subtraction`
-          });
-        }
-      }
-    }
-    return errors;
-  }
-  function runCalculation(config) {
-    const result = { leaves: null, totals: null, validationErrors: [], calcErrors: [], warnings: [] };
-    const structErrors = validateStructure(config.cabinet.layout);
-    if (structErrors.length) {
-      result.validationErrors = structErrors;
-      return result;
-    }
-    if (config.schemaVersion === "1.0" || !config.cabinet.geometry && config.cabinet.external) {
-      config = upgradeConfig(config);
-    }
-    const { geometry, layout } = config.cabinet;
-    const volumeGeom = toVolumeFormat(geometry);
-    const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
-    if (cabinetErrors.length) {
-      result.validationErrors = cabinetErrors;
-      return result;
-    }
-    const rootSpace = deriveRootSpace(volumeGeom, layout);
-    const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
-    result.validationErrors = dimErrors;
-    result.warnings = warnings;
-    result.leaves = leaves.map((l) => ({ leafId: l.leafId, gross: l.gross }));
-    if (leaves.length > 0) {
-      const totalGross = leaves.reduce((sum, l) => sum + l.gross, 0);
-      result.totals = { gross: totalGross };
-    }
-    return result;
+    return Math.abs(area) / 2;
   }
 
   // src/js/io/io.js
@@ -874,14 +314,9 @@
       const midY = (p1y + p2y) / 2 + textOffsetY;
       ctx.translate(midX, midY);
       let textAngle = angle;
-      if (textAngle > Math.PI / 2 + 0.01) {
-        textAngle -= Math.PI;
-      } else if (textAngle < -Math.PI / 2 + 0.01) {
-        textAngle += Math.PI;
-      }
-      if (Math.abs(textAngle - Math.PI / 2) < 0.01) {
-        textAngle = -Math.PI / 2;
-      }
+      if (textAngle > Math.PI / 2 + 0.01) textAngle -= Math.PI;
+      else if (textAngle < -Math.PI / 2 + 0.01) textAngle += Math.PI;
+      if (Math.abs(textAngle - Math.PI / 2) < 0.01) textAngle = -Math.PI / 2;
       ctx.rotate(textAngle);
       ctx.font = font;
       const metrics = ctx.measureText(label);
@@ -922,7 +357,16 @@
       innerLeftX,
       innerRightX,
       railHeight = 0,
-      railWidth = 0
+      railWidth = 0,
+      // ── Added fields ──
+      compartmentTypes = [],
+      numCompartments = 1,
+      ctrlBoxH = 0,
+      ctrlBoxW = 0,
+      rshowerH = 0,
+      rshowerW = 0,
+      innerTopY = 0,
+      innerBottomY = 0
     } = options;
     const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
     const drawW = canvas.width - PAD.left - PAD.right;
@@ -1061,6 +505,53 @@
         yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
       }
     }
+    let freshIdx = -1;
+    if (numCompartments === 1) {
+      freshIdx = 0;
+    } else {
+      freshIdx = compartmentTypes.findIndex((t) => t === "fresh");
+    }
+    let freshTopY = 0, freshHeight = 0;
+    if (freshIdx >= 0) {
+      let yAcc2 = innerTopY;
+      for (let i = 0; i < freshIdx; i++) {
+        yAcc2 += compHeights[i];
+        if (i < freshIdx - 1) yAcc2 += dividerThickness;
+      }
+      if (freshIdx > 0) yAcc2 += dividerThickness;
+      freshTopY = yAcc2;
+      freshHeight = compHeights[freshIdx];
+    }
+    if (freshIdx >= 0 && ctrlBoxH > 0 && ctrlBoxW > 0) {
+      const x = (W / 2 - ctrlBoxW / 2) * scale;
+      const y2 = freshTopY * scale;
+      const h = Math.min(ctrlBoxH, freshHeight) * scale;
+      const w = ctrlBoxW * scale;
+      ctx.fillStyle = "rgba(255, 200, 0, 0.3)";
+      ctx.fillRect(x, y2, w, h);
+      ctx.strokeStyle = "#aa6600";
+      ctx.strokeRect(x, y2, w, h);
+      ctx.fillStyle = "#333";
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Ctrl Box", x + w / 2, y2 + h / 2 + 3);
+    }
+    if (freshIdx >= 0 && numCompartments === 2 && rshowerH > 0 && rshowerW > 0 && ctrlBoxH > 0) {
+      const topY = (freshTopY + ctrlBoxH) * scale;
+      if (topY < (freshTopY + freshHeight) * scale) {
+        const h = Math.min(rshowerH, freshHeight - ctrlBoxH) * scale;
+        const w = rshowerW * scale;
+        const x = (W / 2 - rshowerW / 2) * scale;
+        ctx.fillStyle = "rgba(0, 200, 255, 0.3)";
+        ctx.fillRect(x, topY, w, h);
+        ctx.strokeStyle = "#0066aa";
+        ctx.strokeRect(x, topY, w, h);
+        ctx.fillStyle = "#333";
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("R-Shower", x + w / 2, topY + h / 2 + 3);
+      }
+    }
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, W * scale, H * scale);
@@ -1118,8 +609,17 @@
       railDepthPct = 0,
       dikeHeight = 0,
       dikeBaseWidth = 0,
-      dikeTopWidth = 0
+      dikeTopWidth = 0,
+      evapDepth = 0,
+      ctrlBoxH = 0,
+      ctrlBoxL = 0,
+      rshowerH = 0,
+      rshowerL = 0,
+      numCompartments = 2,
+      compartmentTypes = []
     } = options;
+    let ctrlBoxFrontX = null, ctrlBoxTop = null, ctrlBoxBottom = null;
+    let rshowerFrontX = null, rshowerTop = null, rshowerBottom = null;
     const tTop = effectiveWalls.top;
     const tDoor = effectiveWalls.door;
     const tRbottom1 = walls.refrigerator.bottom1;
@@ -1134,7 +634,7 @@
     ctx.save();
     ctx.translate(PAD.left, PAD.top);
     const innerDoor = D;
-    const innerTop2 = tTop;
+    const innerTop = tTop;
     const floorLowerY = H - tRbottom3;
     const floorRaisedY = H - Hb - tRbottom1;
     const xTopCB = Db1;
@@ -1164,9 +664,9 @@
     }
     if (compHeights.length === 1) {
       ctx.fillStyle = "#f0f0f0";
-      ctx.fillRect(0, innerTop2 * scale, D * scale, (H - innerTop2) * scale);
+      ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
       const topRearX = compRear[0] * scale;
-      const topY = innerTop2 * scale;
+      const topY = innerTop * scale;
       ctx.beginPath();
       ctx.moveTo(topRearX, topY);
       ctx.lineTo(innerDoor * scale, topY);
@@ -1183,7 +683,7 @@
     } else if (compHeights.length === 2) {
       const topH = compHeights[0];
       const topRearX = compRear[0] * scale;
-      const topY = innerTop2 * scale;
+      const topY = innerTop * scale;
       const topCompH = topH * scale;
       ctx.beginPath();
       ctx.rect(0, 0, D * scale, topY + topCompH);
@@ -1202,7 +702,7 @@
       ctx.stroke();
       const bottomH = compHeights[1];
       const bottomRearX = compRear[1] * scale;
-      const bottomY = (innerTop2 + topH + dividerThickness) * scale;
+      const bottomY = (innerTop + topH + dividerThickness) * scale;
       const bottomCompH = bottomH * scale;
       ctx.beginPath();
       ctx.rect(0, bottomY, D * scale, bottomCompH);
@@ -1239,7 +739,7 @@
     ctx.fillText("Comp.", 6, yTopCB * scale + 14);
     let drawnDoors = [];
     if (compHeights.length === 2 && dividerThickness > 0) {
-      const dividerY = innerTop2 + compHeights[0];
+      const dividerY = innerTop + compHeights[0];
       const dividerH = dividerThickness;
       const dividerLeftX = compRear[1] * scale;
       ctx.fillStyle = "#aaa";
@@ -1290,7 +790,7 @@
       const topW_dike = dikeTopWidth * scale;
       const doorX_dike = innerDoor * scale;
       const leftX_dike = (innerDoor - dikeHeight) * scale;
-      let yComp = innerTop2;
+      let yComp = innerTop;
       for (let i = 0; i < compHeights.length; i++) {
         const compTopY = yComp * scale;
         const compBottomY = (yComp + compHeights[i]) * scale;
@@ -1313,13 +813,139 @@
         ctx.fill();
         ctx.stroke();
         yComp += compHeights[i];
-        if (i < compHeights.length - 1) {
-          yComp += dividerThickness;
+        if (i < compHeights.length - 1) yComp += dividerThickness;
+      }
+    }
+    const isFreezer = (i) => compartmentTypes[i] === "freezer";
+    if (numCompartments === 1 && evapDepth > 0) {
+      const rearX = compRear[0];
+      const evapX = (rearX + evapDepth) * scale;
+      ctx.save();
+      ctx.strokeStyle = "#cc0000";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 3]);
+      ctx.beginPath();
+      ctx.moveTo(evapX, innerTopY * scale);
+      ctx.lineTo(evapX, floorRaisedY * scale);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "#cc0000";
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Evap", evapX, innerTopY * scale + 10);
+      if (ctrlBoxH > 0 && ctrlBoxL > 0) {
+        const boxRearX = rearX + evapDepth;
+        const boxX = boxRearX * scale;
+        const boxY = innerTopY * scale;
+        const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
+        const boxW = ctrlBoxL * scale;
+        ctx.fillStyle = "rgba(255, 200, 0, 0.3)";
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = "#aa6600";
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        ctx.fillStyle = "#333";
+        ctx.font = "9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Ctrl Box", boxX + boxW / 2, boxY + boxH / 2 + 3);
+        ctrlBoxFrontX = boxRearX + ctrlBoxL;
+        ctrlBoxTop = innerTopY;
+        ctrlBoxBottom = innerTopY + Math.min(ctrlBoxH, innerBottomY - innerTopY);
+      }
+    } else {
+      let freshCompIdx = -1;
+      let freshTopWorld = 0, freshBottomWorld = 0;
+      if (compHeights.length === 1) {
+        freshCompIdx = 0;
+        freshTopWorld = innerTopY;
+        freshBottomWorld = innerBottomY;
+      } else {
+        for (let i = 0; i < compHeights.length; i++) {
+          if (compartmentTypes[i] === "fresh") {
+            freshCompIdx = i;
+            break;
+          }
+        }
+        let yAcc = innerTopY;
+        for (let i = 0; i < freshCompIdx; i++) {
+          yAcc += compHeights[i];
+          if (i < freshCompIdx - 1) yAcc += dividerThickness;
+        }
+        if (freshCompIdx > 0) yAcc += dividerThickness;
+        freshTopWorld = yAcc;
+        freshBottomWorld = yAcc + compHeights[freshCompIdx];
+      }
+      if (evapDepth > 0) {
+        let yOffset = innerTopY;
+        for (let i = 0; i < compHeights.length; i++) {
+          if (isFreezer(i)) {
+            const compTopY = yOffset;
+            let compBottomY = yOffset + compHeights[i];
+            if (i === compHeights.length - 1) {
+              compBottomY = Math.min(compBottomY, floorRaisedY);
+            }
+            const rearX = compRear[i];
+            const evapX = (rearX + evapDepth) * scale;
+            ctx.save();
+            ctx.strokeStyle = "#cc0000";
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(evapX, compTopY * scale);
+            ctx.lineTo(evapX, compBottomY * scale);
+            ctx.stroke();
+            ctx.restore();
+            ctx.fillStyle = "#cc0000";
+            ctx.font = "9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("Evap", evapX, compTopY * scale + 10);
+          }
+          yOffset += compHeights[i];
+          if (i < compHeights.length - 1) yOffset += dividerThickness;
+        }
+      }
+      if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
+        const rearX = compRear[freshCompIdx];
+        const boxX = rearX * scale;
+        const boxY = freshTopWorld * scale;
+        const boxH = Math.min(ctrlBoxH, freshBottomWorld - freshTopWorld) * scale;
+        const boxW = ctrlBoxL * scale;
+        ctx.fillStyle = "rgba(255, 200, 0, 0.3)";
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = "#aa6600";
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        ctx.fillStyle = "#333";
+        ctx.font = "9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Ctrl Box", boxX + boxW / 2, boxY + boxH / 2 + 3);
+        ctrlBoxFrontX = rearX + ctrlBoxL;
+        ctrlBoxTop = freshTopWorld;
+        ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, freshBottomWorld - freshTopWorld);
+      }
+      if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
+        const rearX = compRear[freshCompIdx];
+        const rTop = freshTopWorld + ctrlBoxH;
+        if (rTop < freshBottomWorld) {
+          const h = Math.min(rshowerH, freshBottomWorld - rTop);
+          const boxX = rearX * scale;
+          const boxY = rTop * scale;
+          const boxW = rshowerL * scale;
+          const boxH = h * scale;
+          ctx.fillStyle = "rgba(0, 200, 255, 0.3)";
+          ctx.fillRect(boxX, boxY, boxW, boxH);
+          ctx.strokeStyle = "#0066aa";
+          ctx.strokeRect(boxX, boxY, boxW, boxH);
+          ctx.fillStyle = "#333";
+          ctx.font = "9px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("R-Shower", boxX + boxW / 2, boxY + boxH / 2 + 3);
+          rshowerFrontX = rearX + rshowerL;
+          rshowerTop = rTop;
+          rshowerBottom = rTop + h;
         }
       }
     }
     if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
-      let yOffset = innerTop2;
+      let yOffset = innerTop;
       for (let i = 0; i < compHeights.length; i++) {
         const n = shelfCounts[i] || 0;
         const compH = compHeights[i];
@@ -1329,23 +955,36 @@
           if (i === compHeights.length - 1) {
             usableH = Math.min(compH, floorRaisedY - yOffset);
           }
-          const spacing = usableH * scale / (n + 1);
+          const spacingWorld = usableH / (n + 1);
           for (let s = 1; s <= n; s++) {
-            const shelfYpx = compY + spacing * s;
+            const shelfYWorld = yOffset + s * spacingWorld;
+            const shelfYpx = compY + s * spacingWorld * scale;
+            let startXWorld = compRear[i];
+            if (evapDepth > 0 && (numCompartments === 1 || isFreezer(i))) {
+              startXWorld = Math.max(startXWorld, compRear[i] + evapDepth);
+            }
+            if (ctrlBoxTop != null && shelfYWorld >= ctrlBoxTop && shelfYWorld <= ctrlBoxBottom) {
+              startXWorld = Math.max(startXWorld, ctrlBoxFrontX);
+            }
+            if (rshowerTop != null && shelfYWorld >= rshowerTop && shelfYWorld <= rshowerBottom) {
+              startXWorld = Math.max(startXWorld, rshowerFrontX);
+            }
+            startXWorld = Math.min(startXWorld, doorX);
             ctx.beginPath();
-            ctx.moveTo(innerRearX * scale, shelfYpx);
+            ctx.moveTo(startXWorld * scale, shelfYpx);
             ctx.lineTo(doorX * scale, shelfYpx);
             ctx.lineWidth = 3;
             ctx.strokeStyle = "#666";
             ctx.stroke();
-            const usableDepth = (doorX - innerRearX) * scale;
-            const railDepthPx = railDepthPct / 100 * usableDepth;
+            const railStartXWorld = evapDepth > 0 && (numCompartments === 1 || isFreezer(i)) ? compRear[i] + evapDepth : compRear[i];
+            const usableDepthWorld = doorX - railStartXWorld;
+            const railDepthPx = railDepthPct / 100 * usableDepthWorld * scale;
             const railH = railHeight * scale;
             const railY = shelfYpx;
             ctx.fillStyle = "#aaa";
-            ctx.fillRect(innerRearX * scale, railY, railDepthPx, railH);
+            ctx.fillRect(railStartXWorld * scale, railY, railDepthPx, railH);
             ctx.strokeStyle = "#333";
-            ctx.strokeRect(innerRearX * scale, railY, railDepthPx, railH);
+            ctx.strokeRect(railStartXWorld * scale, railY, railDepthPx, railH);
           }
         }
         yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
@@ -1355,19 +994,19 @@
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, D * scale, H * scale);
     drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
-    drawDim(ctx, 0, H * scale, 0, floorRaisedY * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
+    drawDim(ctx, 0, H * scale, 0, (floorRaisedY + tRbottom1) * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
     drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
     drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
     drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
     const topMidX = (compRear[0] + innerDoor) / 2 * scale;
-    drawDim(ctx, topMidX, 0, topMidX, innerTop2 * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
+    drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
     drawnDoors.forEach((door) => {
       const doorMidY = (door.top + door.bottom) / 2.5;
       drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
     });
     for (let i = 0; i < compHeights.length; i++) {
       if (i === 0 || compRear[i] !== compRear[i - 1]) {
-        let compY = innerTop2;
+        let compY = innerTop;
         for (let j = 0; j < i; j++) compY += compHeights[j];
         if (i > 0) compY += dividerThickness;
         const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
@@ -1383,7 +1022,7 @@
     drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
     if (compHeights.length === 2) {
       const dimX = (D + tDoor) * scale + 20;
-      let yPos = innerTop2;
+      let yPos = innerTop;
       compHeights.forEach((h, idx) => {
         const bottomY = yPos + h;
         drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
@@ -1394,9 +1033,9 @@
       drawDim(
         ctx,
         (D + tDoor) * scale + 20,
-        innerTop2 * scale,
+        innerTop * scale,
         (D + tDoor) * scale + 20,
-        (innerTop2 + compHeights[0]) * scale,
+        (innerTop + compHeights[0]) * scale,
         0,
         `[h= ${compHeights[0].toFixed(0)}]`
       );
@@ -2645,6 +2284,81 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     };
   }
 
+  // src/js/engine/geometry.js
+  var DEFAULT_CABINET = Object.freeze({
+    H: 1680,
+    W: 800,
+    D: 630,
+    Hb: 260,
+    Db1: 210,
+    Db2: 230,
+    doorGap: 10,
+    packingPos: 15,
+    airGap: 5,
+    walls: {
+      freezer: {
+        top: 59.4,
+        bottom: 70,
+        left: 59.4,
+        right: 59.4,
+        door: 59.4,
+        rear: 60
+      },
+      refrigerator: {
+        top: 70,
+        bottom1: 40,
+        bottom2: 40,
+        bottom3: 40,
+        left: 40,
+        right: 40,
+        door: 40,
+        rear: 60
+      }
+    }
+  });
+  function toThermalFormat(geom) {
+    const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
+    return {
+      H,
+      W,
+      D,
+      Hf,
+      Hr,
+      Hb,
+      Db1,
+      Db2,
+      doorGap,
+      packingPos,
+      // Freezer walls
+      tFtop: walls.freezer.top,
+      tFleft: walls.freezer.left,
+      tFright: walls.freezer.right,
+      tFbottom: walls.freezer.bottom,
+      tFdoor: walls.freezer.door,
+      tFback: walls.freezer.rear,
+      tEvaBack: walls.freezer.rear,
+      // Refrigerator walls
+      tRtop: walls.refrigerator.top,
+      tRleft: walls.refrigerator.left,
+      tRright: walls.refrigerator.right,
+      tRback: walls.refrigerator.rear,
+      tRbottom1: walls.refrigerator.bottom1,
+      tRbottom2: walls.refrigerator.bottom2,
+      tRbottom3: walls.refrigerator.bottom3,
+      tRdoor: walls.refrigerator.door,
+      // Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
+      // These are the same cabinet bottom‑insulation values as the refrigerator's,
+      // because the stepped floor exists regardless of compartment type.
+      tFfloor1: walls.refrigerator.bottom1,
+      tFfloor2: walls.refrigerator.bottom2,
+      tFfloor3: walls.refrigerator.bottom3,
+      // Refrigerator interior floor (used for partition in two‑compartment bottom‑freezer)
+      // In a single‑fresh configuration this is the exterior floor; value is still correct.
+      tRfloor: walls.refrigerator.bottom1
+      // or bottom1, whichever is the raised floor
+    };
+  }
+
   // src/js/engine/thermo/index.js
   function runThermoAnalysis(config) {
     const errors = [];
@@ -3471,6 +3185,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
       electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin }
     });
+    console.log(geom);
     config.evapGeom = settings.evaporator || {};
     config.fanParam = fanParam;
     const defaultCompParams = config.compParams;
@@ -3646,6 +3361,92 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     e.appendChild(ul);
   }
 
+  // src/js/engine/traversal.js
+  var DIM_TOL = 0.01;
+  function traverseAndComputePrecise(rootNode, geometry) {
+    const errors = [];
+    const warnings = [];
+    const leaves = [];
+    if (rootNode.nodeType !== "horizontal") {
+      errors.push({ rule: "layout", message: "Root node must be horizontal for precise calc" });
+      return { leaves, errors, warnings };
+    }
+    const firstChild = rootNode.children[0]?.node;
+    if (!firstChild || firstChild.nodeType !== "leaf") {
+      errors.push({ rule: "layout", message: "First child must be a leaf" });
+      return { leaves, errors, warnings };
+    }
+    const topWallKey = firstChild.type === "fresh" ? "refrigerator" : firstChild.type;
+    const topWalls = geometry.walls[topWallKey];
+    if (!topWalls) {
+      errors.push({ rule: "layout", message: `Unknown wall type: ${firstChild.type}` });
+      return { leaves, errors, warnings };
+    }
+    const topInsul = topWalls.top;
+    const topY = topInsul;
+    const lastChild = rootNode.children[rootNode.children.length - 1]?.node;
+    if (!lastChild || lastChild.nodeType !== "leaf") {
+      errors.push({ rule: "layout", message: "Last child must be a leaf" });
+      return { leaves, errors, warnings };
+    }
+    const bottomWallKey = lastChild.type === "fresh" ? "refrigerator" : lastChild.type;
+    const bottomWalls = geometry.walls[bottomWallKey];
+    if (!bottomWalls) {
+      errors.push({ rule: "layout", message: `Unknown wall type: ${lastChild.type}` });
+      return { leaves, errors, warnings };
+    }
+    let floorRaisedY;
+    if (lastChild.type === "fresh") {
+      if (bottomWalls.bottom1 === void 0) {
+        errors.push({ rule: "layout", message: "Fresh compartment missing bottom1 thickness" });
+        return { leaves, errors, warnings };
+      }
+      floorRaisedY = geometry.H - geometry.Hb - bottomWalls.bottom1;
+    } else {
+      const bottomInsul = bottomWalls.bottom || 0;
+      floorRaisedY = geometry.H - bottomInsul;
+    }
+    const totalAvailableHeight = floorRaisedY - topY;
+    const dividers = rootNode.dividers || [];
+    const totalDividerH = dividers.reduce((s, d) => s + (d.thickness || 0), 0);
+    const mode = rootNode.children[0].heightMode;
+    let childHeights;
+    if (mode === "ratio") {
+      const usableH = totalAvailableHeight - totalDividerH;
+      childHeights = rootNode.children.map((c) => usableH * c.heightValue);
+    } else {
+      const sumHeights = rootNode.children.reduce((s, c) => s + c.heightValue, 0);
+      const total = sumHeights + totalDividerH;
+      if (Math.abs(total - totalAvailableHeight) > DIM_TOL) {
+        errors.push({
+          rule: "heightBalance_explicit",
+          nodeId: rootNode.id,
+          message: `Sum of heights (${sumHeights}) + dividers (${totalDividerH}) = ${total} \u2260 availableHeight (${totalAvailableHeight})`,
+          childrenSkipped: true
+        });
+        return { leaves, errors, warnings };
+      }
+      childHeights = rootNode.children.map((c) => c.heightValue);
+    }
+    let yOffset = topY;
+    for (let i = 0; i < rootNode.children.length; i++) {
+      const childNode = rootNode.children[i].node;
+      const height = childHeights[i];
+      const isBottommost = i === rootNode.children.length - 1;
+      if (childNode.nodeType === "leaf") {
+        const result = calcLeafGrossPrecise(childNode, height, geometry, yOffset, isBottommost);
+        leaves.push(result);
+      } else {
+        errors.push({ rule: "layout", message: "Nested splits not supported in precise model" });
+      }
+      yOffset += height;
+      if (i < rootNode.children.length - 1) {
+        yOffset += dividers[i]?.thickness || 0;
+      }
+    }
+    return { leaves, errors, warnings };
+  }
+
   // src/js/main.js
   updateSettings(settings);
   var divHorizInput = document.getElementById("divHoriz");
@@ -3684,6 +3485,20 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   var isResizing = false;
   var startX;
   var startWidth;
+  function updateRShowerVisibility() {
+    const hasFresh = compartmentsData.some((c) => c.type === "fresh");
+    rshowerGroup.style.display = hasFresh ? "" : "none";
+  }
+  document.getElementById("geom-Hb").addEventListener("input", () => {
+    clampAllShelfCounts();
+    syncDisplay();
+    markDirty();
+  });
+  document.getElementById("geom-bottom1").addEventListener("input", () => {
+    clampAllShelfCounts();
+    syncDisplay();
+    markDirty();
+  });
   splitter.addEventListener("mousedown", (e) => {
     isResizing = true;
     startX = e.clientX;
@@ -3729,7 +3544,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         height: 0,
         ratio: i === 0 ? 0.4 : 0.6,
         shelfCount: 0
-        // ← NEW
       });
     }
     syncConstraints();
@@ -3746,9 +3560,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     if (internalH < 0) internalH = 0;
     if (internalH === 0) {
       compartmentsData[0].height = 0;
-      compartmentsData[1].height = 0;
+      compartmentsData[1] && (compartmentsData[1].height = 0);
       compartmentsData[0].ratio = 0.5;
-      compartmentsData[1].ratio = 0.5;
+      compartmentsData[1] && (compartmentsData[1].ratio = 0.5);
       return;
     }
     if (count === 1) {
@@ -3782,6 +3596,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     compartmentsData[1].height = h1;
     compartmentsData[0].ratio = h0 / internalH;
     compartmentsData[1].ratio = h1 / internalH;
+    clampAllShelfCounts();
   }
   function onCompFieldChange(compIdx, field, value) {
     if (field === "type") {
@@ -3850,7 +3665,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       const topInput = document.getElementById(`comp-${i}-top`);
       if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
       const shelfCountInput = document.getElementById(`comp-${i}-shelfCount`);
-      if (shelfCountInput) shelfCountInput.value = d.shelfCount || 2;
+      if (shelfCountInput) {
+        shelfCountInput.value = d.shelfCount;
+      }
     }
   }
   function buildCompartmentUI() {
@@ -3875,7 +3692,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       </label>
       <label>Height (mm): <input type="number" id="comp-${i}-height" step="any" value="${d.height.toFixed(1)}"></label>
       <label>Ratio (%): <input type="number" id="comp-${i}-ratio" step="1" min="${ratioMin}" max="${ratioMax}" value="${ratioVal}"></label>
-      <!-- NEW shelf count input -->
       <label>Number of Shelves: <input type="number" id="comp-${i}-shelfCount" min="0" step="1" value="${d.shelfCount || 2}"></label>
       <fieldset>
         <legend>Wall Thicknesses (mm)</legend>
@@ -3912,11 +3728,53 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       if (shelfCountEl) {
         shelfCountEl.addEventListener("input", (e) => {
           const val = parseInt(e.target.value) || 0;
-          compartmentsData[i].shelfCount = Math.max(0, val);
+          const max = getMaxShelvesForCompartment(i);
+          const clamped = Math.min(Math.max(0, val), max);
+          compartmentsData[i].shelfCount = clamped;
+          if (e.target.value !== String(clamped)) {
+            e.target.value = clamped;
+          }
           if (settings.autoCalculate) calculateBtn.click();
         });
       }
     }
+  }
+  function getCompTopWorldY(i) {
+    let y = compartmentsData[0].top;
+    for (let j = 0; j < i; j++) {
+      y += compartmentsData[j].height;
+      if (j < compartmentsData.length - 1) {
+        y += parseFloat(divHorizInput.value) || 20;
+      }
+    }
+    return y;
+  }
+  function getUsableHeightForCompartment(i) {
+    const H = parseFloat(document.getElementById("geom-H")?.value) || 0;
+    const Hb = parseFloat(document.getElementById("geom-Hb")?.value) || 0;
+    const bottom1 = parseFloat(document.getElementById("geom-bottom1")?.value) || 0;
+    const floorRaisedY = H - Hb - bottom1;
+    const compTopY = getCompTopWorldY(i);
+    const fullHeight = compartmentsData[i].height;
+    if (i === compartmentsData.length - 1) {
+      return Math.max(0, Math.min(fullHeight, floorRaisedY - compTopY));
+    }
+    return fullHeight;
+  }
+  function getMaxShelvesForCompartment(i) {
+    const usable = getUsableHeightForCompartment(i);
+    return Math.max(0, Math.floor(usable / 150) - 1);
+  }
+  function clampAllShelfCounts() {
+    let changed = false;
+    for (let i = 0; i < compartmentsData.length; i++) {
+      const max = getMaxShelvesForCompartment(i);
+      if (compartmentsData[i].shelfCount > max) {
+        compartmentsData[i].shelfCount = max;
+        changed = true;
+      }
+    }
+    return changed;
   }
   function fillGeometryDefaults() {
     const def = DEFAULT_CABINET;
@@ -3991,7 +3849,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         doorDikeBaseWidth: g("geom-doorDikeBaseWidth") ?? 30,
         doorDikeTopWidth: g("geom-doorDikeTopWidth") ?? 15
       },
-      _compartments: comps
+      _compartments: comps.map((c) => ({
+        ...c,
+        shelfCount: c.shelfCount ?? 0
+      }))
     };
   }
   function getEffectiveThicknesses() {
@@ -4023,9 +3884,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     markDirty();
     initCompartments();
   });
-  function buildConfigFromForm() {
-    currentGeometry = readGeometryFromPanel();
-    const volumeGeom = toVolumeFormat(currentGeometry);
+  function buildLayoutNodeForPrecise() {
     const count = compartmentsData.length;
     const leaves = [];
     for (let i = 0; i < count; i++) {
@@ -4038,8 +3897,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           id: `comp${i}`,
           type: comp.type,
           fittings: {
-            // Use simple count if specified, otherwise keep empty shelves array
-            ...comp.shelfCount > 0 ? { shelfCount: comp.shelfCount } : { shelves: [] },
+            shelfCount: comp.shelfCount || 0,
+            shelves: [],
             drawers: [],
             doorBins: [],
             iceMakerHousing: { volume: null },
@@ -4048,73 +3907,20 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         }
       });
     }
-    const rootNode = {
+    return {
       nodeType: "horizontal",
       id: "root",
-      children: leaves.map((l) => ({ heightMode: l.heightMode, heightValue: l.heightValue, node: l.node })),
+      children: leaves.map((l) => ({
+        heightMode: l.heightMode,
+        heightValue: l.heightValue,
+        node: l.node
+      })),
       dividers: count > 1 ? [{ afterChildIndex: 0, thickness: parseFloat(divHorizInput.value) || 20 }] : []
     };
-    const cabinet = {
-      geometry: currentGeometry,
-      layout: rootNode
-    };
-    return {
-      config: {
-        schemaVersion: "2.0",
-        meta: { name: "UI Config", createdAt: (/* @__PURE__ */ new Date()).toISOString(), updatedAt: (/* @__PURE__ */ new Date()).toISOString() },
-        cabinet
-      },
-      layout: rootNode
-    };
   }
-  function showMessages(errors, warnings, calcErrors) {
-    messagesDiv.innerHTML = "";
-    const all = [
-      ...errors.map((e) => `<p class="error">\u274C ${e.message}</p>`),
-      ...warnings.map((w) => `<p class="warning">\u26A0\uFE0F ${w.message}</p>`),
-      ...calcErrors.map((e) => `<p class="error">\u{1F527} ${e.message}</p>`)
-    ];
-    if (all.length) {
-      messagesDiv.innerHTML = all.join("");
-      messagesFieldset.style.display = "block";
-    } else {
-      messagesFieldset.style.display = "none";
-    }
-  }
-  function computeAccurateBottomVolume(geom, eff) {
-    const { H, D, Hb, Db1, Db2, walls } = geom;
-    const rearX = eff.rear;
-    const doorX = D - eff.rear;
-    const slopeStartX = Db1;
-    const slopeEndX = Db2;
-    const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
-    const divider = compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
-    const yTopBottom = innerTop + topCompH + divider;
-    const yBottomRear = H - Hb - walls.refrigerator.bottom1;
-    const yBottomDoor = H - walls.refrigerator.bottom3;
-    const points = [
-      [rearX, yTopBottom],
-      [doorX, yTopBottom],
-      [doorX, yBottomDoor],
-      [slopeEndX, yBottomDoor],
-      [slopeStartX, yBottomRear],
-      [rearX, yBottomRear]
-    ];
-    let area = 0;
-    for (let i = 0; i < points.length; i++) {
-      const [x1, y1] = points[i];
-      const [x2, y2] = points[(i + 1) % points.length];
-      area += x1 * y2 - x2 * y1;
-    }
-    area = Math.abs(area) / 2;
-    const width = geom.W - eff.left - eff.right;
-    return area * width * settings.mm3ToL;
-  }
-  function updateRShowerVisibility() {
-    const hasFresh = compartmentsData.some((c) => c.type === "fresh");
-    rshowerGroup.style.display = hasFresh ? "" : "none";
-  }
-  function computeSubtractedVolumes() {
+  function computeObstacleVolumes(geometry) {
+    const comps = compartmentsData;
+    const special = geometry.special || {};
     const evapDepth = parseFloat(evapDepthInput.value) || 85;
     const ctrlH = parseFloat(ctrlBoxHInput.value) || 150;
     const ctrlW = parseFloat(ctrlBoxWInput.value) || 500;
@@ -4122,86 +3928,111 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const rshowerH = parseFloat(rshowerHInput.value) || 700;
     const rshowerW = parseFloat(rshowerWInput.value) || 500;
     const rshowerL = parseFloat(rshowerLInput.value) || 50;
-    let freezerIdx = 0;
-    if (compartmentsData.length > 1) {
-      freezerIdx = compartmentsData.findIndex((c) => c.type === "freezer");
-      if (freezerIdx === -1) freezerIdx = 0;
-    }
-    const f = compartmentsData[freezerIdx];
-    const internalHeight = f.height;
-    const internalWidth = currentGeometry.W - f.left - f.right;
-    const evapVol = evapDepth * internalHeight * internalWidth;
-    const ctrlVol = ctrlH * ctrlW * ctrlL;
-    const rshowerVol = rshowerH * rshowerW * rshowerL;
-    return (evapVol + ctrlVol + rshowerVol) * settings.mm3ToL;
-  }
-  function displayVolumeResults(result) {
-    if (!result.leaves || !result.totals) return;
-    const eff = getEffectiveThicknesses();
-    const bottomIdx = result.leaves.length - 1;
-    const accurateBottomVol = computeAccurateBottomVolume(currentGeometry, eff);
-    const bottomLeaf = result.leaves[bottomIdx];
-    const oldBottomVol = bottomLeaf.gross;
-    bottomLeaf.gross = accurateBottomVol;
-    result.totals.gross = result.totals.gross - oldBottomVol + accurateBottomVol;
-    const geometry = currentGeometry;
-    const special = geometry.special || {};
-    const railHeight = special.railHeight || 0;
-    const railWidth = special.railWidth || 0;
+    const freezerComp = comps.find((c) => c.type === "freezer") || comps[0];
+    const fInnerW = geometry.W - freezerComp.left - freezerComp.right;
+    const fHeight = freezerComp.height;
+    const evapVolMm3 = evapDepth * fHeight * fInnerW;
+    const ctrlVolMm3 = ctrlH * ctrlW * ctrlL;
+    const rshowerVolMm3 = rshowerH * rshowerW * rshowerL;
+    const railH = special.railHeight || 0;
+    const railW = special.railWidth || 0;
     const railDepthPct = (special.railDepthPct || 0) / 100;
-    const dikeHeight = special.doorDikeHeight || 0;
-    const dikeBaseWidth = special.doorDikeBaseWidth || 0;
-    const dikeTopWidth = special.doorDikeTopWidth || 0;
-    const internalDepth = geometry.D - eff.rear - eff.door;
-    const innerWidth = geometry.W - eff.left - eff.right;
-    let totalSubtracted = 0;
-    const dikeVolumes = [];
-    for (let i = 0; i < result.leaves.length; i++) {
-      const leaf = result.leaves[i];
-      const comp = compartmentsData[i];
-      const shelfCount = comp.shelfCount || 0;
-      const railVol = railHeight * railWidth * railDepthPct * internalDepth * shelfCount * 2;
-      const dikeVol = dikeHeight * (dikeBaseWidth + dikeTopWidth) / 2 * 2 * (innerWidth + comp.height);
-      dikeVolumes.push(dikeVol);
-      const subtractVol = (railVol + dikeVol) * settings.mm3ToL;
-      leaf.gross = Math.max(0, leaf.gross - subtractVol);
-      totalSubtracted += subtractVol;
+    let totalRailMm3 = 0;
+    const dikeH = special.doorDikeHeight || 0;
+    const dikeBaseW = special.doorDikeBaseWidth || 0;
+    const dikeTopW = special.doorDikeTopWidth || 0;
+    const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+    let totalDikeMm3 = 0;
+    for (let i = 0; i < comps.length; i++) {
+      const c = comps[i];
+      const shelfCount = c.shelfCount || 0;
+      const innerW = geometry.W - c.left - c.right;
+      const innerD = geometry.D - c.rear;
+      const railVol = railH * railW * railDepthPct * innerD * shelfCount * 2;
+      totalRailMm3 += railVol;
+      const perimeter = 2 * (innerW + c.height);
+      const dikeVol = dikeArea * perimeter;
+      totalDikeMm3 += dikeVol;
     }
-    result.totals.gross = result.leaves.reduce((sum, leaf) => sum + leaf.gross, 0);
-    const subtractedL = computeSubtractedVolumes();
-    const totalL = Math.max(0, result.totals.gross - subtractedL);
+    const railsL = totalRailMm3 * settings.mm3ToL;
+    const dikesL = totalDikeMm3 * settings.mm3ToL;
+    const evapL = evapVolMm3 * settings.mm3ToL;
+    const ctrlLiters = ctrlVolMm3 * settings.mm3ToL;
+    const rshowerLiters = rshowerVolMm3 * settings.mm3ToL;
+    return {
+      evaporator: evapL,
+      controlBox: ctrlLiters,
+      rshower: rshowerLiters,
+      rails: railsL,
+      dikes: dikesL,
+      // Total of all obstacles (rails + dikes + fixed elements)
+      totalAll: evapL + ctrlLiters + rshowerLiters + railsL + dikesL,
+      // Total of rails+dikes only (for adjusting gross)
+      railsDikesOnly: railsL + dikesL
+    };
+  }
+  function displayPreciseResults(leaves, geometry) {
+    const comps = compartmentsData;
+    const special = geometry.special || {};
+    const perCompRailsDikesL = comps.map((c) => {
+      const shelfCount = c.shelfCount || 0;
+      const innerW = geometry.W - c.left - c.right;
+      const innerD = geometry.D - c.rear;
+      const railH = special.railHeight || 0;
+      const railW = special.railWidth || 0;
+      const railDepthPct = (special.railDepthPct || 0) / 100;
+      const railsVol = railH * railW * railDepthPct * innerD * shelfCount * 2 * settings.mm3ToL;
+      const dikeH = special.doorDikeHeight || 0;
+      const dikeBaseW = special.doorDikeBaseWidth || 0;
+      const dikeTopW = special.doorDikeTopWidth || 0;
+      const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+      const perimeter = 2 * (innerW + c.height);
+      const dikesVol = dikeArea * perimeter * settings.mm3ToL;
+      return railsVol + dikesVol;
+    });
+    const adjustedLeaves = leaves.map((leaf, idx) => ({
+      ...leaf,
+      gross: Math.max(0, leaf.gross - perCompRailsDikesL[idx])
+    }));
+    const grossL = adjustedLeaves.reduce((sum, l) => sum + l.gross, 0);
+    const grossCuft = grossL * settings.lToCuft;
+    const obstacles = computeObstacleVolumes(geometry);
+    const totalL = Math.max(0, grossL - obstacles.evaporator - obstacles.controlBox - obstacles.rshower);
     const totalCuft = totalL * settings.lToCuft;
-    let FDoorPUVolL = 0;
-    let RDoorPUVolL = 0;
-    for (let i = 0; i < compartmentsData.length; i++) {
-      const comp = compartmentsData[i];
-      const doorThickness = comp.door || 0;
-      const compHeight = comp.height;
-      const baseDoorVol = doorThickness * compHeight * innerWidth * settings.mm3ToL;
-      const totalDoorVol = baseDoorVol + dikeVolumes[i] * settings.mm3ToL;
-      if (comp.type === "freezer") {
-        FDoorPUVolL = totalDoorVol;
-      } else if (comp.type === "fresh") {
-        RDoorPUVolL = totalDoorVol;
-      }
+    let fdoorPUVolL = 0, rdoorPUVolL = 0;
+    for (let i = 0; i < comps.length; i++) {
+      const c = comps[i];
+      const innerW = geometry.W - c.left - c.right;
+      const doorThick = c.door || 0;
+      const baseVol = doorThick * innerW * c.height * settings.mm3ToL;
+      const dikeVol = perCompRailsDikesL[i];
+      const dikeH = special.doorDikeHeight || 0;
+      const dikeBaseW = special.doorDikeBaseWidth || 0;
+      const dikeTopW = special.doorDikeTopWidth || 0;
+      const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+      const perimeter = 2 * (innerW + c.height);
+      const dikeVolL = dikeArea * perimeter * settings.mm3ToL;
+      const totalDoorVol = baseVol + dikeVolL;
+      if (c.type === "freezer") fdoorPUVolL = totalDoorVol;
+      else if (c.type === "fresh") rdoorPUVolL = totalDoorVol;
     }
-    const externalBoxVol = geometry.H * geometry.W * geometry.D;
-    const cutoutVol = (geometry.Hb - geometry.walls.refrigerator.bottom1) * (geometry.Db1 + geometry.Db2 - 2 * geometry.walls.refrigerator.bottom2) / 2 * (geometry.W - 2 * geometry.walls.refrigerator.side);
-    const externalVol = (externalBoxVol - cutoutVol) * settings.mm3ToL;
-    const CabPUVolL = externalVol - result.totals.gross - FDoorPUVolL - RDoorPUVolL;
-    document.getElementById("grossVol").textContent = roundForDisplay(result.totals.gross, "L");
-    document.getElementById("grossVolCuft").textContent = roundForDisplay(result.totals.gross * settings.lToCuft, "cuft");
+    const extVolMm3 = geometry.H * geometry.W * geometry.D;
+    const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
+    const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
+    const cabPUVolL = extVolL - grossL - fdoorPUVolL - rdoorPUVolL;
+    document.getElementById("grossVol").textContent = roundForDisplay(grossL, "L");
+    document.getElementById("grossVolCuft").textContent = roundForDisplay(grossCuft, "cuft");
     document.getElementById("totalVol").textContent = roundForDisplay(totalL, "L");
     document.getElementById("totalVolCuft").textContent = roundForDisplay(totalCuft, "cuft");
-    document.getElementById("cabpuVol").textContent = roundForDisplay(CabPUVolL, "L");
-    document.getElementById("cabpuVolCuft").textContent = roundForDisplay(CabPUVolL * settings.lToCuft, "cuft");
-    document.getElementById("cabpuweight").textContent = roundForDisplay(CabPUVolL * 32 / 1e3, "kg");
-    document.getElementById("fdoorpuVol").textContent = roundForDisplay(FDoorPUVolL, "L");
-    document.getElementById("fdoorpuVolCuft").textContent = roundForDisplay(FDoorPUVolL * settings.lToCuft, "cuft");
-    document.getElementById("fdoorpuweight").textContent = roundForDisplay(FDoorPUVolL * 32 / 1e3, "kg");
-    document.getElementById("rdoorpuVol").textContent = roundForDisplay(RDoorPUVolL, "L");
-    document.getElementById("rdoorpuVolCuft").textContent = roundForDisplay(RDoorPUVolL * settings.lToCuft, "cuft");
-    document.getElementById("rdoorpuweight").textContent = roundForDisplay(RDoorPUVolL * 32 / 1e3, "kg");
+    document.getElementById("cabpuVol").textContent = roundForDisplay(cabPUVolL, "L");
+    document.getElementById("cabpuVolCuft").textContent = roundForDisplay(cabPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("cabpuweight").textContent = roundForDisplay(cabPUVolL * 32 / 1e3, "kg");
+    document.getElementById("fdoorpuVol").textContent = roundForDisplay(fdoorPUVolL, "L");
+    document.getElementById("fdoorpuVolCuft").textContent = roundForDisplay(fdoorPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("fdoorpuweight").textContent = roundForDisplay(fdoorPUVolL * 32 / 1e3, "kg");
+    document.getElementById("rdoorpuVol").textContent = roundForDisplay(rdoorPUVolL, "L");
+    document.getElementById("rdoorpuVolCuft").textContent = roundForDisplay(rdoorPUVolL * settings.lToCuft, "cuft");
+    document.getElementById("rdoorpuweight").textContent = roundForDisplay(rdoorPUVolL * 32 / 1e3, "kg");
   }
   function drawSchematics(config, leaves) {
     const frontCanvas = document.getElementById("schematicFront");
@@ -4220,10 +4051,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const H = geom.H, D = geom.D;
     const eff = effectiveWalls;
     const innerTopY = eff.top;
-    const innerLeftX = eff.left;
-    const innerRightX = geom.W - eff.right;
-    const innerRearX = eff.rear;
-    const doorX = D - eff.rear;
     const innerBottomY = H - Math.max(
       parseFloat(document.getElementById("geom-bottom1")?.value) || 40,
       parseFloat(document.getElementById("geom-bottom2")?.value) || 40,
@@ -4240,7 +4067,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         rear: c.rear
       })),
       fittings,
-      // New fields
       shelfCounts,
       railHeight: geom.special.railHeight,
       railWidth: geom.special.railWidth,
@@ -4250,13 +4076,22 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       dikeTopWidth: geom.special.doorDikeTopWidth,
       innerTopY,
       innerBottomY,
-      innerLeftX,
-      innerRightX,
-      innerRearX,
-      doorX,
+      innerLeftX: eff.left,
+      innerRightX: geom.W - eff.right,
+      innerRearX: eff.rear,
+      doorX: D - eff.rear,
       cabinetDepth: D,
       cabinetWidth: geom.W,
-      cabinetHeight: H
+      cabinetHeight: H,
+      evapDepth: parseFloat(evapDepthInput.value) || 0,
+      ctrlBoxH: parseFloat(ctrlBoxHInput.value) || 0,
+      ctrlBoxW: parseFloat(ctrlBoxWInput.value) || 0,
+      ctrlBoxL: parseFloat(ctrlBoxLInput.value) || 0,
+      rshowerH: parseFloat(rshowerHInput.value) || 0,
+      rshowerW: parseFloat(rshowerWInput.value) || 0,
+      rshowerL: parseFloat(rshowerLInput.value) || 0,
+      compartmentTypes: compartmentsData.map((c) => c.type),
+      numCompartments: compartmentsData.length
     };
     drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
     drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
@@ -4264,17 +4099,38 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     schematicOverlay.classList.add("hidden");
   }
   calculateBtn.addEventListener("click", () => {
-    const { config, layout } = buildConfigFromForm();
-    currentConfig = config;
-    if (currentConfig) {
-      storeSlotABtn.style.display = "inline-block";
-      storeSlotBBtn.style.display = "inline-block";
-      compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
+    currentGeometry = readGeometryFromPanel();
+    const layout = buildLayoutNodeForPrecise();
+    const configForDrawing = {
+      schemaVersion: "2.0",
+      meta: { name: "UI Config", createdAt: (/* @__PURE__ */ new Date()).toISOString(), updatedAt: (/* @__PURE__ */ new Date()).toISOString() },
+      cabinet: {
+        geometry: currentGeometry,
+        layout
+      }
+    };
+    currentConfig = configForDrawing;
+    storeSlotABtn.style.display = "inline-block";
+    storeSlotBBtn.style.display = "inline-block";
+    compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
+    const { leaves, errors, warnings } = traverseAndComputePrecise(layout, currentGeometry);
+    const allMessages = [
+      ...(errors || []).map((e) => `<p class="error">\u274C ${e.message}</p>`),
+      ...(warnings || []).map((w) => `<p class="warning">\u26A0\uFE0F ${w.message}</p>`)
+    ];
+    if (allMessages.length) {
+      messagesDiv.innerHTML = allMessages.join("");
+      messagesFieldset.style.display = "block";
+    } else {
+      messagesFieldset.style.display = "none";
     }
-    const result = runCalculation(config);
-    displayVolumeResults(result);
-    showMessages(result.validationErrors, result.warnings, result.calcErrors);
-    drawSchematics(config, result.leaves);
+    if (leaves && leaves.length > 0) {
+      displayPreciseResults(leaves, currentGeometry);
+      drawSchematics(configForDrawing, leaves);
+    } else {
+      document.getElementById("grossVol").textContent = "--";
+      document.getElementById("totalVol").textContent = "--";
+    }
   });
   function extractFittingsFromLayout(node) {
     const fittings = [];
@@ -4310,9 +4166,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       set("geom-Db2", geometry.Db2);
       set("geom-packingPos", geometry.packingPos);
       set("geom-doorGap", geometry.doorGap);
-      set("geom-doorDikeHeight", geometry.doorDikeHeight);
-      set("geom-doorDikeBaseWidth", geometry.doorDikeBaseWidth);
-      set("geom-doorDikeTopWidth", geometry.doorDikeTopWidth);
       const rw = geometry.walls?.refrigerator;
       if (rw) {
         set("geom-bottom1", rw.bottom1);
@@ -4325,7 +4178,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         compartmentsData = savedComps.map((c) => ({
           ...c,
           shelfCount: c.shelfCount ?? 0
-          // fallback for older configs
         }));
         const layout = config.cabinet.layout;
         if (layout?.nodeType === "horizontal" && layout.dividers?.length > 0) {
@@ -4393,10 +4245,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         storeSlotBBtn.style.display = "inline-block";
         compareSlotsBtn.style.display = configSlotA || configSlotB ? "inline-block" : "none";
         populateUIFromConfig(config);
-        const result = runCalculation(config);
-        displayVolumeResults(result);
-        showMessages(result.validationErrors, result.warnings, result.calcErrors);
-        drawSchematics(config, result.leaves);
+        calculateBtn.click();
       } catch (err) {
         alert("Error: " + err.message);
       }
@@ -4415,30 +4264,14 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   resetAllBtn.addEventListener("click", () => {
     if (!confirm("Reset all fields to default values and clear results?")) return;
     currentGeometry = { ...DEFAULT_CABINET };
-    document.getElementById("geom-H").value = DEFAULT_CABINET.H;
-    document.getElementById("geom-W").value = DEFAULT_CABINET.W;
-    document.getElementById("geom-D").value = DEFAULT_CABINET.D;
-    document.getElementById("geom-Hb").value = DEFAULT_CABINET.Hb;
-    document.getElementById("geom-Db1").value = DEFAULT_CABINET.Db1;
-    document.getElementById("geom-Db2").value = DEFAULT_CABINET.Db2;
-    document.getElementById("geom-packingPos").value = DEFAULT_CABINET.packingPos;
-    document.getElementById("geom-doorGap").value = DEFAULT_CABINET.doorGap;
-    document.getElementById("geom-bottom1").value = 40;
-    document.getElementById("geom-bottom2").value = 40;
-    document.getElementById("geom-bottom3").value = 40;
-    document.getElementById("geom-railHeight").value = 20;
-    document.getElementById("geom-railWidth").value = 10;
-    document.getElementById("geom-railDepthPct").value = 50;
-    document.getElementById("geom-doorDikeHeight").value = 50;
-    document.getElementById("geom-doorDikeBaseWidth").value = 30;
-    document.getElementById("geom-doorDikeTopWidth").value = 15;
+    fillGeometryDefaults();
     divHorizInput.value = 20;
     numCompartmentsInput.value = 2;
     initCompartments();
     document.getElementById("grossVol").textContent = "--";
     document.getElementById("grossVolCuft").textContent = "--";
-    document.getElementById("usableVol").textContent = "--";
-    document.getElementById("TTLVolCuft").textContent = "--";
+    document.getElementById("totalVol").textContent = "--";
+    document.getElementById("totalVolCuft").textContent = "--";
     messagesDiv.innerHTML = "";
     messagesFieldset.style.display = "none";
     const frontCanvas = document.getElementById("schematicFront");
@@ -4479,8 +4312,16 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       return;
     }
     let resultA = null, resultB = null;
-    if (configSlotA) resultA = runCalculation(configSlotA);
-    if (configSlotB) resultB = runCalculation(configSlotB);
+    if (configSlotA) {
+      const geomA = configSlotA.cabinet.geometry;
+      const layoutA = configSlotA.cabinet.layout;
+      resultA = traverseAndComputePrecise(layoutA, geomA);
+    }
+    if (configSlotB) {
+      const geomB = configSlotB.cabinet.geometry;
+      const layoutB = configSlotB.cabinet.layout;
+      resultB = traverseAndComputePrecise(layoutB, geomB);
+    }
     buildComparisonTable(resultA, resultB);
     comparisonModal.classList.remove("hidden");
   });
@@ -4495,13 +4336,12 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       comparisonContent.innerHTML = "<p>No configurations stored.</p>";
       return;
     }
-    const hasLeavesA = resultA && resultA.leaves && resultA.totals;
-    const hasLeavesB = resultB && resultB.leaves && resultB.totals;
-    const subtractedL = computeSubtractedVolumes();
-    const fmtTotals = (totals) => {
-      if (!totals) return { gross: "-", total: "-", grossCuft: "-", totalCuft: "-" };
-      const gross = totals.gross;
-      const total = Math.max(0, gross - subtractedL);
+    const obstaclesA = resultA ? computeObstacleVolumes(configSlotA.cabinet.geometry) : { total: 0 };
+    const obstaclesB = resultB ? computeObstacleVolumes(configSlotB.cabinet.geometry) : { total: 0 };
+    const fmtTotals = (leaves, obstacles) => {
+      if (!leaves) return { gross: "-", total: "-", grossCuft: "-", totalCuft: "-" };
+      const gross = leaves.reduce((s, l) => s + l.gross, 0);
+      const total = Math.max(0, gross - obstacles.total);
       return {
         gross: roundForDisplay(gross, "L"),
         total: roundForDisplay(total, "L"),
@@ -4509,8 +4349,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         totalCuft: roundForDisplay(total * settings.lToCuft, "cuft")
       };
     };
-    const tA = fmtTotals(hasLeavesA ? resultA.totals : null);
-    const tB = fmtTotals(hasLeavesB ? resultB.totals : null);
+    const tA = fmtTotals(resultA?.leaves, obstaclesA);
+    const tB = fmtTotals(resultB?.leaves, obstaclesB);
     let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
       <thead><tr><th></th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
       <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
@@ -4518,7 +4358,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
       <tr><td><strong>Total</strong></td><td>${tA.total}</td><td>${tA.totalCuft}</td><td>${tB.total}</td><td>${tB.totalCuft}</td></tr>
       </tbody></table>`;
-    if (hasLeavesA && resultA.leaves.length > 0 && hasLeavesB && resultB.leaves.length > 0) {
+    if (resultA?.leaves?.length > 0 && resultB?.leaves?.length > 0) {
       html += `<h3>Per\u2011Compartment Breakdown (Gross)</h3>`;
       const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
       html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
@@ -4565,7 +4405,6 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     document.getElementById("schematicFront"),
     document.getElementById("schematicSide"),
     () => readGeometryFromPanel()
-    // returns { H, W, D, … } required by the tooltip
   );
   updateRShowerVisibility();
 })();
