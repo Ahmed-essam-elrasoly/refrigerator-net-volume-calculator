@@ -661,7 +661,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   // In single mode, always show evaporator wall and control box, never R‑shower.
   if (numCompartments === 1 && evapDepth > 0) {
     // Evaporator wall across the whole compartment
-    const evapX = (innerRearX + evapDepth) * scale;
+    const rearX = compRear[0];
+    const evapX = (rearX + evapDepth) * scale;
     ctx.save();
     ctx.strokeStyle = '#cc0000';
     ctx.lineWidth = 1.5;
@@ -678,7 +679,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
     // Control box – placed against the evaporator wall and the top
     if (ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const boxRearX = innerRearX + evapDepth;   // touch evaporator wall
+      const boxRearX = rearX + evapDepth;   // touch evaporator wall
       const boxX = boxRearX * scale;
       const boxY = innerTopY * scale;
       const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
@@ -736,7 +737,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
           if (i === compHeights.length - 1) {
             compBottomY = Math.min(compBottomY, floorRaisedY);
           }          
-          const evapX = (innerRearX + evapDepth) * scale;
+          const rearX = compRear[i];
+          const evapX = (rearX + evapDepth) * scale;
           ctx.save();
           ctx.strokeStyle = '#cc0000';
           ctx.lineWidth = 1.5;
@@ -759,7 +761,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
     // Control box (fresh compartment, against rear wall, below divider)
     if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const boxX = innerRearX * scale;
+      const rearX = compRear[freshCompIdx];      // real rear for this compartment
+      const boxX = rearX * scale;
       const boxY = freshTopWorld * scale;
       const boxH = Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld)) * scale;
       const boxW = ctrlBoxL * scale;
@@ -773,17 +776,18 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       ctx.textAlign = 'center';
       ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
 
-      ctrlBoxFrontX = innerRearX + ctrlBoxL;
+      ctrlBoxFrontX = rearX  + ctrlBoxL;
       ctrlBoxTop = freshTopWorld;
       ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld));
     }
 
     // R‑Shower (fresh compartment, below control box, against rear)
     if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
+      const rearX = compRear[freshCompIdx];
       const rTop = freshTopWorld + ctrlBoxH;
       if (rTop < freshBottomWorld) {
         const h = Math.min(rshowerH, freshBottomWorld - rTop);
-        const boxX = innerRearX * scale;
+        const boxX = rearX * scale;
         const boxY = rTop * scale;
         const boxW = rshowerL * scale;
         const boxH = h * scale;
@@ -797,7 +801,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
         ctx.textAlign = 'center';
         ctx.fillText('R-Shower', boxX + boxW/2, boxY + boxH/2 + 3);
 
-        rshowerFrontX = innerRearX + rshowerL;
+        rshowerFrontX = rearX + rshowerL;
         rshowerTop = rTop;
         rshowerBottom = rTop + h;
       }
@@ -823,11 +827,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
           const shelfYWorld = yOffset + s * spacingWorld;
           const shelfYpx = compY + s * spacingWorld * scale;
 
-          let startXWorld = innerRearX;
+          let startXWorld = compRear[i];
 
           // Evaporator wall obstruction
           if (evapDepth > 0 && (numCompartments === 1 || isFreezer(i))) {
-            startXWorld = Math.max(startXWorld, innerRearX + evapDepth);
+            startXWorld = Math.max(startXWorld, compRear[i] + evapDepth);
           }
 
           // Control box obstruction
@@ -852,9 +856,9 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
           // Rail start
           const railStartXWorld = (evapDepth > 0 && (numCompartments === 1 || isFreezer(i)))
-            ? innerRearX + evapDepth
-            : innerRearX;
-
+            ? compRear[i] + evapDepth
+            : compRear[i];
+            
           const usableDepthWorld = doorX - railStartXWorld;
           const railDepthPx = (railDepthPct / 100) * usableDepthWorld * scale;
           const railH = railHeight * scale;
