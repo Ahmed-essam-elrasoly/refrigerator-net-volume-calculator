@@ -749,7 +749,9 @@ function drawSchematics(config, leaves) {
     compartments: compartmentsData.map(c => ({
       left: c.left,
       right: c.right,
-      rear: c.rear
+      rear: c.rear,
+          door: c.door      // ← add this
+
     })),
     fittings,
     shelfCounts,
