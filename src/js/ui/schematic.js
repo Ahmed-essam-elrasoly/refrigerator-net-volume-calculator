@@ -668,7 +668,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.setLineDash([5, 3]);
     ctx.beginPath();
     ctx.moveTo(evapX, innerTopY * scale);
-    ctx.lineTo(evapX, (H - Hb) * scale);
+    ctx.lineTo(evapX, floorRaisedY * scale);
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = '#cc0000';
@@ -732,7 +732,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       for (let i = 0; i < compHeights.length; i++) {
         if (isFreezer(i)) {
           const compTopY = yOffset;
-          const compBottomY = yOffset + compHeights[i];
+          let compBottomY = yOffset + compHeights[i];
+          if (i === compHeights.length - 1) {
+            compBottomY = Math.min(compBottomY, floorRaisedY);
+          }          
           const evapX = (innerRearX + evapDepth) * scale;
           ctx.save();
           ctx.strokeStyle = '#cc0000';
