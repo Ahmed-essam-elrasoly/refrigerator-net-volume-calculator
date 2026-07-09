@@ -86,7 +86,7 @@
     return {
       width: external.width - effective.left - effective.right,
       height: external.height - effective.top - effective.bottom,
-      depth: external.depth - effective.rear - effective.door
+      depth: external.depth - effective.rear
     };
   }
   function walkBoundaries(node, boundary, topMost, bottomMost, leftMost, rightMost) {
@@ -1134,7 +1134,7 @@
     ctx.save();
     ctx.translate(PAD.left, PAD.top);
     const innerDoor = D;
-    const innerTop = tTop;
+    const innerTop2 = tTop;
     const floorLowerY = H - tRbottom3;
     const floorRaisedY = H - Hb - tRbottom1;
     const xTopCB = Db1;
@@ -1164,9 +1164,9 @@
     }
     if (compHeights.length === 1) {
       ctx.fillStyle = "#f0f0f0";
-      ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
+      ctx.fillRect(0, innerTop2 * scale, D * scale, (H - innerTop2) * scale);
       const topRearX = compRear[0] * scale;
-      const topY = innerTop * scale;
+      const topY = innerTop2 * scale;
       ctx.beginPath();
       ctx.moveTo(topRearX, topY);
       ctx.lineTo(innerDoor * scale, topY);
@@ -1183,7 +1183,7 @@
     } else if (compHeights.length === 2) {
       const topH = compHeights[0];
       const topRearX = compRear[0] * scale;
-      const topY = innerTop * scale;
+      const topY = innerTop2 * scale;
       const topCompH = topH * scale;
       ctx.beginPath();
       ctx.rect(0, 0, D * scale, topY + topCompH);
@@ -1202,7 +1202,7 @@
       ctx.stroke();
       const bottomH = compHeights[1];
       const bottomRearX = compRear[1] * scale;
-      const bottomY = (innerTop + topH + dividerThickness) * scale;
+      const bottomY = (innerTop2 + topH + dividerThickness) * scale;
       const bottomCompH = bottomH * scale;
       ctx.beginPath();
       ctx.rect(0, bottomY, D * scale, bottomCompH);
@@ -1239,7 +1239,7 @@
     ctx.fillText("Comp.", 6, yTopCB * scale + 14);
     let drawnDoors = [];
     if (compHeights.length === 2 && dividerThickness > 0) {
-      const dividerY = innerTop + compHeights[0];
+      const dividerY = innerTop2 + compHeights[0];
       const dividerH = dividerThickness;
       const dividerLeftX = compRear[1] * scale;
       ctx.fillStyle = "#aaa";
@@ -1290,7 +1290,7 @@
       const topW_dike = dikeTopWidth * scale;
       const doorX_dike = innerDoor * scale;
       const leftX_dike = (innerDoor - dikeHeight) * scale;
-      let yComp = innerTop;
+      let yComp = innerTop2;
       for (let i = 0; i < compHeights.length; i++) {
         const compTopY = yComp * scale;
         const compBottomY = (yComp + compHeights[i]) * scale;
@@ -1319,7 +1319,7 @@
       }
     }
     if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
-      let yOffset = innerTop;
+      let yOffset = innerTop2;
       for (let i = 0; i < compHeights.length; i++) {
         const n = shelfCounts[i] || 0;
         const compH = compHeights[i];
@@ -1360,14 +1360,14 @@
     drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
     drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
     const topMidX = (compRear[0] + innerDoor) / 2 * scale;
-    drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
+    drawDim(ctx, topMidX, 0, topMidX, innerTop2 * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
     drawnDoors.forEach((door) => {
       const doorMidY = (door.top + door.bottom) / 2.5;
       drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
     });
     for (let i = 0; i < compHeights.length; i++) {
       if (i === 0 || compRear[i] !== compRear[i - 1]) {
-        let compY = innerTop;
+        let compY = innerTop2;
         for (let j = 0; j < i; j++) compY += compHeights[j];
         if (i > 0) compY += dividerThickness;
         const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
@@ -1383,7 +1383,7 @@
     drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
     if (compHeights.length === 2) {
       const dimX = (D + tDoor) * scale + 20;
-      let yPos = innerTop;
+      let yPos = innerTop2;
       compHeights.forEach((h, idx) => {
         const bottomY = yPos + h;
         drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
@@ -1394,9 +1394,9 @@
       drawDim(
         ctx,
         (D + tDoor) * scale + 20,
-        innerTop * scale,
+        innerTop2 * scale,
         (D + tDoor) * scale + 20,
-        (innerTop + compHeights[0]) * scale,
+        (innerTop2 + compHeights[0]) * scale,
         0,
         `[h= ${compHeights[0].toFixed(0)}]`
       );
@@ -4084,15 +4084,14 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   function computeAccurateBottomVolume(geom, eff) {
     const { H, D, Hb, Db1, Db2, walls } = geom;
     const rearX = eff.rear;
-    const doorX = D - eff.door;
-    const innerTop = eff.top;
+    const doorX = D - eff.rear;
+    const slopeStartX = Db1;
+    const slopeEndX = Db2;
     const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
     const divider = compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0;
     const yTopBottom = innerTop + topCompH + divider;
     const yBottomRear = H - Hb - walls.refrigerator.bottom1;
     const yBottomDoor = H - walls.refrigerator.bottom3;
-    const slopeStartX = rearX + Db1;
-    const slopeEndX = rearX + Db2;
     const points = [
       [rearX, yTopBottom],
       [doorX, yTopBottom],
@@ -4187,7 +4186,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       }
     }
     const externalBoxVol = geometry.H * geometry.W * geometry.D;
-    const cutoutVol = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
+    const cutoutVol = (geometry.Hb - geometry.walls.refrigerator.bottom1) * (geometry.Db1 + geometry.Db2 - 2 * geometry.walls.refrigerator.bottom2) / 2 * (geometry.W - 2 * geometry.walls.refrigerator.side);
     const externalVol = (externalBoxVol - cutoutVol) * settings.mm3ToL;
     const CabPUVolL = externalVol - result.totals.gross - FDoorPUVolL - RDoorPUVolL;
     document.getElementById("grossVol").textContent = roundForDisplay(result.totals.gross, "L");
@@ -4224,7 +4223,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const innerLeftX = eff.left;
     const innerRightX = geom.W - eff.right;
     const innerRearX = eff.rear;
-    const doorX = D - eff.door;
+    const doorX = D - eff.rear;
     const innerBottomY = H - Math.max(
       parseFloat(document.getElementById("geom-bottom1")?.value) || 40,
       parseFloat(document.getElementById("geom-bottom2")?.value) || 40,

@@ -501,7 +501,9 @@ function showMessages(errors, warnings, calcErrors) {
 function computeAccurateBottomVolume(geom, eff) {
   const { H, D, Hb, Db1, Db2, walls } = geom;
   const rearX = eff.rear;
-  const doorX = D - eff.door;
+  const doorX = D - eff.rear;                  // if D is body depth (no door) – required
+  const slopeStartX = Db1;                     // Db1 is distance from exterior rear
+  const slopeEndX   = Db2;                     // same for Db2
   const innerTop = eff.top;
 
   const topCompH = compartmentsData.length > 1 ? compartmentsData[0].height : 0;
@@ -510,9 +512,6 @@ function computeAccurateBottomVolume(geom, eff) {
 
   const yBottomRear = H - Hb - walls.refrigerator.bottom1;
   const yBottomDoor = H - walls.refrigerator.bottom3;
-
-  const slopeStartX = rearX + Db1;
-  const slopeEndX   = rearX + Db2;
 
   const points = [
     [rearX,        yTopBottom],
@@ -691,7 +690,7 @@ function drawSchematics(config, leaves) {
   const innerLeftX = eff.left;
   const innerRightX = geom.W - eff.right;
   const innerRearX = eff.rear;
-  const doorX = D - eff.door;
+  const doorX = D - eff.rear;
   const innerBottomY = H - Math.max(
     parseFloat(document.getElementById('geom-bottom1')?.value) || 40,
     parseFloat(document.getElementById('geom-bottom2')?.value) || 40,
@@ -726,7 +725,16 @@ function drawSchematics(config, leaves) {
     doorX,
     cabinetDepth: D,
     cabinetWidth: geom.W,
-    cabinetHeight: H
+    cabinetHeight: H,
+    evapDepth: parseFloat(evapDepthInput.value) || 0,
+    ctrlBoxH:   parseFloat(ctrlBoxHInput.value) || 0,
+    ctrlBoxW:   parseFloat(ctrlBoxWInput.value) || 0,
+    ctrlBoxL:   parseFloat(ctrlBoxLInput.value) || 0,
+    rshowerH:   parseFloat(rshowerHInput.value) || 0,
+    rshowerW:   parseFloat(rshowerWInput.value) || 0,
+    rshowerL:   parseFloat(rshowerLInput.value) || 0,
+    compartmentTypes: compartmentsData.map(c => c.type),
+    numCompartments: compartmentsData.length
   };
   drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
   drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
