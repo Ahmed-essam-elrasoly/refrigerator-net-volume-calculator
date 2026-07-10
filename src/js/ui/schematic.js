@@ -11,7 +11,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   textOffsetY = 0,
   drawExtLines = true,
   bgColor = DRAW_THEME.bgColor,
-  textGap = DRAW_THEME.textGap,
 } = {}) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -81,21 +80,25 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.font = font;
     const metrics = ctx.measureText(label);
     const tw = metrics.width;
-    const th = 12;
+    const th = 10; // Approx font height
+    const padX = 4;
+    const padY = 2;
 
+    // Draw opaque background to cleanly break the dimension line
     ctx.fillStyle = bgColor;
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4, 3);
+      ctx.roundRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2, 3);
     } else {
-      ctx.fillRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4);
+      ctx.fillRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2);
     }
     ctx.fill();
 
+    // Draw text perfectly centered
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, 0, -textGap);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, 0);
   }
   ctx.restore();
 }
@@ -104,12 +107,12 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
 // Drawing theme
 // ──────────────────────────────────────────────────────────────────
 export const DRAW_THEME = {
-  color: '#2980b9',
+  color: '#446688',
   lineWidth: 1,
   arrowSize: 5,
-  font: 'bold 11px "Segoe UI", Arial, sans-serif',
-  bgColor: 'rgba(255, 255, 255, 0.85)',
-  textGap: 4,
+  font: '11px "Segoe UI", Arial, sans-serif',
+  bgColor: '#ffffff',
+  textGap: 0,
 };
 
 // ──────────────────────────────────────────────────────────────────
@@ -128,7 +131,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     innerRightX,
     railHeight = 0,
     railWidth = 0,
-    // ── Added fields ──
     compartmentTypes = [],
     numCompartments = 1,
     ctrlBoxH = 0,
@@ -296,10 +298,8 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   }
 
   // ─── Control Box & R‑Shower (right‑aligned) ───
-  // For single compartment, always show the control box, no R‑shower
   let freshIdx = -1;
   if (numCompartments === 1) {
-    // force control box to always appear in single‑compartment mode
     freshIdx = 0;
   } else {
     freshIdx = compartmentTypes.findIndex(t => t === 'fresh');
@@ -317,7 +317,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     freshHeight = compHeights[freshIdx];
   }
 
-  // Control box – right side, top of fresh compartment
+  // Control box
   if (freshIdx >= 0 && ctrlBoxH > 0 && ctrlBoxW > 0) {
     const x = (W/2 - ctrlBoxW/2) * scale;
     const y = freshTopY * scale;
@@ -334,7 +334,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     ctx.fillText('Ctrl Box', x + w/2, y + h/2 + 3);
   }
 
-  // R‑Shower – only for multi‑compartment with a fresh compartment
+  // R‑Shower
   if (freshIdx >= 0 && numCompartments === 2 && rshowerH > 0 && rshowerW > 0 && ctrlBoxH > 0) {
     const topY = (freshTopY + ctrlBoxH) * scale;
     if (topY < (freshTopY + freshHeight) * scale) {
@@ -382,22 +382,22 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   ctx.restore();
 
   // Dimension lines
-  const dimX = -35;
+  const dimX = -25;
   y = intTop;
   for (let i = 0; i < compHeights.length; i++) {
     const h = compHeights[i];
-    drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `[h= ${h.toFixed(0)}]`);
+    drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `h: ${h.toFixed(0)}`);
     y += h;
     if (i < compHeights.length - 1 && dividerThickness > 0) {
       const dividerBottom = y + dividerThickness;
-      drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `[div= ${dividerThickness}]`);
+      drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `div: ${dividerThickness}`);
       y = dividerBottom;
     }
   }
 
-  drawDim(ctx, 0, H * scale, W * scale, H * scale, 35, `[W= ${W.toFixed(0)}]`);
-  drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
-  drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
+  drawDim(ctx, 0, H * scale, W * scale, H * scale, 30, `W: ${W.toFixed(0)}`);
+  drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `tLeft: ${compartments[0].left.toFixed(0)}`);
+  drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `tRight: ${compartments[0].right.toFixed(0)}`);
 
   ctx.restore();
 }
@@ -423,7 +423,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     dikeHeight = 0,
     dikeBaseWidth = 0,
     dikeTopWidth = 0,
-
     evapDepth = 0,
     ctrlBoxH = 0,
     ctrlBoxL = 0,
@@ -433,7 +432,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     compartmentTypes = [],
   } = options;
 
-  // Declare obstruction variables that will be used later
   let ctrlBoxFrontX = null, ctrlBoxTop = null, ctrlBoxBottom = null;
   let rshowerFrontX = null, rshowerTop = null, rshowerBottom = null;
 
@@ -577,57 +575,67 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // Divider & doors
-// ----- Divider & doors (using per‑compartment door thickness) -----
-let drawnDoors = [];
-if (compHeights.length === 2 && dividerThickness > 0) {
-  const dividerY = innerTop + compHeights[0];
-  const dividerH = dividerThickness;
-  const dividerLeftX = compRear[1] * scale;
+  // ----- Divider & doors -----
+  let drawnDoors = [];
+  if (compHeights.length === 2 && dividerThickness > 0) {
+    const dividerY = innerTop + compHeights[0];
+    const dividerH = dividerThickness;
+    const dividerLeftX = compRear[1] * scale;
 
-  // divider rectangle unchanged...
-  ctx.fillStyle = '#aaa';
-  ctx.fillRect(dividerLeftX, dividerY * scale,
-               (innerDoor - compRear[1]) * scale, dividerH * scale);
-  ctx.strokeStyle = '#666';
-  ctx.strokeRect(dividerLeftX, dividerY * scale,
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(dividerLeftX, dividerY * scale,
                  (innerDoor - compRear[1]) * scale, dividerH * scale);
+    ctx.strokeStyle = '#666';
+    ctx.strokeRect(dividerLeftX, dividerY * scale,
+                   (innerDoor - compRear[1]) * scale, dividerH * scale);
 
-  const doorLeftX = D * scale; // outer face of cabinet
-  const topDoorTop = 0;
-  const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
-  const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
-  const bottomDoorBottom = H * scale;
+    const topDoorTop = 0;
+    const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
+    const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
+    const bottomDoorBottom = H * scale;
 
-  // Assign compartment indices
-  drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom, compIndex: 0 });
-  drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom, compIndex: 1 });
+    drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom, compIndex: 0 });
+    drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom, compIndex: 1 });
 
-  drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
-          `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`);
-} else {
-  // Single compartment – use index 0
-  drawnDoors.push({ top: 0, bottom: H * scale, compIndex: 0 });
-}
+    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
+            `door gap: ${(dividerThickness + doorGap).toFixed(0)}`);
+  } else {
+    drawnDoors.push({ top: 0, bottom: H * scale, compIndex: 0 });
+  }
 
-// Draw each door with its own thickness
-for (const door of drawnDoors) {
-  const compIdx = door.compIndex;
-  const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
-                        ? compartments[compIdx].door : (effectiveWalls.door || 60); // fallback
-  const doorLeftX = D * scale;
-  const doorWidth = doorThickness * scale;
+  for (const door of drawnDoors) {
+    const compIdx = door.compIndex;
+    const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
+                          ? compartments[compIdx].door : (effectiveWalls.door || 60);
+    const doorLeftX = D * scale;
+    const doorWidth = doorThickness * scale;
 
-  ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
-  ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
-  ctx.strokeStyle = '#555';
-  ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+    ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+    ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+    ctx.strokeStyle = '#555';
+    ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+  }
 
-  // Dimension label with the actual compartment door thickness
-  const doorMidY = (door.top + door.bottom) / 2.5;
-  drawDim(ctx, D * scale, doorMidY, D * scale, doorMidY, 0,
-          `[tDoor= ${doorThickness.toFixed(0)}]`);
-}
+  // Dimension labels for doors
+  for (const door of drawnDoors) {
+    const compIdx = door.compIndex;
+    const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
+                          ? compartments[compIdx].door : (effectiveWalls.door || 60);
+
+    const doorMidY = (door.top + door.bottom) / 2.5;
+    drawDim(ctx, (D - doorThickness) * scale, doorMidY, D * scale, doorMidY, 0,
+            `tDoor: ${doorThickness.toFixed(0)}`);
+  }
+  
+  for (const door of drawnDoors) {
+    const compIdx = door.compIndex;
+    const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
+                          ? compartments[compIdx].door : (effectiveWalls.door || 60);
+
+    const dimX = (D + doorThickness) * scale + 15; 
+    drawDim(ctx, dimX, door.top, dimX, door.bottom, 0,
+            `Door: ${((door.bottom - door.top) / scale).toFixed(0)}`);
+  }
 
   // Door dikes
   if (dikeHeight > 0 && doorX != null) {
@@ -670,10 +678,7 @@ for (const door of drawnDoors) {
   // ── Obstruction data ──
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
 
-  // ─── Single‑compartment special handling ───
-  // In single mode, always show evaporator wall and control box, never R‑shower.
   if (numCompartments === 1 && evapDepth > 0) {
-    // Evaporator wall across the whole compartment
     const rearX = compRear[0];
     const evapX = (rearX + evapDepth) * scale;
     ctx.save();
@@ -690,9 +695,8 @@ for (const door of drawnDoors) {
     ctx.textAlign = 'center';
     ctx.fillText('Evap', evapX, innerTopY * scale + 10);
 
-    // Control box – placed against the evaporator wall and the top
     if (ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const boxRearX = rearX + evapDepth;   // touch evaporator wall
+      const boxRearX = rearX + evapDepth; 
       const boxX = boxRearX * scale;
       const boxY = innerTopY * scale;
       const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
@@ -707,19 +711,14 @@ for (const door of drawnDoors) {
       ctx.textAlign = 'center';
       ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
 
-      // Set obstruction variables
       ctrlBoxFrontX = boxRearX + ctrlBoxL;
       ctrlBoxTop = innerTopY;
       ctrlBoxBottom = innerTopY + Math.min(ctrlBoxH, innerBottomY - innerTopY);
     }
-  }
-  // ─── Multi‑compartment (2 compartments) ───
-  else {
-    // Find fresh compartment
+  } else {
     let freshCompIdx = -1;
     let freshTopWorld = 0, freshBottomWorld = 0;
     if (compHeights.length === 1) {
-      // already handled above, but just in case
       freshCompIdx = 0;
       freshTopWorld = innerTopY;
       freshBottomWorld = innerBottomY;
@@ -740,7 +739,6 @@ for (const door of drawnDoors) {
       freshBottomWorld = yAcc + compHeights[freshCompIdx];
     }
 
-    // Evaporator wall in freezer compartments
     if (evapDepth > 0) {
       let yOffset = innerTopY;
       for (let i = 0; i < compHeights.length; i++) {
@@ -772,9 +770,8 @@ for (const door of drawnDoors) {
       }
     }
 
-    // Control box (fresh compartment, against rear wall, below divider)
     if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const rearX = compRear[freshCompIdx];      // real rear for this compartment
+      const rearX = compRear[freshCompIdx];
       const boxX = rearX * scale;
       const boxY = freshTopWorld * scale;
       const boxH = Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld)) * scale;
@@ -794,7 +791,6 @@ for (const door of drawnDoors) {
       ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld));
     }
 
-    // R‑Shower (fresh compartment, below control box, against rear)
     if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
       const rearX = compRear[freshCompIdx];
       const rTop = freshTopWorld + ctrlBoxH;
@@ -821,7 +817,7 @@ for (const door of drawnDoors) {
     }
   }
 
-  // ── Shelves and rails (shared between single and multi) ──
+  // ── Shelves and rails ──
   if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
     let yOffset = innerTop;
     for (let i = 0; i < compHeights.length; i++) {
@@ -842,24 +838,18 @@ for (const door of drawnDoors) {
 
           let startXWorld = compRear[i];
 
-          // Evaporator wall obstruction
           if (evapDepth > 0 && (numCompartments === 1 || isFreezer(i))) {
             startXWorld = Math.max(startXWorld, compRear[i] + evapDepth);
           }
-
-          // Control box obstruction
           if (ctrlBoxTop != null && shelfYWorld >= ctrlBoxTop && shelfYWorld <= ctrlBoxBottom) {
             startXWorld = Math.max(startXWorld, ctrlBoxFrontX);
           }
-
-          // R‑shower obstruction
           if (rshowerTop != null && shelfYWorld >= rshowerTop && shelfYWorld <= rshowerBottom) {
             startXWorld = Math.max(startXWorld, rshowerFrontX);
           }
 
           startXWorld = Math.min(startXWorld, doorX);
 
-          // Draw shelf line
           ctx.beginPath();
           ctx.moveTo(startXWorld * scale, shelfYpx);
           ctx.lineTo(doorX * scale, shelfYpx);
@@ -867,7 +857,6 @@ for (const door of drawnDoors) {
           ctx.strokeStyle = '#666';
           ctx.stroke();
 
-          // Rail start
           const railStartXWorld = (evapDepth > 0 && (numCompartments === 1 || isFreezer(i)))
             ? compRear[i] + evapDepth
             : compRear[i];
@@ -893,16 +882,16 @@ for (const door of drawnDoors) {
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
 
-  // Dimension lines
-  drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
-  drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
-  drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-
-  drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-  drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+  // ── Cascaded Dimension lines ──
+  drawDim(ctx, 0, H * scale, 0, 0, -60, `H: ${H.toFixed(0)}`);
+  drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -35, `Hb: ${Hb.toFixed(0)}`);
+  drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -15, `Db1: ${Db1.toFixed(0)}`);
+  drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -15, `Db2: ${Db2.toFixed(0)}`);
+  
+  drawDim(ctx, 0, 0, D * scale, 0, -25, `D: ${D.toFixed(0)}`);
 
   const topMidX = (compRear[0] + innerDoor) / 2 * scale;
-  drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
+  drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `tTop: ${tTop.toFixed(0)}`);
 
   for (let i = 0; i < compHeights.length; i++) {
     if (i === 0 || compRear[i] !== compRear[i-1]) {
@@ -910,20 +899,20 @@ for (const door of drawnDoors) {
       for (let j = 0; j < i; j++) compY += compHeights[j];
       if (i > 0) compY += dividerThickness;
       const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
-      drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `[tRear= ${compartments[i].rear.toFixed(0)}]`);
+      drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `tRear: ${compartments[i].rear.toFixed(0)}`);
     }
   }
 
   const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
-  drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
+  drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `tRb3: ${tRbottom3.toFixed(0)}`);
 
   const midCbX = (xTopCB + xBottomCB) / 2;
   const midCbY = (yTopCB + yBottomCB) / 2;
   const inPX = midCbX + nx * tRbottom2;
   const inPY = midCbY + ny * tRbottom2;
-  drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
+  drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `tRb2: ${tRbottom2.toFixed(0)}`);
 
-    const maxActualDoor = Math.max(
+  const maxActualDoor = Math.max(
     ...drawnDoors.map(d => {
       const idx = d.compIndex;
       return (compartments[idx] && compartments[idx].door != null)
@@ -931,11 +920,20 @@ for (const door of drawnDoors) {
     })
   );
 
+  // Compartment height dimensions - pushed further right to bypass door heights
+  const compHeightDimX = (D + maxActualDoor) * scale + 40; 
   if (compHeights.length === 2) {
-    const dimX = (D + maxActualDoor) * scale + 20;
+    let yPos = innerTop;
+    compHeights.forEach((h, idx) => {
+      const bottomY = yPos + h;
+      drawDim(ctx, compHeightDimX, yPos * scale, compHeightDimX, bottomY * scale, 0, `h: ${h.toFixed(0)}`);
+      yPos = bottomY;
+      if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
+    });
+  } else if (compHeights.length === 1) {
+    drawDim(ctx, compHeightDimX, innerTop * scale, compHeightDimX, (innerTop + compHeights[0]) * scale, 0,
+            `h: ${compHeights[0].toFixed(0)}`);
   }
-
-  ctx.restore();
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -958,16 +956,16 @@ export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) 
 
       let worldX, worldY;
       if (isFront) {
-        const PAD = { left: 50, top: 40 };
-        const drawW = canvas.width - PAD.left - 40;
-        const drawH = canvas.height - PAD.top - 40;
+        const PAD = { left: 50, top: 40, right: 40, bottom: 40 }; // Matched drawing PAD
+        const drawW = canvas.width - PAD.left - PAD.right;
+        const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
         worldX = (pixelX - PAD.left) / scale;
         worldY = (pixelY - PAD.top) / scale;
       } else {
-        const PAD = { left: 60, top: 40 };
-        const drawW = canvas.width - PAD.left - 60;
-        const drawH = canvas.height - PAD.top - 40;
+        const PAD = { left: 60, top: 40, right: 60, bottom: 40 }; // Matched drawing PAD
+        const drawW = canvas.width - PAD.left - PAD.right;
+        const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.D, drawH / geometry.H);
         worldX = (pixelX - PAD.left) / scale;
         worldY = (pixelY - PAD.top) / scale;
