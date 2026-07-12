@@ -23,7 +23,7 @@
 // =============================================================================
 
 /** Fixed suction gas temperature (°C) — macro variable T */
-const SUCTION_TEMP_C = 32.2;
+const SUCTION_TEMP_C = 30;
 
 /** Celsius-to-Kelvin offset — macro uses 273.16 */
 const KELVIN_OFFSET = 273.16;
