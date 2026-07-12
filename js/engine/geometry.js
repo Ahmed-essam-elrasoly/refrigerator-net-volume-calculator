@@ -139,6 +139,7 @@ export function upgradeConfig(oldConfig) {
     cabinet: {
       geometry: geom,
       layout
-    }
+    },
+    thermal: oldConfig.thermal // <-- Ensure thermal config carries over untouched
   };
 }
