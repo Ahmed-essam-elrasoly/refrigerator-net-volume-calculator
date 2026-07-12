@@ -2,7 +2,7 @@ import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
 import { initSettingsModal } from './ui/settingsModal.js';
-import { initThermoUI } from './ui/thermoUI.js';
+import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 import { traverseAndComputePrecise } from './engine/traversal.js'; // ← new precise engine
 import { roundForDisplay, toCuft, polygonArea } from './engine/calc.js';
@@ -444,7 +444,7 @@ function readGeometryFromPanel() {
     }
   };
 
-  return {
+return {
     H: g('geom-H') ?? DEFAULT_CABINET.H,
     W: g('geom-W') ?? DEFAULT_CABINET.W,
     D: g('geom-D') ?? DEFAULT_CABINET.D,
@@ -464,6 +464,15 @@ function readGeometryFromPanel() {
       doorDikeHeight: g('geom-doorDikeHeight') ?? 50,
       doorDikeBaseWidth: g('geom-doorDikeBaseWidth') ?? 30,
       doorDikeTopWidth:  g('geom-doorDikeTopWidth')  ?? 15,
+    },
+    obstacles: {
+      evapDepth: g('evapDepth') ?? 85,
+      ctrlBoxH: g('ctrlBoxH') ?? 150,
+      ctrlBoxW: g('ctrlBoxW') ?? 500,
+      ctrlBoxL: g('ctrlBoxL') ?? 100,
+      rshowerH: g('rshowerH') ?? 700,
+      rshowerW: g('rshowerW') ?? 500,
+      rshowerL: g('rshowerL') ?? 50,
     },
     _compartments: comps.map(c => ({
       ...c,
@@ -552,17 +561,18 @@ function buildLayoutNodeForPrecise() {
  * Returns both individual and total (rails + dikes + others).
  */
 function computeObstacleVolumes(geometry) {
-  const comps = compartmentsData;
+  const comps = geometry._compartments || compartmentsData;
   const special = geometry.special || {};
+  const obs = geometry.obstacles || {};
 
   // ---- Fixed elements (evap, ctrl, rshower) ----
-  const evapDepth = parseFloat(evapDepthInput.value) || 85;
-  const ctrlH = parseFloat(ctrlBoxHInput.value) || 150;
-  const ctrlW = parseFloat(ctrlBoxWInput.value) || 500;
-  const ctrlL = parseFloat(ctrlBoxLInput.value) || 100;
-  const rshowerH = parseFloat(rshowerHInput.value) || 700;
-  const rshowerW = parseFloat(rshowerWInput.value) || 500;
-  const rshowerL = parseFloat(rshowerLInput.value) || 50;
+  const evapDepth = obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 85);
+  const ctrlH = obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 150);
+  const ctrlW = obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 500);
+  const ctrlL = obs.ctrlBoxL ?? (parseFloat(ctrlBoxLInput.value) || 100);
+  const rshowerH = obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 700);
+  const rshowerW = obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 500);
+  const rshowerL = obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 50);
 
   // Freezer compartment for evaporator
   const freezerComp = comps.find(c => c.type === 'freezer') || comps[0];
@@ -731,8 +741,9 @@ function drawSchematics(config, leaves) {
   const effectiveWalls = getEffectiveThicknesses();
   const fittings = extractFittingsFromLayout(config.cabinet.layout);
   
-  const geom = currentGeometry;
-  const H = geom.H, D = geom.D;
+  const geom = config.cabinet.geometry || currentGeometry;
+  const obs = geom.obstacles || {};
+  const rw = geom.walls?.refrigerator || {};  const H = geom.H, D = geom.D;
   const eff = effectiveWalls;
   const innerTopY = eff.top;
   const innerBottomY = H - Math.max(
@@ -770,14 +781,13 @@ function drawSchematics(config, leaves) {
     cabinetDepth: D,
     cabinetWidth: geom.W,
     cabinetHeight: H,
-    evapDepth: parseFloat(evapDepthInput.value) || 0,
-    ctrlBoxH:   parseFloat(ctrlBoxHInput.value) || 0,
-    ctrlBoxW:   parseFloat(ctrlBoxWInput.value) || 0,
-    ctrlBoxL:   parseFloat(ctrlBoxLInput.value) || 0,
-    rshowerH:   parseFloat(rshowerHInput.value) || 0,
-    rshowerW:   parseFloat(rshowerWInput.value) || 0,
-    rshowerL:   parseFloat(rshowerLInput.value) || 0,
-    compartmentTypes: compartmentsData.map(c => c.type),
+    evapDepth: obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 0),
+    ctrlBoxH:  obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 0),
+    ctrlBoxW:  obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 0),
+    ctrlBoxL:  obs.ctrlBoxL ?? (parseFloat(ctrlBoxLInput.value) || 0),
+    rshowerH:  obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 0),
+    rshowerW:  obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 0),
+    rshowerL:  obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 0),    compartmentTypes: compartmentsData.map(c => c.type),
     numCompartments: compartmentsData.length
   };
   drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
@@ -795,16 +805,24 @@ calculateBtn.addEventListener('click', () => {
   const layout = buildLayoutNodeForPrecise();
 
   // Build a dummy config for schematics only (drawing still uses old config structure)
+  const existingMeta = currentConfig?.meta || { 
+    name: 'UI Config', 
+    createdAt: new Date().toISOString() 
+  };
+
   const configForDrawing = {
     schemaVersion: '2.0',
-    meta: { name: 'UI Config', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    meta: { 
+      ...existingMeta, 
+      updatedAt: new Date().toISOString() 
+    },
     cabinet: {
       geometry: currentGeometry,
       layout: layout
-    }
+    },
+    thermal: getThermalState()
   };
-  currentConfig = configForDrawing;
-  storeSlotABtn.style.display = 'inline-block';
+  currentConfig = configForDrawing;  storeSlotABtn.style.display = 'inline-block';
   storeSlotBBtn.style.display = 'inline-block';
   compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
 
@@ -909,6 +927,23 @@ function populateUIFromConfig(config) {
       set('geom-doorDikeBaseWidth', 30);
       set('geom-doorDikeTopWidth', 15);
     }
+    if (geometry.obstacles) {
+      set('evapDepth', geometry.obstacles.evapDepth);
+      set('ctrlBoxH',  geometry.obstacles.ctrlBoxH);
+      set('ctrlBoxW',  geometry.obstacles.ctrlBoxW);
+      set('ctrlBoxL',  geometry.obstacles.ctrlBoxL);
+      set('rshowerH',  geometry.obstacles.rshowerH);
+      set('rshowerW',  geometry.obstacles.rshowerW);
+      set('rshowerL',  geometry.obstacles.rshowerL);
+    } else {
+      set('evapDepth', 85);
+      set('ctrlBoxH', 150);
+      set('ctrlBoxW', 500);
+      set('ctrlBoxL', 100);
+      set('rshowerH', 700);
+      set('rshowerW', 500);
+      set('rshowerL', 50);
+    }
   } else if (config.cabinet?.external) {
     const ext = config.cabinet.external;
     set('geom-H', ext.height);
@@ -926,7 +961,9 @@ function populateUIFromConfig(config) {
     console.warn('populateUIFromConfig: unrecognised config structure — UI not restored.');
     return;
   }
-
+  if (config.thermal) {
+      setThermalState(config.thermal);
+    }
   buildCompartmentUI();
   updateRShowerVisibility();
   syncConstraints();
@@ -936,6 +973,7 @@ function populateUIFromConfig(config) {
 // ---- Save / Load / Export ---------------------------------------------
 saveBtn.addEventListener('click', () => {
   if (!currentConfig) { alert('Calculate first'); return; }
+  currentConfig.thermal = getThermalState();
   downloadConfigJSON(currentConfig, currentConfig.meta.name);
 });
 

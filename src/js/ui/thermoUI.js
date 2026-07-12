@@ -918,3 +918,51 @@ function showWarnings(warnings) {
   });
   e.appendChild(ul);
 }
+
+export function getThermalState() {
+  return {
+    T0: parseFloat(document.getElementById('thermoT0')?.value) || 30,
+    TF: parseFloat(document.getElementById('thermoTF')?.value) || -18,
+    TR: parseFloat(document.getElementById('thermoTR')?.value) || 3,
+    refrigerant: document.getElementById('thermoRefrigerant')?.value || 'R-600a',
+    advanced: thermalAdvanced,
+    evaporator: settings.evaporator,
+    condenser: settings.condenser,
+    fanParam: settings.fanParam,
+    compressor: getCurrentCompressor()
+  };
+}
+
+export function setThermalState(data) {
+  if (!data) return;
+  
+  const el = (id) => document.getElementById(id);
+  if (data.T0 !== undefined && el('thermoT0')) el('thermoT0').value = data.T0;
+  if (data.TF !== undefined && el('thermoTF')) el('thermoTF').value = data.TF;
+  if (data.TR !== undefined && el('thermoTR')) el('thermoTR').value = data.TR;
+  if (data.refrigerant !== undefined && el('thermoRefrigerant')) el('thermoRefrigerant').value = data.refrigerant;
+
+  if (data.advanced) {
+    thermalAdvanced = { ...thermalAdvanced, ...data.advanced };
+    localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
+  }
+  
+  if (data.evaporator) settings.evaporator = data.evaporator;
+  if (data.condenser) settings.condenser = data.condenser;
+  if (data.fanParam) settings.fanParam = data.fanParam;
+
+if (data.compressor) {
+  const list = getCompressorList();
+  const existingIdx = list.findIndex(c => c.id === data.compressor.id);
+  
+  if (existingIdx === -1) {
+    addCompressor(data.compressor);
+  } else {
+    // Overwrite the existing local compressor with the imported one
+    list[existingIdx] = data.compressor;
+    localStorage.setItem('compressorList', JSON.stringify(list));
+  }
+  setSelectedCompressor(data.compressor.id);
+}
+  updateSettings(settings);
+}
