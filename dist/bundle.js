@@ -263,8 +263,7 @@
     textOffsetX = 0,
     textOffsetY = 0,
     drawExtLines = true,
-    bgColor = DRAW_THEME.bgColor,
-    textGap = DRAW_THEME.textGap
+    bgColor = DRAW_THEME.bgColor
   } = {}) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -321,29 +320,31 @@
       ctx.font = font;
       const metrics = ctx.measureText(label);
       const tw = metrics.width;
-      const th = 12;
+      const th = 10;
+      const padX = 4;
+      const padY = 2;
       ctx.fillStyle = bgColor;
       ctx.beginPath();
       if (ctx.roundRect) {
-        ctx.roundRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4, 3);
+        ctx.roundRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2, 3);
       } else {
-        ctx.fillRect(-tw / 2 - 4, -th - textGap - 2, tw + 8, th + 4);
+        ctx.fillRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2);
       }
       ctx.fill();
       ctx.fillStyle = color;
       ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(label, 0, -textGap);
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, 0, 0);
     }
     ctx.restore();
   }
   var DRAW_THEME = {
-    color: "#2980b9",
+    color: "#446688",
     lineWidth: 1,
     arrowSize: 5,
-    font: 'bold 11px "Segoe UI", Arial, sans-serif',
-    bgColor: "rgba(255, 255, 255, 0.85)",
-    textGap: 4
+    font: '11px "Segoe UI", Arial, sans-serif',
+    bgColor: "#ffffff",
+    textGap: 0
   };
   function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
     const ctx = canvas.getContext("2d");
@@ -358,7 +359,6 @@
       innerRightX,
       railHeight = 0,
       railWidth = 0,
-      // ── Added fields ──
       compartmentTypes = [],
       numCompartments = 1,
       ctrlBoxH = 0,
@@ -575,21 +575,21 @@
     ctx.lineTo(innerRight[compIdx] * scale, hbY);
     ctx.stroke();
     ctx.restore();
-    const dimX = -35;
+    const dimX = -25;
     y = intTop;
     for (let i = 0; i < compHeights.length; i++) {
       const h = compHeights[i];
-      drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `[h= ${h.toFixed(0)}]`);
+      drawDim(ctx, dimX, y * scale, dimX, (y + h) * scale, 0, `h: ${h.toFixed(0)}`);
       y += h;
       if (i < compHeights.length - 1 && dividerThickness > 0) {
         const dividerBottom = y + dividerThickness;
-        drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `[div= ${dividerThickness}]`);
+        drawDim(ctx, dimX, y * scale, dimX, dividerBottom * scale, 0, `div: ${dividerThickness}`);
         y = dividerBottom;
       }
     }
-    drawDim(ctx, 0, H * scale, W * scale, H * scale, 35, `[W= ${W.toFixed(0)}]`);
-    drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `[tLeft= ${compartments[0].left.toFixed(0)}]`);
-    drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `[tRight= ${compartments[0].right.toFixed(0)}]`);
+    drawDim(ctx, 0, H * scale, W * scale, H * scale, 30, `W: ${W.toFixed(0)}`);
+    drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `tLeft: ${compartments[0].left.toFixed(0)}`);
+    drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `tRight: ${compartments[0].right.toFixed(0)}`);
     ctx.restore();
   }
   function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
@@ -756,14 +756,12 @@
         (innerDoor - compRear[1]) * scale,
         dividerH * scale
       );
-      const doorLeftX = innerDoor * scale;
-      const doorWidth = tDoor * scale;
       const topDoorTop = 0;
       const topDoorBottom = (dividerY + dividerH / 2) * scale - doorGap / 2 * scale;
       const bottomDoorTop = (dividerY + dividerH / 2) * scale + doorGap / 2 * scale;
       const bottomDoorBottom = H * scale;
-      drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom });
-      drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom });
+      drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom, compIndex: 0 });
+      drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom, compIndex: 1 });
       drawDim(
         ctx,
         D * scale,
@@ -771,18 +769,48 @@
         D * scale,
         bottomDoorTop,
         -45,
-        `[door gap= ${(dividerThickness + doorGap).toFixed(0)}]`
+        `door gap: ${(dividerThickness + doorGap).toFixed(0)}`
       );
     } else {
-      drawnDoors.push({ top: 0 * scale, bottom: H * scale });
+      drawnDoors.push({ top: 0, bottom: H * scale, compIndex: 0 });
     }
     for (const door of drawnDoors) {
-      const doorLeftX = innerDoor * scale;
-      const doorWidth = tDoor * scale;
+      const compIdx = door.compIndex;
+      const doorThickness = compartments[compIdx] && compartments[compIdx].door != null ? compartments[compIdx].door : effectiveWalls.door || 60;
+      const doorLeftX = D * scale;
+      const doorWidth = doorThickness * scale;
       ctx.fillStyle = "rgba(173, 216, 230, 0.5)";
       ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
       ctx.strokeStyle = "#555";
       ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
+    }
+    for (const door of drawnDoors) {
+      const compIdx = door.compIndex;
+      const doorThickness = compartments[compIdx] && compartments[compIdx].door != null ? compartments[compIdx].door : effectiveWalls.door || 60;
+      const doorMidY = (door.top + door.bottom) / 2.5;
+      drawDim(
+        ctx,
+        (D - doorThickness) * scale,
+        doorMidY,
+        D * scale,
+        doorMidY,
+        0,
+        `tDoor: ${doorThickness.toFixed(0)}`
+      );
+    }
+    for (const door of drawnDoors) {
+      const compIdx = door.compIndex;
+      const doorThickness = compartments[compIdx] && compartments[compIdx].door != null ? compartments[compIdx].door : effectiveWalls.door || 60;
+      const dimX = (D + doorThickness) * scale + 15;
+      drawDim(
+        ctx,
+        dimX,
+        door.top,
+        dimX,
+        door.bottom,
+        0,
+        `Door: ${((door.bottom - door.top) / scale).toFixed(0)}`
+      );
     }
     if (dikeHeight > 0 && doorX != null) {
       const dikeH_dike = dikeHeight * scale;
@@ -993,54 +1021,55 @@
     ctx.strokeStyle = "#333";
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, D * scale, H * scale);
-    drawDim(ctx, 0, H * scale, 0, 0, -45, `[H= ${H.toFixed(0)}]`);
-    drawDim(ctx, 0, H * scale, 0, (floorRaisedY + tRbottom1) * scale, -20, `[Hb= ${Hb.toFixed(0)}]`);
-    drawDim(ctx, 0, 0, D * scale, 0, -25, `[D= ${D.toFixed(0)}]`);
-    drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -18, `[Db1= ${Db1.toFixed(0)}]`);
-    drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -18, `[Db2= ${Db2.toFixed(0)}]`);
+    drawDim(ctx, 0, H * scale, 0, 0, -60, `H: ${H.toFixed(0)}`);
+    drawDim(ctx, 0, H * scale, 0, (floorRaisedY + tRbottom1) * scale, -35, `Hb: ${Hb.toFixed(0)}`);
+    drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -15, `Db1: ${Db1.toFixed(0)}`);
+    drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -15, `Db2: ${Db2.toFixed(0)}`);
+    drawDim(ctx, 0, 0, D * scale, 0, -25, `D: ${D.toFixed(0)}`);
     const topMidX = (compRear[0] + innerDoor) / 2 * scale;
-    drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `[tTop= ${tTop.toFixed(0)}]`);
-    drawnDoors.forEach((door) => {
-      const doorMidY = (door.top + door.bottom) / 2.5;
-      drawDim(ctx, innerDoor * scale, doorMidY, D * scale, doorMidY, 0, `[tDoor= ${tDoor.toFixed(0)}]`);
-    });
+    drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `tTop: ${tTop.toFixed(0)}`);
     for (let i = 0; i < compHeights.length; i++) {
       if (i === 0 || compRear[i] !== compRear[i - 1]) {
         let compY = innerTop;
         for (let j = 0; j < i; j++) compY += compHeights[j];
         if (i > 0) compY += dividerThickness;
         const midY = (compY + compY + compHeights[i]) / 2.5 * scale;
-        drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `[tRear= ${compartments[i].rear.toFixed(0)}]`);
+        drawDim(ctx, 0, midY, compRear[i] * scale, midY, 0, `tRear: ${compartments[i].rear.toFixed(0)}`);
       }
     }
     const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
-    drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `[tRb3= ${tRbottom3.toFixed(0)}]`);
+    drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `tRb3: ${tRbottom3.toFixed(0)}`);
     const midCbX = (xTopCB + xBottomCB) / 2;
     const midCbY = (yTopCB + yBottomCB) / 2;
     const inPX = midCbX + nx * tRbottom2;
     const inPY = midCbY + ny * tRbottom2;
-    drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `[tRb2= ${tRbottom2.toFixed(0)}]`);
+    drawDim(ctx, inPX * scale, inPY * scale, midCbX * scale, midCbY * scale, 0, `tRb2: ${tRbottom2.toFixed(0)}`);
+    const maxActualDoor = Math.max(
+      ...drawnDoors.map((d) => {
+        const idx = d.compIndex;
+        return compartments[idx] && compartments[idx].door != null ? compartments[idx].door : effectiveWalls.door || 60;
+      })
+    );
+    const compHeightDimX = (D + maxActualDoor) * scale + 40;
     if (compHeights.length === 2) {
-      const dimX = (D + tDoor) * scale + 20;
       let yPos = innerTop;
       compHeights.forEach((h, idx) => {
         const bottomY = yPos + h;
-        drawDim(ctx, dimX, yPos * scale, dimX, bottomY * scale, 0, `[h= ${h.toFixed(0)}]`);
+        drawDim(ctx, compHeightDimX, yPos * scale, compHeightDimX, bottomY * scale, 0, `h: ${h.toFixed(0)}`);
         yPos = bottomY;
         if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
       });
     } else if (compHeights.length === 1) {
       drawDim(
         ctx,
-        (D + tDoor) * scale + 20,
+        compHeightDimX,
         innerTop * scale,
-        (D + tDoor) * scale + 20,
+        compHeightDimX,
         (innerTop + compHeights[0]) * scale,
         0,
-        `[h= ${compHeights[0].toFixed(0)}]`
+        `h: ${compHeights[0].toFixed(0)}`
       );
     }
-    ctx.restore();
   }
   function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn2) {
     const tooltip = document.getElementById("schematicTooltip");
@@ -1055,16 +1084,16 @@
         if (!geometry) return;
         let worldX, worldY;
         if (isFront) {
-          const PAD = { left: 50, top: 40 };
-          const drawW = canvas.width - PAD.left - 40;
-          const drawH = canvas.height - PAD.top - 40;
+          const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
+          const drawW = canvas.width - PAD.left - PAD.right;
+          const drawH = canvas.height - PAD.top - PAD.bottom;
           const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
           worldX = (pixelX - PAD.left) / scale;
           worldY = (pixelY - PAD.top) / scale;
         } else {
-          const PAD = { left: 60, top: 40 };
-          const drawW = canvas.width - PAD.left - 60;
-          const drawH = canvas.height - PAD.top - 40;
+          const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
+          const drawW = canvas.width - PAD.left - PAD.right;
+          const drawH = canvas.height - PAD.top - PAD.bottom;
           const scale = Math.min(drawW / geometry.D, drawH / geometry.H);
           worldX = (pixelX - PAD.left) / scale;
           worldY = (pixelY - PAD.top) / scale;
@@ -1213,6 +1242,18 @@
         SJ54H_COMPONENTS.compressor.volEffCoeffs.A,
         SJ54H_COMPONENTS.compressor.volEffCoeffs.B,
         SJ54H_COMPONENTS.compressor.volEffCoeffs.C
+      ],
+      // ─── Store original test data ─────────────────
+      dataPoints: [
+        { TE: -34.4, TC: 37.8, Q: 70.554507 * 1.16279, W: 49.7 },
+        { TE: -34.4, TC: 46.1, Q: 67.112824 * 1.16279, W: 51.3 },
+        { TE: -34.4, TC: 54.4, Q: 61.950299 * 1.16279, W: 72 },
+        { TE: -23.3, TC: 37.8, Q: 129.063122 * 1.16279, W: 67.6 },
+        { TE: -23.3, TC: 46.1, Q: 126.48186 * 1.16279, W: 72.4 },
+        { TE: -23.3, TC: 54.4, Q: 121.319335 * 1.16279, W: 141 },
+        { TE: -12.2, TC: 37.8, Q: 215.105204 * 1.16279, W: 86.2 },
+        { TE: -12.2, TC: 46.1, Q: 210.8031 * 1.16279, W: 93.5 },
+        { TE: -12.2, TC: 54.4, Q: 203.919733 * 1.16279, W: 237 }
       ]
     }
   ];
@@ -1617,7 +1658,7 @@
   }
 
   // src/js/engine/thermo/CompressorPerformance.js
-  var SUCTION_TEMP_C = 32.2;
+  var SUCTION_TEMP_C = 30;
   var KELVIN_OFFSET = 273.16;
   function r134a_satPressure(T_K) {
     return Math.exp(
@@ -2792,24 +2833,24 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     });
   }
   function saveThermalSettings() {
-    const sidePitch = parseFloat(thermalModalInputs.condSidePitch.value) || 50;
-    const backPitch = parseFloat(thermalModalInputs.condBackPitch.value) || 50;
+    const sidePitch = parseFloat(thermalModalInputs.condSidePitch.value);
+    const backPitch = parseFloat(thermalModalInputs.condBackPitch.value);
     settings.condenser = { sidePipePitch_mm: sidePitch, backPipePitch_mm: backPitch };
     settings.evaporator = {
-      width_mm: parseFloat(thermalModalInputs.evapWidth.value) || 460,
-      height_mm: parseFloat(thermalModalInputs.evapHeight.value) || 150,
-      depth_mm: parseFloat(thermalModalInputs.thermoEvapDepth.value) || 60,
-      rows: parseInt(thermalModalInputs.evapRows.value) || 2,
-      tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value) || 8,
-      finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value) || 150,
-      finLength_mm: parseFloat(thermalModalInputs.evapFinLength.value) || 460,
-      numFins: parseInt(thermalModalInputs.evapNumFins.value) || 32,
-      sidePlateNo: parseInt(thermalModalInputs.evapSidePlateNo.value) || 0
+      width_mm: parseFloat(thermalModalInputs.evapWidth.value),
+      height_mm: parseFloat(thermalModalInputs.evapHeight.value),
+      depth_mm: parseFloat(thermalModalInputs.thermoEvapDepth.value),
+      rows: parseInt(thermalModalInputs.evapRows.value),
+      tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value),
+      finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value),
+      finLength_mm: parseFloat(thermalModalInputs.evapFinLength.value),
+      numFins: parseInt(thermalModalInputs.evapNumFins.value),
+      sidePlateNo: parseInt(thermalModalInputs.evapSidePlateNo.value)
     };
     settings.fanParam = {
-      fanDiam: parseFloat(thermalModalInputs.fanDiam.value) || 100,
-      fanRPM: parseFloat(thermalModalInputs.fanRPM.value) || 2200,
-      fanThick: parseFloat(thermalModalInputs.fanThick.value) || 25
+      fanDiam: parseFloat(thermalModalInputs.fanDiam.value),
+      fanRPM: parseFloat(thermalModalInputs.fanRPM.value),
+      fanThick: parseFloat(thermalModalInputs.fanThick.value)
     };
     updateSettings(settings);
     thermalAdvanced.subcool = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
@@ -2969,8 +3010,11 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           frequency: 50,
           cylinderVolumeCm3: cyl,
           speedRpm: rpm,
+          refrigerantIndex: refIdx,
           wCoeffs,
-          etaCoeffs
+          etaCoeffs,
+          dataPoints
+          // <── store the test data
         });
         modal.classList.add("hidden");
         openThermalSettings();
@@ -2995,22 +3039,46 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     const cyl = comp.cylinderVolumeCm3 || 10.17;
     const rpm = comp.speedRpm || 2220;
     const refIdx = comp.refrigerantIndex || 2;
-    const defaultTE = [-34.4, -23.3, -12.2];
-    const defaultTC = [37.8, 46.1, 54.4];
-    const headerCells = defaultTC.map((tc, j) => `
-    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
+    let teVals = [];
+    let tcVals = [];
+    const dataMap = /* @__PURE__ */ new Map();
+    if (Array.isArray(comp.dataPoints) && comp.dataPoints.length) {
+      const teSet = /* @__PURE__ */ new Set();
+      const tcSet = /* @__PURE__ */ new Set();
+      comp.dataPoints.forEach((dp) => {
+        teSet.add(dp.TE);
+        tcSet.add(dp.TC);
+        dataMap.set(`${dp.TE}|${dp.TC}`, { Q: dp.Q, W: dp.W });
+      });
+      teVals = [...teSet].sort((a, b) => a - b);
+      tcVals = [...tcSet].sort((a, b) => a - b);
+    }
+    if (!teVals.length) teVals = [-34.4, -23.3, -12.2];
+    if (!tcVals.length) tcVals = [37.8, 46.1, 54.4];
+    const headerCells = tcVals.map((tc, j) => `
+    <th style="text-align:center;">TC<br>
+      <input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;">
+    </th>
   `).join("");
-    const bodyRows = defaultTE.map((te, i) => `
+    const bodyRows = teVals.map((te, i) => `
     <tr>
-      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
-      ${defaultTC.map((_, j) => `
-        <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;">W<br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">W
-        </td>
-      `).join("")}
+      <th style="text-align:center;">TE<br>
+        <input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;">
+      </th>
+      ${tcVals.map((tc, j) => {
+      const key = `${te}|${tc}`;
+      const dp = dataMap.get(key) || { Q: "", W: "" };
+      return `
+          <td>
+            Q: <input id="q_${i}_${j}" type="number" step="any" value="${dp.Q}" style="width:80px;">W<br>
+            W: <input id="w_${i}_${j}" type="number" step="any" value="${dp.W}" style="width:80px;">W
+          </td>
+        `;
+    }).join("")}
     </tr>
   `).join("");
+    const etaStr = Array.isArray(comp.etaCoeffs) && comp.etaCoeffs.length === 3 ? `A = ${comp.etaCoeffs[0].toFixed(5)}, B = ${comp.etaCoeffs[1].toFixed(5)}, C = ${comp.etaCoeffs[2].toFixed(5)}` : "Missing";
+    const wStr = Array.isArray(comp.wCoeffs) && comp.wCoeffs.length === 5 ? `AW = ${comp.wCoeffs[0].toFixed(5)}, BW = ${comp.wCoeffs[1].toFixed(5)}, CW = ${comp.wCoeffs[2].toFixed(5)}, DW = ${comp.wCoeffs[3].toFixed(5)}, EW = ${comp.wCoeffs[4].toFixed(5)}` : "Missing";
     document.getElementById("addCompressorContent").innerHTML = `
     <h2>Edit Compressor</h2>
     <style>
@@ -3034,12 +3102,19 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     </fieldset>
 
     <fieldset>
-      <legend>Test Data (optional \u2013 fill at least 5 cells to recompute)</legend>
+      <legend>Current Fitted Coefficients</legend>
+      <p><strong>Volumetric efficiency (\u03B7<sub>v</sub>):</strong> ${etaStr}</p>
+      <p><strong>Input power (W):</strong> ${wStr}</p>
+      <p><small>Leave test data empty to keep these coefficients.
+      Enter at least 5 data points to recompute.</small></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test Data (edit TE / TC headers and fill Q & W)</legend>
       <table class="matrix-table">
         <thead><tr><th></th>${headerCells}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <p><small>Leave cells empty to keep existing coefficients. Fill at least 5 data points to recompute.</small></p>
     </fieldset>
 
     <div id="acError" class="error-msg"></div>
@@ -3156,7 +3231,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     }
     const cabinetGeom = getGeometryFn();
     const geom = toThermalFormat(cabinetGeom);
-    const evapDepthMain = parseFloat(document.getElementById("evapDepth")?.value) || 60;
+    const evapDepthMain = parseFloat(document.getElementById("evapDepth")?.value);
     geom.tEvaBack = evapDepthMain;
     const T0 = parseFloat(document.getElementById("thermoT0")?.value);
     const TF = parseFloat(document.getElementById("thermoTF")?.value);
@@ -3185,12 +3260,21 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
       electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin }
     });
+    if (settings.condenser) {
+      config.condenserConfig = {
+        ...config.condenserConfig,
+        // keep K‑values, efficiency, etc.
+        sidePipePitch_mm: settings.condenser.sidePipePitch_mm,
+        backPipePitch_mm: settings.condenser.backPipePitch_mm
+      };
+    }
     console.log(geom);
     config.evapGeom = settings.evaporator || {};
     config.fanParam = fanParam;
     const defaultCompParams = config.compParams;
     loadCompressors();
     const compressor = getCurrentCompressor();
+    let compressorWarning = null;
     if (compressor) {
       const toArray = (coeffs, keys) => {
         if (Array.isArray(coeffs)) return coeffs;
@@ -3210,7 +3294,8 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
           etaCoeffs: etaArr
         };
       } else {
-        console.warn("Selected compressor missing coefficients \u2013 using default.", compressor);
+        compressorWarning = `Compressor \u201C${compressor.name}\u201D is missing valid coefficients. Using default compressor (EGX80CLC) instead.`;
+        console.warn(compressorWarning);
       }
     }
     config.solverOptions = config.solverOptions || {};
@@ -3220,6 +3305,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     if (!result.success) {
       showError(result.errors.join("; "));
       return;
+    }
+    if (compressorWarning) {
+      result.warnings = result.warnings || [];
+      result.warnings.unshift(compressorWarning);
     }
     let energy = null;
     if (result.results && result.results.converged !== false) {
@@ -3237,10 +3326,10 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         const area = computeEvaporatorArea(evap);
         const v = airSpeed(fanP, evap);
         const alpha = evaporatorAlpha(v);
-        const TF2 = parseFloat(document.getElementById("thermoTF")?.value) || -18;
-        const TR2 = parseFloat(document.getElementById("thermoTR")?.value) || 3;
-        const MR = result.results.MR || 0;
-        const MF = result.results.MF || 0;
+        const TF2 = parseFloat(document.getElementById("thermoTF")?.value);
+        const TR2 = parseFloat(document.getElementById("thermoTR")?.value);
+        const MR = result.results.MR;
+        const MF = result.results.MF;
         const totalFlow = MR + MF;
         const T1 = totalFlow > 0 ? (MF * TF2 + MR * TR2) / totalFlow : TF2;
         const T2 = result.results.T2;
@@ -3359,6 +3448,46 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       ul.appendChild(li);
     });
     e.appendChild(ul);
+  }
+  function getThermalState() {
+    return {
+      T0: parseFloat(document.getElementById("thermoT0")?.value),
+      TF: parseFloat(document.getElementById("thermoTF")?.value),
+      TR: parseFloat(document.getElementById("thermoTR")?.value),
+      refrigerant: document.getElementById("thermoRefrigerant")?.value,
+      advanced: thermalAdvanced,
+      evaporator: settings.evaporator,
+      condenser: settings.condenser,
+      fanParam: settings.fanParam,
+      compressor: getCurrentCompressor()
+    };
+  }
+  function setThermalState(data) {
+    if (!data) return;
+    const el = (id) => document.getElementById(id);
+    if (data.T0 !== void 0 && el("thermoT0")) el("thermoT0").value = data.T0;
+    if (data.TF !== void 0 && el("thermoTF")) el("thermoTF").value = data.TF;
+    if (data.TR !== void 0 && el("thermoTR")) el("thermoTR").value = data.TR;
+    if (data.refrigerant !== void 0 && el("thermoRefrigerant")) el("thermoRefrigerant").value = data.refrigerant;
+    if (data.advanced) {
+      thermalAdvanced = { ...thermalAdvanced, ...data.advanced };
+      localStorage.setItem("thermoAdvanced", JSON.stringify(thermalAdvanced));
+    }
+    if (data.evaporator) settings.evaporator = data.evaporator;
+    if (data.condenser) settings.condenser = data.condenser;
+    if (data.fanParam) settings.fanParam = data.fanParam;
+    if (data.compressor) {
+      const list = getCompressorList();
+      const existingIdx = list.findIndex((c) => c.id === data.compressor.id);
+      if (existingIdx === -1) {
+        addCompressor(data.compressor);
+      } else {
+        list[existingIdx] = data.compressor;
+        localStorage.setItem("compressorList", JSON.stringify(list));
+      }
+      setSelectedCompressor(data.compressor.id);
+    }
+    updateSettings(settings);
   }
 
   // src/js/engine/traversal.js
@@ -3849,6 +3978,15 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         doorDikeBaseWidth: g("geom-doorDikeBaseWidth") ?? 30,
         doorDikeTopWidth: g("geom-doorDikeTopWidth") ?? 15
       },
+      obstacles: {
+        evapDepth: g("evapDepth") ?? 85,
+        ctrlBoxH: g("ctrlBoxH") ?? 150,
+        ctrlBoxW: g("ctrlBoxW") ?? 500,
+        ctrlBoxL: g("ctrlBoxL") ?? 100,
+        rshowerH: g("rshowerH") ?? 700,
+        rshowerW: g("rshowerW") ?? 500,
+        rshowerL: g("rshowerL") ?? 50
+      },
       _compartments: comps.map((c) => ({
         ...c,
         shelfCount: c.shelfCount ?? 0
@@ -3919,15 +4057,16 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     };
   }
   function computeObstacleVolumes(geometry) {
-    const comps = compartmentsData;
+    const comps = geometry._compartments || compartmentsData;
     const special = geometry.special || {};
-    const evapDepth = parseFloat(evapDepthInput.value) || 85;
-    const ctrlH = parseFloat(ctrlBoxHInput.value) || 150;
-    const ctrlW = parseFloat(ctrlBoxWInput.value) || 500;
-    const ctrlL = parseFloat(ctrlBoxLInput.value) || 100;
-    const rshowerH = parseFloat(rshowerHInput.value) || 700;
-    const rshowerW = parseFloat(rshowerWInput.value) || 500;
-    const rshowerL = parseFloat(rshowerLInput.value) || 50;
+    const obs = geometry.obstacles || {};
+    const evapDepth = obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 85);
+    const ctrlH = obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 150);
+    const ctrlW = obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 500);
+    const ctrlL = obs.ctrlBoxL ?? (parseFloat(ctrlBoxLInput.value) || 100);
+    const rshowerH = obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 700);
+    const rshowerW = obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 500);
+    const rshowerL = obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 50);
     const freezerComp = comps.find((c) => c.type === "freezer") || comps[0];
     const fInnerW = geometry.W - freezerComp.left - freezerComp.right;
     const fHeight = freezerComp.height;
@@ -4047,7 +4186,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
     sideCanvas.width = panelWidth / 2 - 5;
     const effectiveWalls = getEffectiveThicknesses();
     const fittings = extractFittingsFromLayout(config.cabinet.layout);
-    const geom = currentGeometry;
+    const geom = config.cabinet.geometry || currentGeometry;
+    const obs = geom.obstacles || {};
+    const rw = geom.walls?.refrigerator || {};
     const H = geom.H, D = geom.D;
     const eff = effectiveWalls;
     const innerTopY = eff.top;
@@ -4064,7 +4205,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       compartments: compartmentsData.map((c) => ({
         left: c.left,
         right: c.right,
-        rear: c.rear
+        rear: c.rear,
+        door: c.door
+        // ← add this
       })),
       fittings,
       shelfCounts,
@@ -4083,13 +4226,13 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       cabinetDepth: D,
       cabinetWidth: geom.W,
       cabinetHeight: H,
-      evapDepth: parseFloat(evapDepthInput.value) || 0,
-      ctrlBoxH: parseFloat(ctrlBoxHInput.value) || 0,
-      ctrlBoxW: parseFloat(ctrlBoxWInput.value) || 0,
-      ctrlBoxL: parseFloat(ctrlBoxLInput.value) || 0,
-      rshowerH: parseFloat(rshowerHInput.value) || 0,
-      rshowerW: parseFloat(rshowerWInput.value) || 0,
-      rshowerL: parseFloat(rshowerLInput.value) || 0,
+      evapDepth: obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 0),
+      ctrlBoxH: obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 0),
+      ctrlBoxW: obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 0),
+      ctrlBoxL: obs.ctrlBoxL ?? (parseFloat(ctrlBoxLInput.value) || 0),
+      rshowerH: obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 0),
+      rshowerW: obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 0),
+      rshowerL: obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 0),
       compartmentTypes: compartmentsData.map((c) => c.type),
       numCompartments: compartmentsData.length
     };
@@ -4101,13 +4244,21 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
   calculateBtn.addEventListener("click", () => {
     currentGeometry = readGeometryFromPanel();
     const layout = buildLayoutNodeForPrecise();
+    const existingMeta = currentConfig?.meta || {
+      name: "UI Config",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
     const configForDrawing = {
       schemaVersion: "2.0",
-      meta: { name: "UI Config", createdAt: (/* @__PURE__ */ new Date()).toISOString(), updatedAt: (/* @__PURE__ */ new Date()).toISOString() },
+      meta: {
+        ...existingMeta,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      },
       cabinet: {
         geometry: currentGeometry,
         layout
-      }
+      },
+      thermal: getThermalState()
     };
     currentConfig = configForDrawing;
     storeSlotABtn.style.display = "inline-block";
@@ -4202,6 +4353,23 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
         set("geom-doorDikeBaseWidth", 30);
         set("geom-doorDikeTopWidth", 15);
       }
+      if (geometry.obstacles) {
+        set("evapDepth", geometry.obstacles.evapDepth);
+        set("ctrlBoxH", geometry.obstacles.ctrlBoxH);
+        set("ctrlBoxW", geometry.obstacles.ctrlBoxW);
+        set("ctrlBoxL", geometry.obstacles.ctrlBoxL);
+        set("rshowerH", geometry.obstacles.rshowerH);
+        set("rshowerW", geometry.obstacles.rshowerW);
+        set("rshowerL", geometry.obstacles.rshowerL);
+      } else {
+        set("evapDepth", 85);
+        set("ctrlBoxH", 150);
+        set("ctrlBoxW", 500);
+        set("ctrlBoxL", 100);
+        set("rshowerH", 700);
+        set("rshowerW", 500);
+        set("rshowerL", 50);
+      }
     } else if (config.cabinet?.external) {
       const ext = config.cabinet.external;
       set("geom-H", ext.height);
@@ -4219,6 +4387,9 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       console.warn("populateUIFromConfig: unrecognised config structure \u2014 UI not restored.");
       return;
     }
+    if (config.thermal) {
+      setThermalState(config.thermal);
+    }
     buildCompartmentUI();
     updateRShowerVisibility();
     syncConstraints();
@@ -4229,6 +4400,7 @@ Outer ${iter}, TC=${TC.toFixed(2)}`);
       alert("Calculate first");
       return;
     }
+    currentConfig.thermal = getThermalState();
     downloadConfigJSON(currentConfig, currentConfig.meta.name);
   });
   loadBtn.addEventListener("click", () => {
