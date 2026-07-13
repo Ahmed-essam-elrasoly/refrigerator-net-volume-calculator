@@ -45,76 +45,126 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams) {
 // 2×2 Newton-Raphson with damping & bounds checking
 // ─────────────────────────────────────────────────────────────────────────────
 
-function newton2(F, x0, dx, tol, maxIter, debug = false) {
-  let x     = [x0[0], x0[1]];
-  let f     = F(x);
-  let normF = Math.sqrt(f[0]*f[0] + f[1]*f[1]);
+/**
+ * Solves a 2D system of non-linear equations F(x) = 0 using Newton-Raphson.
+ * Features:
+ * - Numerical Jacobian (forward difference).
+ * - Fallback to Gradient Descent if Jacobian is singular.
+ * - Backtracking line search with Armijo condition for robust step sizing.
+ * - Variable bounds checking.
+ * - Detailed debug logging.
+ *
+ * @param {function(number[]): number[]} F - The residual function to solve.
+ * @param {number[]} x0 - Initial guess vector [x1, x2].
+ * @param {number[]} dx - Step sizes for numerical differentiation, e.g., [1e-3, 1e-4].
+ * @param {number} tol - Convergence tolerance for the norm of F.
+ * @param {number} maxIter - Maximum number of iterations.
+ * @param {number[][]} bounds - Bounds for each variable, e.g., [[min1, max1], [min2, max2]].
+ * @param {boolean} [debug=false] - Enable verbose logging to the console.
+ * @returns {{x: number[], f: number[], normF: number, converged: boolean, iterations: number, error?: string}}
+ */
+function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
+  const logger = {
+    log: (...args) => debug && console.log(...args),
+    table: (data) => debug && console.table(data),
+  };
+
+  let x = [...x0];
+  let f, normF;
+
+  // Initial evaluation with error handling
+  try {
+    f = F(x);
+    normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
+  } catch (e) {
+    logger.log('ERROR: Initial function evaluation failed.', e);
+    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
+  }
 
   for (let i = 0; i < maxIter; i++) {
-    if (debug) console.log(
-      `  Newton ${i}: T2=${x[0].toFixed(4)} PR=${x[1].toFixed(6)}` +
+    logger.log(
+      `\n  Newton ${i}: T2=${x[0].toFixed(4)} PR=${x[1].toFixed(6)}` +
       ` F1=${f[0].toFixed(4)} F2=${f[1].toFixed(4)} norm=${normF.toExponential(2)}`
     );
 
-    if (normF <= tol) return { x, converged: true, iterations: i + 1 };
+    if (normF <= tol) {
+      logger.log(`  Convergence met: normF (${normF.toExponential(2)}) <= tol (${tol.toExponential(2)})`);
+      return { x, f, normF, converged: true, iterations: i + 1 };
+    }
 
-    // Numerical Jacobian
+    // 1. Numerical Jacobian
     const J = [[0, 0], [0, 0]];
-    for (let j = 0; j < 2; j++) {
-      const xp = [x[0], x[1]];
-      xp[j] += dx;
-      const fp = F(xp);
-      J[0][j] = (fp[0] - f[0]) / dx;
-      J[1][j] = (fp[1] - f[1]) / dx;
+    try {
+      for (let j = 0; j < 2; j++) {
+        const xp = [...x];
+        xp[j] += dx[j];
+        const fp = F(xp);
+        J[0][j] = (fp[0] - f[0]) / dx[j];
+        J[1][j] = (fp[1] - f[1]) / dx[j];
+      }
+    } catch (e) {
+      logger.log('ERROR: Jacobian evaluation failed.', e);
+      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian evaluation failed: ${e.message}` };
     }
-
-    // ─── 1. Try Newton step ──────────────────────────────────────────
-    let direction = null;
     const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    if (debug) {
+      logger.log('    Jacobian:');
+      logger.table(J.map(row => row.map(v => v.toExponential(3))));
+      logger.log(`    det(J) = ${det.toExponential(3)}`);
+    }
+
+    // 2. Determine search direction (Newton or Gradient Descent)
+    let direction;
     if (Math.abs(det) > 1e-12) {
+      // Newton's direction: d = -J⁻¹ * f
       const invDet = 1.0 / det;
-      const dNewton = [
-        -invDet * ( J[1][1] * f[0] - J[0][1] * f[1] ),
-        -invDet * (-J[1][0] * f[0] + J[0][0] * f[1] )
+      direction = [
+        -invDet * (J[1][1] * f[0] - J[0][1] * f[1]),
+        -invDet * (-J[1][0] * f[0] + J[0][0] * f[1])
       ];
-      // Test full step with bounds
-      const xFull = [
-        Math.max(-80, Math.min(20, x[0] + dNewton[0])),
-        Math.max(0.001, Math.min(0.999, x[1] + dNewton[1]))
+      logger.log(`    Newton direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
+    } else {
+      // Fallback to Gradient Descent: d = -Jᵀ * f
+      // This is the gradient of the squared norm 0.5 * ||f||²
+      direction = [
+        -(J[0][0] * f[0] + J[1][0] * f[1]),
+        -(J[0][1] * f[0] + J[1][1] * f[1])
       ];
-      const fFull = F(xFull);
-      if (fFull && Math.sqrt(fFull[0]*fFull[0]+fFull[1]*fFull[1]) < normF - 1e-4 * normF) {
-        direction = dNewton;
-      }
-    }
+      logger.log(`    Singular Jacobian. Using Gradient Descent direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
 
-    // ─── 2. Fallback to gradient descent if Newton fails ─────────────
-    if (!direction) {
-      const grad0 = J[0][0] * f[0] + J[1][0] * f[1];
-      const grad1 = J[0][1] * f[0] + J[1][1] * f[1];
-      const normGrad = Math.sqrt(grad0*grad0 + grad1*grad1);
+      const normGrad = Math.sqrt(direction[0]**2 + direction[1]**2);
       if (normGrad < 1e-12) {
-        return { x, converged: false, iterations: i + 1,
-                 error: 'Gradient zero, stationary point' };
+        return { x, f, normF, converged: false, iterations: i + 1, error: 'Gradient is zero at a non-solution point (saddle or local minimum).' };
       }
-      direction = [ -grad0 / normGrad * 0.1, -grad1 / normGrad * 0.1 ];
-      if (debug) console.log('    Using gradient descent direction');
     }
 
-    // ─── 3. Backtracking line search along chosen direction ──────────
+    // 3. Backtracking line search
     let alpha = 1.0;
     const maxBacktracks = 15;
     let accept = false;
     let newX, newF, newNorm;
 
     for (let bt = 0; bt < maxBacktracks; bt++) {
+      // Apply step and clamp to bounds
       newX = [
-        Math.max(-80, Math.min(20, x[0] + alpha * direction[0])),
-        Math.max(0.001, Math.min(0.999, x[1] + alpha * direction[1]))
+        Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
+        Math.max(bounds[1][0], Math.min(bounds[1][1], x[1] + alpha * direction[1]))
       ];
-      newF   = F(newX);
-      newNorm = Math.sqrt(newF[0]*newF[0] + newF[1]*newF[1]);
-      if (newNorm < normF - 1e-4 * alpha * normF) {
+
+      try {
+        newF = F(newX);
+        newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]);
+      } catch (e) {
+        logger.log(`    Line search F(x) failed at α=${alpha.toExponential(2)}`, e);
+        alpha *= 0.5; // Treat as a bad step and backtrack
+        continue;
+      }
+
+      // Armijo condition for sufficient decrease
+      const sufficientDecrease = normF - 1e-4 * alpha * normF;
+      logger.log(`      bt=${bt}, α=${alpha.toExponential(2)}, newNorm=${newNorm.toExponential(2)}, required < ${sufficientDecrease.toExponential(2)}`);
+
+      if (newNorm < sufficientDecrease) {
         accept = true;
         break;
       }
@@ -122,25 +172,26 @@ function newton2(F, x0, dx, tol, maxIter, debug = false) {
     }
 
     if (!accept) {
-      return { x, converged: false, iterations: i + 1,
-               error: 'Line search failed – cannot reduce residual' };
+      return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed – cannot find step size to reduce residual.' };
     }
 
-    // ─── 4. Handle PR clamped at physical bound ──────────────────────
-    if ((newX[1] <= 0.001 || newX[1] >= 0.999) && i > 10 && newNorm > 1e-2) {
-      return {
-        x: newX, converged: false, iterations: i + 1,
-        error: `PR clamped at ${newX[1].toFixed(4)} – compressor undersized or oversized`
-      };
-    }
-    // Update for next iteration
+    // 4. Update state for next iteration
     x = newX;
     f = newF;
     normF = newNorm;
-    if (debug) console.log(`    α=${alpha.toExponential(2)} → norm=${newNorm.toExponential(2)}`);
+    logger.log(`    Step accepted with α=${alpha.toExponential(2)}. New norm=${normF.toExponential(2)}`);
+
+    // 5. Check for clamping at physical bounds (indicative of model limits)
+    const isClamped = (x[1] <= bounds[1][0] || x[1] >= bounds[1][1]);
+    if (isClamped && i > 5 && normF > tol * 100) { // Check after a few iterations
+      const clampedAt = x[1] <= bounds[1][0] ? 'lower' : 'upper';
+      const errorMsg = `PR clamped at ${clampedAt} bound (${x[1].toFixed(4)}) – compressor may be undersized or oversized.`;
+      logger.log(`    WARNING: ${errorMsg}`);
+      return { x, f, normF, converged: false, iterations: i + 1, error: errorMsg };
+    }
   }
 
-  return { x, converged: false, iterations: maxIter, error: 'Max iterations reached' };
+  return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,13 +204,14 @@ function solveInner(
   TE, freezerPos, innerOpts = {}
 ) {
   const {
-    dx       = 0.0001,
+    dx_steps = [0.001, 0.0001], // [dx_T2, dx_PR]
     tol      = 1e-4,
     maxIter  = 100,
     initialT2,
     initialPR,
     debug    = false,
   } = innerOpts;
+  const logger = { log: (...args) => debug && console.log(...args) };
 
   const { T0, TF, TR } = fixedTemps;
 
@@ -173,6 +225,11 @@ function solveInner(
   const refIndex = getRefrigerantIndex(refrigerant);
   let currentMR = fan.totalAirflow * 0.1;   // m³/h
   let currentMF = fan.totalAirflow * 0.9;   // m³/h
+
+  const bounds = [
+    [-80, 20],    // T2 bounds
+    [0.001, 0.999] // PR bounds
+  ];
 
   // Residual vector F(T2, PR)
   const F = ([T2, PR]) => {
@@ -230,7 +287,7 @@ function solveInner(
   let totalIter = 0;
   const T2_guess = initialT2 ?? -21.25;
   const PR_guess = initialPR ?? 0.59;
-  let res = newton2(F, [T2_guess, PR_guess], dx, tol, maxIter, debug);
+  let res = newton2(F, [T2_guess, PR_guess], dx_steps, tol, maxIter, bounds, debug);
   totalIter += res.iterations;
 
   if (!res.converged && res.error && res.error.includes('compressor undersized')) {
@@ -238,8 +295,10 @@ function solveInner(
   }
 
   if (!res.converged) {
+    logger.log('Initial guess failed. Trying fallback guesses...');
     for (const [t2, pr] of [[T2_guess, 0.4], [T2_guess - 2, 0.5], [-21, 0.3]]) {
-      res = newton2(F, [t2, pr], dx, tol, maxIter, debug);
+      logger.log(`  Fallback guess: T2=${t2}, PR=${pr}`);
+      res = newton2(F, [t2, pr], dx_steps, tol, maxIter, bounds, debug);
       totalIter += res.iterations;
       if (res.converged) break;
     }
@@ -486,41 +545,120 @@ export function solveThermalSystem(config, TE_override = null) {
 // Dynamic TE wrapper
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function runThermalAnalysisDynamic(config) {
-  const { fixedTemps, fan, evapGeom } = config;
-  const { TF, TR } = fixedTemps;
+/**
+ * Calculates a new evaporating temperature (TE) based on the results of a
+ * full system solve, using an NTU-effectiveness model for the evaporator.
+ * @param {object} result - The converged result from `solveInner`.
+ * @param {object} fan - Fan parameters, including `totalAirflow`.
+ * @param {object} evapGeom - Evaporator geometry.
+ * @param {number} TF - Freezer compartment temperature (°C).
+ * @param {number} TR - Refrigerator compartment temperature (°C).
+ * @returns {number} The newly calculated evaporating temperature (°C).
+ */
+function calculateNewTE(result, fan, evapGeom, TF, TR) {
+  const { MR, MF, T2 } = result;
 
+  // Evaporator geometry with defaults
   const evapWidth_m = (evapGeom?.evapWidth_mm ?? 460) / 1000;
-  const evapDepth_m = (evapGeom?.evapDepth_mm ?? 60)  / 1000;
-  const evapArea_m2 =  evapGeom?.evapArea_m2  ?? 1.754;
+  const evapDepth_m = (evapGeom?.evapDepth_mm ?? 60) / 1000;
+  const evapArea_m2 = evapGeom?.evapArea_m2 ?? 1.754;
+
+  // Heat transfer coefficient correlation for air over evaporator
+  // alpha = 12.93 * v_ms^0.415 * 1.16279  [W/(m²·K)]
+  // The 1.16279 factor converts from kcal/(h·m²·°C) to W/(m²·K).
+  const ALPHA_COEFF = 12.93 * 1.16279;
+  const ALPHA_EXP = 0.415;
+
+  // 1. Calculate mixed air temperature entering the evaporator (T1)
+  const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
+
+  // 2. Calculate evaporator effectiveness (ε)
+  const faceArea = evapWidth_m * evapDepth_m;
+  const v_ms = fan.totalAirflow / faceArea / 3600;
+  const alpha = ALPHA_COEFF * Math.pow(v_ms, ALPHA_EXP);
+  const C_air = (fan.totalAirflow / 3600) * RHO_AIR * CP_AIR * 1000; // W/K
+  const UA_on = alpha * evapArea_m2; // W/K
+  const NTU = UA_on / C_air;
+  const effectiveness = 1 - Math.exp(-NTU);
+
+  // 3. Calculate new TE using the effectiveness definition: ε = (T1 - T2) / (T1 - TE)
+  // Avoid division by zero if effectiveness is very small
+  if (effectiveness < 1e-6) {
+    // If effectiveness is near zero, T2 is very close to T1, and TE is indeterminate.
+    // Returning T1 is a safe fallback, though this case is physically unlikely.
+    return T1;
+  }
+
+  const newTE = T1 - (T1 - T2) / effectiveness;
+  return newTE;
+}
+
+export function runThermalAnalysisDynamic(config) {
+  const { fixedTemps, fan, evapGeom, solverOptions } = config;
+  const { TF, TR } = fixedTemps;
+  const debug = solverOptions?.innerOptions?.debug ?? false;
+  const logger = { log: (...args) => debug && console.log(...args) };
 
   let TE = config.initialTE ?? -25.27;
   let result;
+  let prevTE, prevError;
 
-  for (let i = 0; i < 15; i++) {
+  const MAX_ITER = 15;
+  const TOL = 0.1;
+
+  logger.log('\n===== Starting Dynamic TE Iteration =====');
+
+  for (let i = 0; i < MAX_ITER; i++) {
+    logger.log(`TE Iteration ${i}: Trying TE = ${TE.toFixed(4)} °C`);
+
+    // 1. Solve the full system for the current TE
     result = solveThermalSystem(config, TE);
-    if (!result.converged) return result;
+    if (!result.converged) {
+      logger.log(`  ERROR: Inner solver failed for TE=${TE.toFixed(4)}. Aborting TE loop.`);
+      return result; // Propagate the failure from the inner solver
+    }
 
-    const { MR, MF, T2, PR } = result;
-    const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
-    const faceArea = evapWidth_m * evapDepth_m;
-    const v_ms     = fan.totalAirflow / faceArea / 3600;
-    const alpha    = 12.93 * Math.pow(v_ms, 0.415) * 1.16279;   // W/(m²·K) (converted from kcal/(h·m²·°C))
-    const C_air    = fan.totalAirflow / 3600 * RHO_AIR * CP_AIR * 1000;  // W/K
-    const UA_on    = alpha * evapArea_m2;                       // W/K
-    const NTU      = UA_on / C_air;
-    const ε        = 1 - Math.exp(-NTU);
-    const newTE    = T1 - (T1 - T2) / ε;
+    // 2. Calculate the next TE based on the evaporator model
+    const newTE = calculateNewTE(result, fan, evapGeom, TF, TR);
+    const error = newTE - TE;
+    logger.log(`  Result: T2=${result.T2.toFixed(3)}, PR=${result.PR.toFixed(4)}. New TE = ${newTE.toFixed(4)} (error = ${error.toFixed(4)})`);
 
-    if (Math.abs(newTE - TE) < 0.1) {
-      result.TE = newTE;
+    // 3. Check for convergence
+    if (Math.abs(error) < TOL) {
+      result.TE = newTE; // Update result with the converged TE
+      logger.log(`  TE converged in ${i + 1} iterations.`);
       return result;
     }
-    TE = TE + 0.5 * (newTE - TE);
+
+    // 4. Update TE for the next iteration using Secant method
+    const currentTE = TE;
+    const currentError = error;
+
+    if (i > 0 && prevError !== undefined) {
+      const te_diff = currentTE - prevTE;
+      const error_diff = currentError - prevError;
+
+      if (Math.abs(error_diff) > 1e-4) { // Avoid division by zero
+        const step = -currentError * te_diff / error_diff;
+        const boundedStep = Math.max(-3.0, Math.min(3.0, step));
+        TE = currentTE + boundedStep;
+        logger.log(`  Secant step: dTE = ${boundedStep.toFixed(4)}`);
+      } else {
+        TE = currentTE + 0.5 * currentError;
+        logger.log(`  Secant derivative too small. Falling back to relaxation step.`);
+      }
+    } else {
+      TE = currentTE + 0.5 * currentError;
+      logger.log(`  First iteration: using relaxation step.`);
+    }
+
+    prevTE = currentTE;
+    prevError = currentError;
   }
 
-  result.TE      = TE;
-  result.warning = 'TE iteration did not fully converge within tolerance';
+  result.TE = TE;
+  result.warning = `TE iteration did not fully converge within ${MAX_ITER} iterations (tolerance=${TOL}°C). Final error = ${prevError.toFixed(4)}°C.`;
+  logger.log(`  WARNING: ${result.warning}`);
   return result;
 }
 
