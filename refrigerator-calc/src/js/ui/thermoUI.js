@@ -484,8 +484,10 @@ function openAddCompressorModal() {
         frequency: 50,
         cylinderVolumeCm3: cyl,
         speedRpm: rpm,
+        refrigerantIndex: refIdx,
         wCoeffs,
         etaCoeffs,
+        dataPoints,
       });
 
       modal.classList.add('hidden');
@@ -511,31 +513,65 @@ function openEditCompressorModal() {
     return;
   }
 
-  // Preset values from the selected compressor
+  // ── Basic values ─────────────────────────────────────
   const name = comp.name || '';
   const cyl  = comp.cylinderVolumeCm3 || 10.17;
   const rpm  = comp.speedRpm || 2220;
   const refIdx = comp.refrigerantIndex || 2;
 
-  // Default TE/TC values (can't recover original test data)
-  const defaultTE = [-34.4, -23.3, -12.2];
-  const defaultTC = [37.8, 46.1, 54.4];
+  // ── Determine TE / TC headers from stored dataPoints ──
+  let teVals = [];
+  let tcVals = [];
+  const dataMap = new Map();   // key "TE|TC" → {Q, W}
 
-  const headerCells = defaultTC.map((tc, j) => `
-    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
+  if (Array.isArray(comp.dataPoints) && comp.dataPoints.length) {
+    const teSet = new Set();
+    const tcSet = new Set();
+    comp.dataPoints.forEach(dp => {
+      teSet.add(dp.TE);
+      tcSet.add(dp.TC);
+      dataMap.set(`${dp.TE}|${dp.TC}`, { Q: dp.Q, W: dp.W });
+    });
+    teVals = [...teSet].sort((a, b) => a - b);
+    tcVals = [...tcSet].sort((a, b) => a - b);
+  }
+
+  // Fallback to defaults if no dataPoints
+  if (!teVals.length) teVals = [-34.4, -23.3, -12.2];
+  if (!tcVals.length) tcVals = [37.8, 46.1, 54.4];
+
+  // Build table headers with editable TE/TC inputs
+  const headerCells = tcVals.map((tc, j) => `
+    <th style="text-align:center;">TC<br>
+      <input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;">
+    </th>
   `).join('');
 
-  const bodyRows = defaultTE.map((te, i) => `
+  const bodyRows = teVals.map((te, i) => `
     <tr>
-      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
-      ${defaultTC.map((_, j) => `
-        <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="" style="width:80px;">W<br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="" style="width:80px;">W
-        </td>
-      `).join('')}
+      <th style="text-align:center;">TE<br>
+        <input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;">
+      </th>
+      ${tcVals.map((tc, j) => {
+        const key = `${te}|${tc}`;
+        const dp = dataMap.get(key) || { Q: '', W: '' };
+        return `
+          <td>
+            Q: <input id="q_${i}_${j}" type="number" step="any" value="${dp.Q}" style="width:80px;">W<br>
+            W: <input id="w_${i}_${j}" type="number" step="any" value="${dp.W}" style="width:80px;">W
+          </td>
+        `;
+      }).join('')}
     </tr>
   `).join('');
+
+  // ── Build coefficient display string ────────────────
+  const etaStr = Array.isArray(comp.etaCoeffs) && comp.etaCoeffs.length === 3
+    ? `A = ${comp.etaCoeffs[0].toFixed(5)}, B = ${comp.etaCoeffs[1].toFixed(5)}, C = ${comp.etaCoeffs[2].toFixed(5)}`
+    : 'Missing';
+  const wStr   = Array.isArray(comp.wCoeffs) && comp.wCoeffs.length === 5
+    ? `AW = ${comp.wCoeffs[0].toFixed(5)}, BW = ${comp.wCoeffs[1].toFixed(5)}, CW = ${comp.wCoeffs[2].toFixed(5)}, DW = ${comp.wCoeffs[3].toFixed(5)}, EW = ${comp.wCoeffs[4].toFixed(5)}`
+    : 'Missing';
 
   document.getElementById('addCompressorContent').innerHTML = `
     <h2>Edit Compressor</h2>
@@ -560,12 +596,19 @@ function openEditCompressorModal() {
     </fieldset>
 
     <fieldset>
-      <legend>Test Data (optional – fill at least 5 cells to recompute)</legend>
+      <legend>Current Fitted Coefficients</legend>
+      <p><strong>Volumetric efficiency (η<sub>v</sub>):</strong> ${etaStr}</p>
+      <p><strong>Input power (W):</strong> ${wStr}</p>
+      <p><small>Leave test data empty to keep these coefficients.
+      Enter at least 5 data points to recompute.</small></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Test Data (edit TE / TC headers and fill Q & W)</legend>
       <table class="matrix-table">
         <thead><tr><th></th>${headerCells}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <p><small>Leave cells empty to keep existing coefficients. Fill at least 5 data points to recompute.</small></p>
     </fieldset>
 
     <div id="acError" class="error-msg"></div>
@@ -620,7 +663,7 @@ function openEditCompressorModal() {
       }
     }
 
-    let wCoeffs, etaCoeffs;
+    let wCoeffs, etaCoeffs, finalDataPoints;
     const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
     if (dataPoints.length >= 5 && nonZeroCount === 0) {
       errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
@@ -637,6 +680,7 @@ function openEditCompressorModal() {
         });
         wCoeffs = coeffs.wCoeffs;
         etaCoeffs = coeffs.etaCoeffs;
+        finalDataPoints = dataPoints;
       } catch (err) {
         errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
         return;
@@ -649,6 +693,7 @@ function openEditCompressorModal() {
       }
       wCoeffs = comp.wCoeffs;
       etaCoeffs = comp.etaCoeffs;
+      finalDataPoints = comp.dataPoints;
     }
 
     // Build updated compressor object
@@ -660,8 +705,10 @@ function openEditCompressorModal() {
       frequency: comp.frequency || 50,
       cylinderVolumeCm3: newCyl,
       speedRpm: newRpm,
+      refrigerantIndex: newRefIdx,
       wCoeffs,
       etaCoeffs,
+      dataPoints: finalDataPoints,
     };
 
     // Replace the old compressor with the updated one

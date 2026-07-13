@@ -299,14 +299,14 @@ function buildNormalEquations(features, targets) {
  *   hGas = gasEnthalpy(T_suction, Pe)                  [kW/kg]
  *   hLiq = liquidEnthalpy(T_suction)                   [kW/kg]
  *   G    = Q / (hGas − hLiq)                           [kg/h, actual mass flow]
- *   GK   = (VC·N·60 / 1×10⁶) / vGas                  [kg/h, theoretical mass flow]
+ *   GK   = (VC·N·60 / 1e6) / vGas                  [kg/h, theoretical mass flow]
  *   ηv   = G / GK
  *
  * @param {object} params
  * @param {number} params.cylinderVolumeCm3  - Swept volume (cm³)
  * @param {number} params.speedRpm           - Shaft speed (RPM)
  * @param {number} params.refrigerantIndex   - 1 = R-134a, 2 = R-600a
- * @param {Array<{TE: number, TC: number, Q: number, W: number}>} params.dataPoints
+ * @param {Array<{TE: number, TC: number, Q: number, W: number}>} params.dataPoints - Test data
  *   TE: evaporating temperature (°C)
  *   TC: condensing temperature  (°C)
  *   Q:  cooling capacity        (W)

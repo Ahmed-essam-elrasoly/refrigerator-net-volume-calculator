@@ -1774,12 +1774,12 @@
     }
     const prop = getRefrigerantProperties(refrigerantIndex);
     const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
-    const hLiquid = prop.liquidEnthalpy(SUCTION_TEMP_C);
     const etaFeatures = [];
     const etaTargets = [];
     const wFeatures = [];
     const wTargets = [];
     for (const { TE, TC, Q, W } of dataPoints) {
+      const hLiquid = prop.liquidEnthalpy(TC);
       const Pe = prop.satPressure(TE + KELVIN_OFFSET);
       const Pc = prop.satPressure(TC + KELVIN_OFFSET);
       const hGas = prop.gasEnthalpy(suctionTempK, Pe);
@@ -1809,7 +1809,7 @@
     const VolumetricEfficiency = A + B * (Pc / Pe) + C * Pc;
     const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
     const vGas = prop.specificVolume(suctionTempK, Pe);
-    const hLiq = prop.liquidEnthalpy(SUCTION_TEMP_C);
+    const hLiq = prop.liquidEnthalpy(TC);
     const hGas = prop.gasEnthalpy(suctionTempK, Pe);
     const displacement_m3h = cylinderVolumeCm3 * speedRpm * 60 / 1e6;
     const G = VolumetricEfficiency * displacement_m3h / vGas;

@@ -49,18 +49,14 @@ export function traverseAndComputePrecise(rootNode, geometry) {
 
   // Compute total available height for the stack (from inner top to raised floor)
   let floorRaisedY;
-  if (lastChild.type === 'fresh') {
-    // Stepped floor: raised level = H - Hb - bottom1
-    if (bottomWalls.bottom1 === undefined) {
-      errors.push({ rule: 'layout', message: 'Fresh compartment missing bottom1 thickness' });
-      return { leaves, errors, warnings };
-    }
-    floorRaisedY = geometry.H - geometry.Hb - bottomWalls.bottom1;
-  } else {
-    // Flat floor: bottom is outer H minus bottom insulation (use 'bottom' if present, else 0)
-    const bottomInsul = bottomWalls.bottom || 0;
-    floorRaisedY = geometry.H - bottomInsul;
+  // The stepped floor applies to ANY bottom-most compartment. The distinction
+  // based on type was incorrect. The `bottom1` thickness defines the insulation
+  // over the top of the compressor hump.
+  if (bottomWalls.bottom1 === undefined) {
+    errors.push({ rule: 'layout', message: `Wall definition for type '${lastChild.type}' is missing 'bottom1' thickness for stepped floor calculation.` });
+    return { leaves, errors, warnings };
   }
+  floorRaisedY = geometry.H - geometry.Hb - bottomWalls.bottom1;
   const totalAvailableHeight = floorRaisedY - topY;
 
   // Divider sum

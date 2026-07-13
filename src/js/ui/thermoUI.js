@@ -663,7 +663,7 @@ function openEditCompressorModal() {
       }
     }
 
-    let wCoeffs, etaCoeffs;
+    let wCoeffs, etaCoeffs, finalDataPoints;
     const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
     if (dataPoints.length >= 5 && nonZeroCount === 0) {
       errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
@@ -680,6 +680,7 @@ function openEditCompressorModal() {
         });
         wCoeffs = coeffs.wCoeffs;
         etaCoeffs = coeffs.etaCoeffs;
+        finalDataPoints = dataPoints;
       } catch (err) {
         errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
         return;
@@ -692,6 +693,7 @@ function openEditCompressorModal() {
       }
       wCoeffs = comp.wCoeffs;
       etaCoeffs = comp.etaCoeffs;
+      finalDataPoints = comp.dataPoints;
     }
 
     // Build updated compressor object
@@ -703,8 +705,10 @@ function openEditCompressorModal() {
       frequency: comp.frequency || 50,
       cylinderVolumeCm3: newCyl,
       speedRpm: newRpm,
+      refrigerantIndex: newRefIdx,
       wCoeffs,
       etaCoeffs,
+      dataPoints: finalDataPoints,
     };
 
     // Replace the old compressor with the updated one
