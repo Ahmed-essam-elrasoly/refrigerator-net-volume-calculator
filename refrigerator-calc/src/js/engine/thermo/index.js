@@ -55,7 +55,7 @@ export function runThermoAnalysis(config) {
 
   // Merge solver options with defaults
   const solverDefaults = {
-    TC0: 54.4,
+    TC0: config.fixedTemps.T0+10,
     DH: 0.001,
     tolOuter: 0.0005,
     maxIterOuter: 100,
