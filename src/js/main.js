@@ -308,9 +308,14 @@ function buildCompartmentUI() {
       if (!el) continue;
       el.addEventListener('input', (e) => {
         compartmentsData[i][face] = parseFloat(e.target.value) || 0;
+        markDirty();   // schematic overlay will reflect “dirty” state
+      });
+
+      // Apply the new value to the rest of the geometry when the user leaves the field.
+      el.addEventListener('change', (e) => {
         syncConstraints();
         syncDisplay();
-        markDirty();
+        if (settings.autoCalculate) calculateBtn.click();
       });
     }
     const shelfCountEl = document.getElementById(`comp-${i}-shelfCount`);
@@ -423,20 +428,24 @@ function readGeometryFromPanel() {
 
   const defWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
 
+  // The bottom insulation values are global to the cabinet geometry
+  const bottom1 = g('geom-bottom1') ?? 40;
+  const bottom2 = g('geom-bottom2') ?? 40;
+  const bottom3 = g('geom-bottom3') ?? 40;
+
   const walls = {
     freezer: {
-      top:    freezerComp ? freezerComp.top    : defWalls.top,
-      bottom: freshComp   ? dividerThick       : 0,
+      top:    freezerComp ? (comps.indexOf(freezerComp) === 0 ? freezerComp.top : dividerThick) : defWalls.top,
+      bottom: freshComp   ? dividerThick       : bottom1, // Fallback for old logic, though bottom1/2/3 is preferred
       left:   freezerComp ? freezerComp.left   : defWalls.left,
       right:  freezerComp ? freezerComp.right  : defWalls.right,
       door:   freezerComp ? freezerComp.door   : defWalls.door,
       rear:   freezerComp ? freezerComp.rear   : defWalls.rear,
+      bottom1, bottom2, bottom3,
     },
     refrigerator: {
-      top:    freshComp ? (freezerComp ? dividerThick : freshComp.top) : defWalls.top,
-      bottom1: g('geom-bottom1') ?? 40,
-      bottom2: g('geom-bottom2') ?? 40,
-      bottom3: g('geom-bottom3') ?? 40,
+      top:    freshComp ? (comps.indexOf(freshComp) === 0 ? freshComp.top : dividerThick) : defWalls.top,
+      bottom1, bottom2, bottom3,
       left:   freshComp ? freshComp.left   : defWalls.left,
       right:  freshComp ? freshComp.right  : defWalls.right,
       door:   freshComp ? freshComp.door   : defWalls.door,
@@ -444,7 +453,7 @@ function readGeometryFromPanel() {
     }
   };
 
-return {
+  return {
     H: g('geom-H') ?? DEFAULT_CABINET.H,
     W: g('geom-W') ?? DEFAULT_CABINET.W,
     D: g('geom-D') ?? DEFAULT_CABINET.D,
