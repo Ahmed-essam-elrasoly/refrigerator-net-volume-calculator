@@ -209,7 +209,8 @@ function solveInner(
     maxIter  = 100,
     initialT2,
     initialPR,
-    debug    = false,
+    debug= true,           // existing flag for Newton‑Raphson logs
+    debugHeatLoads= true,  // ← NEW flag for heat‑load logging
   } = innerOpts;
   const logger = { log: (...args) => debug && console.log(...args) };
 
@@ -251,7 +252,18 @@ function solveInner(
       console.error('calcHeatLoads threw:', e.message, e.stack);
       throw e;
     }
-
+    if (innerOpts.debugHeatLoads) {
+      console.group('calcHeatLoads – Detailed Output');
+      console.log('Geometry:', geom);
+      console.log('Input parameters:', {
+        T0, TF, TR, T2, TC, PR, TE,
+        electrical, PIPEPITCH, backCondenserEfficiency, fanPower: fan.inputPower_W,
+        freezerPos, backCondenser
+      });
+      console.log('Full result:', loads);
+      console.table(loads);  // if loads is an object, prints a table view
+      console.groupEnd();
+    }
     let comp;
     try {
       comp = evaluateCompressorSafely(TE, TC, refIndex, compParams);
@@ -266,14 +278,14 @@ function solveInner(
     }
 
     // Air side calculations using volumetric heat capacity CV (W per m³/h per K)
-    const C_tot = fan.totalAirflow * CV;               // W/K (total airflow heat capacity rate)
-    const T3 = T2 + loads.QEV / (C_tot * PR);         // °C   (PR may be small; check denom)
-    const denomR = CV * Math.max(0.01, TR - T3) * PR; // W/(m³/h)  (for MR calculation)
+    const C_tot = fan.totalAirflow * CV;               
+    const T3 = T2 + loads.QEV / (C_tot * PR);         
+    const denomR = CV * Math.max(0.01, TR - T3) * PR; 
     const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
-    const MF = fan.totalAirflow - MR;                  // m³/h
+    const MF = fan.totalAirflow - MR;                  
+    console.log(`    T3=${T3.toFixed(2)}, MR=${MR.toFixed(2)}, MF=${MF.toFixed(2)}`);
     currentMR = MR;
     currentMF = MF;
-
     // F1 = QF - MF * CV * (TF - T3) * PR   (W)
     const F1 = loads.QF - MF * CV * (TF - T3) * PR;
     // F2 = total heat load - cooling capacity * PR  (W)
