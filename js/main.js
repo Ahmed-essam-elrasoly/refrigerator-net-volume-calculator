@@ -423,35 +423,63 @@ function readGeometryFromPanel() {
   const count = comps.length;
   const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
 
-  let freezerComp = comps.find(c => c.type === 'freezer');
-  let freshComp   = comps.find(c => c.type === 'fresh');
+  // Determine which compartment is the bottom-most (index = count-1)
+  const bottomIdx = count - 1;
 
-  const defWalls = { top: 60, left: 60, right: 60, rear: 60, door: 60 };
-
-  // The bottom insulation values are global to the cabinet geometry
+  // Global floor thicknesses (these are the exterior stepped floor values)
   const bottom1 = g('geom-bottom1') ?? 40;
   const bottom2 = g('geom-bottom2') ?? 40;
   const bottom3 = g('geom-bottom3') ?? 40;
 
+  // Build walls object with correct bottom thickness per compartment
   const walls = {
     freezer: {
-      top:    freezerComp ? (comps.indexOf(freezerComp) === 0 ? freezerComp.top : dividerThick) : defWalls.top,
-      bottom: freshComp   ? dividerThick       : bottom1, // Fallback for old logic, though bottom1/2/3 is preferred
-      left:   freezerComp ? freezerComp.left   : defWalls.left,
-      right:  freezerComp ? freezerComp.right  : defWalls.right,
-      door:   freezerComp ? freezerComp.door   : defWalls.door,
-      rear:   freezerComp ? freezerComp.rear   : defWalls.rear,
-      bottom1, bottom2, bottom3,
+      top:     0,
+      bottom:  0,
+      left:    0,
+      right:   0,
+      door:    0,
+      rear:    0,
+      bottom1, bottom2, bottom3,   
     },
     refrigerator: {
-      top:    freshComp ? (comps.indexOf(freshComp) === 0 ? freshComp.top : dividerThick) : defWalls.top,
-      bottom1, bottom2, bottom3,
-      left:   freshComp ? freshComp.left   : defWalls.left,
-      right:  freshComp ? freshComp.right  : defWalls.right,
-      door:   freshComp ? freshComp.door   : defWalls.door,
-      rear:   freshComp ? freshComp.rear   : defWalls.rear,
+      top:     0,
+      bottom1: bottom1, 
+      bottom2: bottom2, 
+      bottom3: bottom3, 
+      left:    0,
+      right:   0,
+      door:    0,
+      rear:    0,
     }
   };
+
+  // Loop over compartments to fill wall thicknesses
+  for (let i = 0; i < count; i++) {
+    const comp = comps[i];
+    const isTopMost = (i === 0);
+    const isBottomMost = (i === bottomIdx);
+
+    const wallKey = comp.type === 'fresh' ? 'refrigerator' : 'freezer';
+    const w = walls[wallKey];
+
+    // Top insulation: if top most, use own top; else use divider thickness
+    w.top = isTopMost ? comp.top : dividerThick;
+
+    // Bottom insulation: if bottom most, use exterior floor thickness (bottom1);
+    // otherwise use divider thickness.
+    if (wallKey === 'freezer') {
+      w.bottom = isBottomMost ? bottom1 : dividerThick;
+    } else { // refrigerator
+      w.bottom1 = isBottomMost ? bottom1 : dividerThick;
+    }
+
+    // Side walls: use the compartment's own values (they are the same for all)
+    w.left  = comp.left;
+    w.right = comp.right;
+    w.door  = comp.door;
+    w.rear  = comp.rear;
+  }
 
   return {
     H: g('geom-H') ?? DEFAULT_CABINET.H,
@@ -463,8 +491,8 @@ function readGeometryFromPanel() {
     doorGap: g('geom-doorGap') ?? DEFAULT_CABINET.doorGap,
     packingPos: g('geom-packingPos') ?? DEFAULT_CABINET.packingPos,
     airGap: 0,
-    Hf: freezerComp ? freezerComp.height : 0,
-    Hr: freshComp   ? freshComp.height   : 0,
+    Hf: comps.find(c => c.type === 'freezer')?.height || 0,
+    Hr: comps.find(c => c.type === 'fresh')?.height || 0,
     walls,
     special: {
       railHeight:    g('geom-railHeight')    ?? 20,
