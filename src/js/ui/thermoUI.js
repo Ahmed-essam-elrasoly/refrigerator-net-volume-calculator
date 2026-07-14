@@ -330,61 +330,92 @@ function saveThermalSettings() {
   thermalModal.classList.add('hidden');
 }
 
-// ────────────────────────────────────────────────────────────────
-// Add Compressor Modal – builds the 3×3 matrix, fits coefficients
-// ────────────────────────────────────────────────────────────────
+// Helper: parse Excel/CSV file and extract data points
+function parseCompressorDataFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet);
+
+        // Find columns by header (case-insensitive)
+        const headers = Object.keys(rows[0] || {});
+        const findCol = (names) => {
+          for (const name of names) {
+            const found = headers.find(h => h.toLowerCase() === name.toLowerCase());
+            if (found) return found;
+          }
+          return null;
+        };
+        const teCol = findCol(['TE', 'Te', 'Evap Temp', 'T_E']);
+        const tcCol = findCol(['TC', 'Tc', 'Cond Temp', 'T_C']);
+        const wCol  = findCol(['W', 'Power', 'Input Power']);
+        const qCol  = findCol(['Q', 'Capacity', 'Cooling Capacity']);
+
+        if (!teCol || !tcCol || !wCol || !qCol) {
+          reject(new Error('Could not find required columns: TE, TC, W, Q'));
+          return;
+        }
+
+        const dataPoints = rows.map(row => ({
+          TE: parseFloat(row[teCol]),
+          TC: parseFloat(row[tcCol]),
+          W:  parseFloat(row[wCol]),
+          Q:  parseFloat(row[qCol])
+        })).filter(dp => !isNaN(dp.TE) && !isNaN(dp.TC) && !isNaN(dp.W) && !isNaN(dp.Q));
+
+        if (dataPoints.length < 5) {
+          reject(new Error(`Only ${dataPoints.length} valid data points found. At least 5 are required.`));
+          return;
+        }
+
+        resolve(dataPoints);
+      } catch (err) {
+        reject(new Error('Failed to parse file: ' + err.message));
+      }
+    };
+    reader.onerror = () => reject(new Error('File read error'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Build a table of data points inside the modal
+function buildDataTable(dataPoints, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  let html = `<table class="data-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+    <thead><tr><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
+  dataPoints.forEach(dp => {
+    html += `<tr><td>${dp.TE.toFixed(2)}</td><td>${dp.TC.toFixed(2)}</td><td>${dp.W.toFixed(2)}</td><td>${dp.Q.toFixed(2)}</td></tr>`;
+  });
+  html += `</tbody></table><p>${dataPoints.length} data points loaded.</p>`;
+  container.innerHTML = html;
+}
+
+// --- Add Compressor Modal ---
 function openAddCompressorModal() {
   const modal = document.getElementById('addCompressorModal');
   if (!modal) return;
 
-  // Default values to pre‑fill the editable matrix
+  // Defaults
   const defaultComp = {
     name: 'EGX80CLC',
     cylinderVolumeCm3: 10.17,
     speedRpm: 2220,
   };
+  const defaultRef = 2; // R-600a
 
-  const defaultTE = [-34.4, -23.3, -12.2];
-  const defaultTC = [37.8, 46.1, 54.4];
-  const Q_matrix = [
-    [ 70.554507,  67.112824,  61.950299].map(v => v * 1.16279),
-    [129.063122, 126.481860, 121.319335].map(v => v * 1.16279),
-    [215.105204, 210.803100, 203.919733].map(v => v * 1.16279),
-  ];
-
-  // W values stay unchanged (already W)
-  const W_matrix = [
-    [ 49.7,  51.3,  72.0],
-    [ 67.6,  72.4, 141.0],
-    [ 86.2,  93.5, 237.0],
-  ];
-  // Build table rows with editable TE values at the start of each row
-  const headerCells = defaultTC.map((tc, j) => `
-    <th style="text-align:center;">TC<br><input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;"></th>
-  `).join('');
-
-  const bodyRows = defaultTE.map((te, i) => `
-    <tr>
-      <th style="text-align:center;">TE<br><input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;"></th>
-      ${defaultTC.map((tc, j) => `
-        <td>
-          Q: <input id="q_${i}_${j}" type="number" step="any" value="${Q_matrix[i][j]}" style="width:80px;">W<br>
-          W: <input id="w_${i}_${j}" type="number" step="any" value="${W_matrix[i][j]}" style="width:80px;">W
-        </td>
-      `).join('')}
-    </tr>
-  `).join('');
-
+  // Build the modal content
   document.getElementById('addCompressorContent').innerHTML = `
     <style>
-      .matrix-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-      .matrix-table th, .matrix-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
-      .matrix-table input { width: 80px; }
-      .error-msg { color: #d32f2f; font-weight: bold; margin-top: 10px; }
+      .data-table th, .data-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+      .data-table { margin: 10px 0; }
     </style>
-
     <fieldset>
-      <legend>Basic Data</legend>
+      <legend>Compressor Basic Data</legend>
       <label>Name: <input id="acName" type="text" value="${defaultComp.name}"></label>
       <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${defaultComp.cylinderVolumeCm3}"></label>
       <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${defaultComp.speedRpm}"></label>
@@ -395,24 +426,13 @@ function openAddCompressorModal() {
         </select>
       </label>
     </fieldset>
-
     <fieldset>
-      <legend>Test Data (edit TE / TC and fill Q & W)</legend>
-      <table class="matrix-table">
-        <thead>
-          <tr>
-            <th></th>
-            ${headerCells}
-          </tr>
-        </thead>
-        <tbody>
-          ${bodyRows}
-        </tbody>
-      </table>
-      <p><small>Pre‑filled with example data. Change TE and TC values as needed. At least 5 data points required.</small></p>
+      <legend>Load Performance Data from Excel</legend>
+      <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
+      <button id="acLoadBtn" type="button">Load Data</button>
+      <div id="acDataContainer"><p>No data loaded yet.</p></div>
     </fieldset>
-
-    <div id="acError" class="error-msg"></div>
+    <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
     <div class="settings-actions">
       <button id="fitCompressorBtn">Fit & Add</button>
       <button id="cancelAddCompressor">Cancel</button>
@@ -421,13 +441,43 @@ function openAddCompressorModal() {
 
   modal.classList.remove('hidden');
 
+  // Store loaded data points
+  let loadedDataPoints = null;
+
+  // File input change / load button
+  document.getElementById('acLoadBtn').onclick = async () => {
+    const fileInput = document.getElementById('acFileInput');
+    const file = fileInput.files[0];
+    if (!file) {
+      document.getElementById('acError').textContent = 'Please select a file.';
+      return;
+    }
+    try {
+      const points = await parseCompressorDataFile(file);
+      loadedDataPoints = points;
+      buildDataTable(points, 'acDataContainer');
+      document.getElementById('acError').textContent = '';
+    } catch (err) {
+      document.getElementById('acError').textContent = err.message;
+      loadedDataPoints = null;
+    }
+  };
+
+  // Cancel
   document.getElementById('cancelAddCompressor').onclick = () => {
     modal.classList.add('hidden');
   };
 
+  // Fit & Add
   document.getElementById('fitCompressorBtn').onclick = () => {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
+
+    if (!loadedDataPoints || loadedDataPoints.length < 5) {
+      errorDiv.textContent = 'Please load at least 5 data points from an Excel file.';
+      return;
+    }
+
     const name = document.getElementById('acName').value.trim();
     const cyl = parseFloat(document.getElementById('acCyl').value);
     const rpm = parseFloat(document.getElementById('acRpm').value);
@@ -437,43 +487,12 @@ function openAddCompressorModal() {
     if (isNaN(cyl) || cyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
     if (isNaN(rpm) || rpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
-    // Read TE and TC values from the editable headers
-    const TE_vals = [];
-    const TC_vals = [];
-    for (let i = 0; i < 3; i++) {
-      const te = parseFloat(document.getElementById(`te_${i}`).value);
-      if (isNaN(te)) { errorDiv.textContent = `Invalid TE value in row ${i+1}.`; return; }
-      TE_vals.push(te);
-    }
-    for (let j = 0; j < 3; j++) {
-      const tc = parseFloat(document.getElementById(`tc_${j}`).value);
-      if (isNaN(tc)) { errorDiv.textContent = `Invalid TC value in column ${j+1}.`; return; }
-      TC_vals.push(tc);
-    }
-
-    // Build dataPoints from all filled-in cells
-    const dataPoints = [];
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        const q = parseFloat(document.getElementById(`q_${i}_${j}`).value);
-        const w = parseFloat(document.getElementById(`w_${i}_${j}`).value);
-        if (!isNaN(q) && !isNaN(w)) {
-          dataPoints.push({ TE: TE_vals[i], TC: TC_vals[j], Q: q, W: w });
-        }
-      }
-    }
-
-    if (dataPoints.length < 5) {
-      errorDiv.textContent = `At least 5 data points required. Only ${dataPoints.length} provided.`;
-      return;
-    }
-
     try {
       const { etaCoeffs, wCoeffs } = computeCompressorCoefficients({
         cylinderVolumeCm3: cyl,
         speedRpm: rpm,
         refrigerantIndex: refIdx,
-        dataPoints,
+        dataPoints: loadedDataPoints,
       });
 
       addCompressor({
@@ -487,7 +506,7 @@ function openAddCompressorModal() {
         refrigerantIndex: refIdx,
         wCoeffs,
         etaCoeffs,
-        dataPoints,          // <── store the test data
+        dataPoints: loadedDataPoints,
       });
 
       modal.classList.add('hidden');
@@ -502,6 +521,7 @@ function openAddCompressorModal() {
   };
 }
 
+// --- Edit Compressor Modal ---
 function openEditCompressorModal() {
   const modal = document.getElementById('addCompressorModal');
   if (!modal) return;
@@ -513,105 +533,39 @@ function openEditCompressorModal() {
     return;
   }
 
-  // ── Basic values ─────────────────────────────────────
-  const name = comp.name || '';
-  const cyl  = comp.cylinderVolumeCm3 || 10.17;
-  const rpm  = comp.speedRpm || 2220;
-  const refIdx = comp.refrigerantIndex || 2;
-
-  // ── Determine TE / TC headers from stored dataPoints ──
-  let teVals = [];
-  let tcVals = [];
-  const dataMap = new Map();   // key "TE|TC" → {Q, W}
-
-  if (Array.isArray(comp.dataPoints) && comp.dataPoints.length) {
-    const teSet = new Set();
-    const tcSet = new Set();
-    comp.dataPoints.forEach(dp => {
-      teSet.add(dp.TE);
-      tcSet.add(dp.TC);
-      dataMap.set(`${dp.TE}|${dp.TC}`, { Q: dp.Q, W: dp.W });
-    });
-    teVals = [...teSet].sort((a, b) => a - b);
-    tcVals = [...tcSet].sort((a, b) => a - b);
-  }
-
-  // Fallback to defaults if no dataPoints
-  if (!teVals.length) teVals = [-34.4, -23.3, -12.2];
-  if (!tcVals.length) tcVals = [37.8, 46.1, 54.4];
-
-  // Build table headers with editable TE/TC inputs
-  const headerCells = tcVals.map((tc, j) => `
-    <th style="text-align:center;">TC<br>
-      <input id="tc_${j}" type="number" step="any" value="${tc}" style="width:70px;">
-    </th>
-  `).join('');
-
-  const bodyRows = teVals.map((te, i) => `
-    <tr>
-      <th style="text-align:center;">TE<br>
-        <input id="te_${i}" type="number" step="any" value="${te}" style="width:70px;">
-      </th>
-      ${tcVals.map((tc, j) => {
-        const key = `${te}|${tc}`;
-        const dp = dataMap.get(key) || { Q: '', W: '' };
-        return `
-          <td>
-            Q: <input id="q_${i}_${j}" type="number" step="any" value="${dp.Q}" style="width:80px;">W<br>
-            W: <input id="w_${i}_${j}" type="number" step="any" value="${dp.W}" style="width:80px;">W
-          </td>
-        `;
-      }).join('')}
-    </tr>
-  `).join('');
-
-  // ── Build coefficient display string ────────────────
-  const etaStr = Array.isArray(comp.etaCoeffs) && comp.etaCoeffs.length === 3
-    ? `A = ${comp.etaCoeffs[0].toFixed(5)}, B = ${comp.etaCoeffs[1].toFixed(5)}, C = ${comp.etaCoeffs[2].toFixed(5)}`
-    : 'Missing';
-  const wStr   = Array.isArray(comp.wCoeffs) && comp.wCoeffs.length === 5
-    ? `AW = ${comp.wCoeffs[0].toFixed(5)}, BW = ${comp.wCoeffs[1].toFixed(5)}, CW = ${comp.wCoeffs[2].toFixed(5)}, DW = ${comp.wCoeffs[3].toFixed(5)}, EW = ${comp.wCoeffs[4].toFixed(5)}`
-    : 'Missing';
+  // Pre-fill data points if they exist
+  let existingPoints = comp.dataPoints || [];
 
   document.getElementById('addCompressorContent').innerHTML = `
-    <h2>Edit Compressor</h2>
     <style>
-      .matrix-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-      .matrix-table th, .matrix-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
-      .matrix-table input { width: 80px; }
-      .error-msg { color: #d32f2f; font-weight: bold; margin-top: 10px; }
+      .data-table th, .data-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
+      .data-table { margin: 10px 0; }
     </style>
-
+    <h2>Edit Compressor</h2>
     <fieldset>
       <legend>Basic Data</legend>
-      <label>Name: <input id="acName" type="text" value="${name}"></label>
-      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${cyl}"></label>
-      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${rpm}"></label>
+      <label>Name: <input id="acName" type="text" value="${comp.name}"></label>
+      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${comp.cylinderVolumeCm3}"></label>
+      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${comp.speedRpm}"></label>
       <label>Refrigerant:
         <select id="acRef">
-          <option value="1" ${refIdx === 1 ? 'selected' : ''}>R-134a</option>
-          <option value="2" ${refIdx === 2 ? 'selected' : ''}>R-600a</option>
+          <option value="1" ${comp.refrigerantIndex === 1 ? 'selected' : ''}>R-134a</option>
+          <option value="2" ${comp.refrigerantIndex === 2 ? 'selected' : ''}>R-600a</option>
         </select>
       </label>
     </fieldset>
-
     <fieldset>
-      <legend>Current Fitted Coefficients</legend>
-      <p><strong>Volumetric efficiency (η<sub>v</sub>):</strong> ${etaStr}</p>
-      <p><strong>Input power (W):</strong> ${wStr}</p>
-      <p><small>Leave test data empty to keep these coefficients.
-      Enter at least 5 data points to recompute.</small></p>
+      <legend>Current Data Points (${existingPoints.length} points)</legend>
+      <div id="acDataContainer">
+        ${existingPoints.length ? buildDataTableHTML(existingPoints) : '<p>No data points stored.</p>'}
+      </div>
     </fieldset>
-
     <fieldset>
-      <legend>Test Data (edit TE / TC headers and fill Q & W)</legend>
-      <table class="matrix-table">
-        <thead><tr><th></th>${headerCells}</tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
+      <legend>Replace with New Excel File</legend>
+      <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
+      <button id="acLoadBtn" type="button">Load & Replace</button>
+      <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
     </fieldset>
-
-    <div id="acError" class="error-msg"></div>
     <div class="settings-actions">
       <button id="fitAndSaveBtn">Fit & Save</button>
       <button id="cancelEditCompressor">Cancel</button>
@@ -619,6 +573,27 @@ function openEditCompressorModal() {
   `;
 
   modal.classList.remove('hidden');
+
+  let loadedDataPoints = existingPoints.length ? existingPoints : null;
+
+  // Load button to replace data
+  document.getElementById('acLoadBtn').onclick = async () => {
+    const fileInput = document.getElementById('acFileInput');
+    const file = fileInput.files[0];
+    if (!file) {
+      document.getElementById('acError').textContent = 'Please select a file.';
+      return;
+    }
+    try {
+      const points = await parseCompressorDataFile(file);
+      loadedDataPoints = points;
+      buildDataTable(points, 'acDataContainer');
+      document.getElementById('acError').textContent = '';
+    } catch (err) {
+      document.getElementById('acError').textContent = err.message;
+      loadedDataPoints = null;
+    }
+  };
 
   document.getElementById('cancelEditCompressor').onclick = () => {
     modal.classList.add('hidden');
@@ -628,75 +603,49 @@ function openEditCompressorModal() {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
 
+    if (!loadedDataPoints || loadedDataPoints.length < 5) {
+      errorDiv.textContent = 'At least 5 data points required. Load a file or keep existing points.';
+      return;
+    }
+
     const newName = document.getElementById('acName').value.trim();
-    const newCyl  = parseFloat(document.getElementById('acCyl').value);
-    const newRpm  = parseFloat(document.getElementById('acRpm').value);
+    const newCyl = parseFloat(document.getElementById('acCyl').value);
+    const newRpm = parseFloat(document.getElementById('acRpm').value);
     const newRefIdx = parseInt(document.getElementById('acRef').value);
 
     if (!newName) { errorDiv.textContent = 'Name is required.'; return; }
     if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
     if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
-    // Read TE and TC from headers
-    const TE_vals = [];
-    const TC_vals = [];
-    for (let i = 0; i < 3; i++) {
-      const te = parseFloat(document.getElementById(`te_${i}`).value);
-      if (isNaN(te)) { errorDiv.textContent = `Invalid TE in row ${i+1}.`; return; }
-      TE_vals.push(te);
-    }
-    for (let j = 0; j < 3; j++) {
-      const tc = parseFloat(document.getElementById(`tc_${j}`).value);
-      if (isNaN(tc)) { errorDiv.textContent = `Invalid TC in col ${j+1}.`; return; }
-      TC_vals.push(tc);
-    }
+    // If dataPoints changed or basic data changed, refit
+    const needRefit = (loadedDataPoints !== existingPoints) ||
+                      (newCyl !== comp.cylinderVolumeCm3) ||
+                      (newRpm !== comp.speedRpm) ||
+                      (newRefIdx !== comp.refrigerantIndex);
 
-    // Build data points from filled cells
-    const dataPoints = [];
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        const q = parseFloat(document.getElementById(`q_${i}_${j}`).value);
-        const w = parseFloat(document.getElementById(`w_${i}_${j}`).value);
-        if (!isNaN(q) && !isNaN(w)) {
-          dataPoints.push({ TE: TE_vals[i], TC: TC_vals[j], Q: q, W: w });
-        }
-      }
-    }
-
-    let wCoeffs, etaCoeffs, finalDataPoints;
-    const nonZeroCount = dataPoints.filter(dp => dp.Q !== 0 || dp.W !== 0).length;
-    if (dataPoints.length >= 5 && nonZeroCount === 0) {
-      errorDiv.textContent = 'All test data values are zero – cannot fit. Leave cells empty to keep existing coefficients.';
-      return;
-    }
-
-    if (dataPoints.length >= 5) {
+    let wCoeffs, etaCoeffs, finalPoints;
+    if (needRefit) {
       try {
         const coeffs = computeCompressorCoefficients({
           cylinderVolumeCm3: newCyl,
           speedRpm: newRpm,
           refrigerantIndex: newRefIdx,
-          dataPoints,
+          dataPoints: loadedDataPoints,
         });
         wCoeffs = coeffs.wCoeffs;
         etaCoeffs = coeffs.etaCoeffs;
-        finalDataPoints = dataPoints;
+        finalPoints = loadedDataPoints;
       } catch (err) {
-        errorDiv.textContent = 'Coefficient fitting failed: ' + err.message;
+        errorDiv.textContent = 'Fitting failed: ' + err.message;
         return;
       }
     } else {
       // Keep existing coefficients
-      if (!comp.wCoeffs || !comp.etaCoeffs || comp.wCoeffs.length !== 5 || comp.etaCoeffs.length !== 3) {
-        errorDiv.textContent = 'No valid existing coefficients. Please enter at least 5 test data points.';
-        return;
-      }
       wCoeffs = comp.wCoeffs;
       etaCoeffs = comp.etaCoeffs;
-      finalDataPoints = comp.dataPoints;
+      finalPoints = existingPoints;
     }
 
-    // Build updated compressor object
     const updatedComp = {
       id: newName.replace(/\s/g, ''),
       name: newName,
@@ -708,21 +657,31 @@ function openEditCompressorModal() {
       refrigerantIndex: newRefIdx,
       wCoeffs,
       etaCoeffs,
-      dataPoints: finalDataPoints,
+      dataPoints: finalPoints,
     };
 
-    // Replace the old compressor with the updated one
     deleteCompressor(comp.id);
     addCompressor(updatedComp);
     setSelectedCompressor(updatedComp.id);
 
     modal.classList.add('hidden');
-    openThermalSettings();   // refresh the compressor dropdown
+    openThermalSettings();
   };
 
   modal.onclick = (e) => {
     if (e.target === modal) modal.classList.add('hidden');
   };
+}
+
+// Helper to build data table HTML from array
+function buildDataTableHTML(dataPoints) {
+  if (!dataPoints || dataPoints.length === 0) return '<p>No data points.</p>';
+  let html = `<table class="data-table"><thead><tr><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
+  dataPoints.forEach(dp => {
+    html += `<tr><td>${dp.TE.toFixed(2)}</td><td>${dp.TC.toFixed(2)}</td><td>${dp.W.toFixed(2)}</td><td>${dp.Q.toFixed(2)}</td></tr>`;
+  });
+  html += `</tbody></table><p>${dataPoints.length} data points.</p>`;
+  return html;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -812,6 +771,13 @@ function handleRun() {
   config.solverOptions.innerOptions.debug = true;
 
   const result = runThermoAnalysis(config);
+  if (result.results && result.results.compressor) {
+  // Attach coefficients for display
+  if (config.compParams) {
+    result.results.compressor.wCoeffs = config.compParams.wCoeffs;
+    result.results.compressor.etaCoeffs = config.compParams.etaCoeffs;
+  }
+}
   if (!result.success) {
     showError(result.errors.join('; '));
     return;
@@ -875,7 +841,6 @@ function displayResults(res, energy) {
 
   const resultsDiv = document.getElementById('thermoRightPanel');
   if (!resultsDiv) return;
-
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   const overlay     = document.getElementById('schematicOverlay');
@@ -898,6 +863,13 @@ function displayResults(res, energy) {
 
   const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
+  let etaStr = '—', wStr = '—';
+  if (comp.etaCoeffs && comp.etaCoeffs.length === 3) {
+    etaStr = `A = ${comp.etaCoeffs[0].toFixed(5)}, B = ${comp.etaCoeffs[1].toFixed(5)}, C = ${comp.etaCoeffs[2].toFixed(5)}`;
+  }
+  if (comp.wCoeffs && comp.wCoeffs.length === 5) {
+    wStr = `AW = ${comp.wCoeffs[0].toFixed(5)}, BW = ${comp.wCoeffs[1].toFixed(5)}, CW = ${comp.wCoeffs[2].toFixed(5)}, DW = ${comp.wCoeffs[3].toFixed(5)}, EW = ${comp.wCoeffs[4].toFixed(5)}`;
+  }
 
   const fanAirflow_m3h = res.fanAirflow !== undefined ? res.fanAirflow : 0;
   const fanAirflow_CFM = fanAirflow_m3h * 0.588578;   // 1 m³/h = 0.588578 CFM
@@ -916,6 +888,9 @@ function displayResults(res, energy) {
         <tr><td>Running ratio PR</td><td>${fmtP(res.PR)}</td></tr>
 
         <tr class="section-header"><td colspan="2">Compressor Details</td></tr>
+        <tr class="section-header"><td colspan="2">Compressor Coefficients</td></tr>
+        <tr><td>η<sub>v</sub> coefficients</td><td>${etaStr}</td></tr>
+        <tr><td>Power coefficients</td><td>${wStr}</td></tr>
         <tr><td>Evap. pressure Pe</td><td>${pe} bar</td></tr>
         <tr><td>Cond. pressure Pc</td><td>${pc} bar</td></tr>
         <tr><td>Vol. efficiency η<sub>v</sub></td><td>${etaV}</td></tr>

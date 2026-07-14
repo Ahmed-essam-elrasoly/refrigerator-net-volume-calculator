@@ -70,13 +70,10 @@ export function toThermalFormat(geom) {
     tRbottom3: walls.refrigerator.bottom3,
     tRdoor:   walls.refrigerator.door,
 
-    // Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
-    // These are the same cabinet bottom‑insulation values as the refrigerator's,
-    // because the stepped floor exists regardless of compartment type.
-    tFfloor1: walls.refrigerator.bottom1,
-    tFfloor2: walls.refrigerator.bottom2,
-    tFfloor3: walls.refrigerator.bottom3,
-
+// Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
+    tFfloor1: walls.freezer.bottom1 || walls.refrigerator.bottom1,
+    tFfloor2: walls.freezer.bottom2 || walls.refrigerator.bottom2,
+    tFfloor3: walls.freezer.bottom3 || walls.refrigerator.bottom3,
     // Refrigerator interior floor (used for partition in two‑compartment bottom‑freezer)
     // In a single‑fresh configuration this is the exterior floor; value is still correct.
     tRfloor:  walls.refrigerator.bottom1,  // or bottom1, whichever is the raised floor
