@@ -1,0 +1,252 @@
+{
+  "schemaVersion": "2.0",
+  "meta": {
+    "name": "UI Config",
+    "createdAt": "2026-07-12T12:19:02.595Z",
+    "updatedAt": "2026-07-13T08:14:06.875Z"
+  },
+  "cabinet": {
+    "geometry": {
+      "H": 1800,
+      "W": 795,
+      "D": 650,
+      "Hb": 314,
+      "Db1": 192,
+      "Db2": 217,
+      "doorGap": 10,
+      "packingPos": 15,
+      "airGap": 0,
+      "Hf": 670,
+      "Hr": 945,
+      "walls": {
+        "freezer": {
+          "top": 50,
+          "bottom": 50,
+          "left": 80,
+          "right": 80,
+          "door": 70,
+          "rear": 80,
+          "bottom1": 75,
+          "bottom2": 80,
+          "bottom3": 80
+        },
+        "refrigerator": {
+          "top": 55,
+          "bottom1": 75,
+          "bottom2": 80,
+          "bottom3": 80,
+          "left": 55,
+          "right": 55,
+          "door": 55,
+          "rear": 55
+        }
+      },
+      "special": {
+        "railHeight": 20,
+        "railWidth": 10,
+        "railDepthPct": 50,
+        "doorDikeHeight": 50,
+        "doorDikeBaseWidth": 30,
+        "doorDikeTopWidth": 15
+      },
+      "obstacles": {
+        "evapDepth": 85,
+        "ctrlBoxH": 150,
+        "ctrlBoxW": 500,
+        "ctrlBoxL": 100,
+        "rshowerH": 700,
+        "rshowerW": 500,
+        "rshowerL": 50
+      },
+      "_compartments": [
+        {
+          "type": "fresh",
+          "top": 55,
+          "left": 55,
+          "right": 55,
+          "rear": 55,
+          "door": 55,
+          "height": 945,
+          "ratio": 0.5851393188854489,
+          "shelfCount": 0
+        },
+        {
+          "type": "freezer",
+          "top": 50,
+          "left": 80,
+          "right": 80,
+          "rear": 80,
+          "door": 70,
+          "height": 670,
+          "ratio": 0.4148606811145511,
+          "shelfCount": 0
+        }
+      ]
+    },
+    "layout": {
+      "nodeType": "horizontal",
+      "id": "root",
+      "children": [
+        {
+          "heightMode": "ratio",
+          "heightValue": 0.5851393188854489,
+          "node": {
+            "nodeType": "leaf",
+            "id": "comp0",
+            "type": "fresh",
+            "fittings": {
+              "shelfCount": 0,
+              "shelves": [],
+              "drawers": [],
+              "doorBins": [],
+              "iceMakerHousing": {
+                "volume": null
+              },
+              "lightHousing": {
+                "volume": null
+              }
+            }
+          }
+        },
+        {
+          "heightMode": "ratio",
+          "heightValue": 0.4148606811145511,
+          "node": {
+            "nodeType": "leaf",
+            "id": "comp1",
+            "type": "freezer",
+            "fittings": {
+              "shelfCount": 0,
+              "shelves": [],
+              "drawers": [],
+              "doorBins": [],
+              "iceMakerHousing": {
+                "volume": null
+              },
+              "lightHousing": {
+                "volume": null
+              }
+            }
+          }
+        }
+      ],
+      "dividers": [
+        {
+          "afterChildIndex": 0,
+          "thickness": 50
+        }
+      ]
+    }
+  },
+  "thermal": {
+    "T0": 30,
+    "TF": -18,
+    "TR": 3,
+    "refrigerant": "R-600a",
+    "advanced": {
+      "subcool": 10,
+      "dischargeTemp": 60,
+      "fanInputPower": 2.1,
+      "defHeater": 140,
+      "defOnMin": 10
+    },
+    "evaporator": {
+      "width_mm": 490,
+      "height_mm": 210,
+      "depth_mm": 60,
+      "rows": 2,
+      "tubeOD_mm": 8,
+      "finHeight_mm": 28,
+      "finLength_mm": 60,
+      "numFins": 385,
+      "sidePlateNo": 2
+    },
+    "condenser": {
+      "sidePipePitch_mm": 130,
+      "backPipePitch_mm": 0
+    },
+    "fanParam": {
+      "fanDiam": 118,
+      "fanRPM": 2200,
+      "fanThick": 25
+    },
+    "compressor": {
+      "id": "DZ90A1X",
+      "name": "DZ90A1X",
+      "model": "DZ90A1X",
+      "voltage": 100,
+      "frequency": 50,
+      "cylinderVolumeCm3": 9,
+      "speedRpm": 1320,
+      "refrigerantIndex": 2,
+      "wCoeffs": [
+        13.777083333326992,
+        -0.14958333333373103,
+        0.8145833333334012,
+        0.017250000000002468,
+        -0.0026666666666722992
+      ],
+      "etaCoeffs": [
+        1.33312404630973,
+        0.009343882947314962,
+        -0.09270031141787767
+      ],
+      "dataPoints": [
+        {
+          "TE": -35,
+          "TC": 35,
+          "Q": 62,
+          "W": 23
+        },
+        {
+          "TE": -35,
+          "TC": 45,
+          "Q": 52,
+          "W": 25.3
+        },
+        {
+          "TE": -35,
+          "TC": 55,
+          "Q": 42,
+          "W": 27.4
+        },
+        {
+          "TE": -25,
+          "TC": 35,
+          "Q": 86.3,
+          "W": 29.4
+        },
+        {
+          "TE": -25,
+          "TC": 45,
+          "Q": 76.3,
+          "W": 33.2
+        },
+        {
+          "TE": -25,
+          "TC": 55,
+          "Q": 66.2,
+          "W": 36.7
+        },
+        {
+          "TE": -15,
+          "TC": 35,
+          "Q": 121.8,
+          "W": 34.7
+        },
+        {
+          "TE": -15,
+          "TC": 45,
+          "Q": 111.8,
+          "W": 40.6
+        },
+        {
+          "TE": -15,
+          "TC": 55,
+          "Q": 101.8,
+          "W": 46
+        }
+      ]
+    }
+  }
+}
