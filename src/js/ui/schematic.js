@@ -297,7 +297,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ─── Control Box & R‑Shower (right‑aligned) ───
+  // ─── Control Box & R‑Shower (bottom‑aligned, control box on divider) ───
   let freshIdx = -1;
   if (numCompartments === 1) {
     freshIdx = 0;
@@ -317,39 +317,58 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     freshHeight = compHeights[freshIdx];
   }
 
-  // Control box
-  if (freshIdx >= 0 && ctrlBoxH > 0 && ctrlBoxW > 0) {
-    const x = (W/2 - ctrlBoxW/2) * scale;
-    const y = freshTopY * scale;
-    const h = Math.min(ctrlBoxH, freshHeight) * scale;
-    const w = ctrlBoxW * scale;
+  if (freshIdx >= 0) {
+    const compartmentHeight = freshHeight;
+    const freshCompTop = freshTopY;
+    const freshCompBottom = freshTopY + compartmentHeight; // divider is at this Y
 
-    ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#aa6600';
-    ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#333';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Ctrl Box', x + w/2, y + h/2 + 3);
-  }
-
-  // R‑Shower
-  if (freshIdx >= 0 && numCompartments === 2 && rshowerH > 0 && rshowerW > 0 && ctrlBoxH > 0) {
-    const topY = (freshTopY + ctrlBoxH) * scale;
-    if (topY < (freshTopY + freshHeight) * scale) {
-      const h = Math.min(rshowerH, freshHeight - ctrlBoxH) * scale;
-      const w = rshowerW * scale;
-      const x = (W/2 - rshowerW/2) * scale;
-
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-      ctx.fillRect(x, topY, w, h);
-      ctx.strokeStyle = '#0066aa';
-      ctx.strokeRect(x, topY, w, h);
+    // Helper to draw a box with centred label
+    function drawBox(x, y, w, h, label, fillColor, strokeColor) {
+      ctx.fillStyle = fillColor;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = strokeColor;
+      ctx.strokeRect(x, y, w, h);
       ctx.fillStyle = '#333';
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('R-Shower', x + w/2, topY + h/2 + 3);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, x + w / 2, y + h / 2);
+    }
+
+    const ctrlBoxW_px = ctrlBoxW * scale;
+    const rshowerW_px = rshowerW * scale;
+    const ctrlBoxH_px = Math.min(ctrlBoxH, compartmentHeight) * scale;
+    const rshowerH_px = Math.min(rshowerH, compartmentHeight) * scale;
+
+    const both = ctrlBoxH > 0 && rshowerH > 0 && ctrlBoxW > 0 && rshowerW > 0;
+    const totalH_px = ctrlBoxH_px + rshowerH_px;
+
+    if (both && totalH_px <= compartmentHeight * scale) {
+      // Control box at bottom (touches divider), R‑shower above it
+      const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
+      const rshowerY = ctrlBoxY - rshowerH_px;
+
+      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
+      const rshowerX = (W / 2 - rshowerW / 2) * scale;
+
+      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
+              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
+      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
+              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
+
+    } else if (ctrlBoxH > 0 && ctrlBoxW > 0) {
+      // Only control box – stick to divider
+      const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
+      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
+      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
+              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
+
+    } else if (rshowerH > 0 && rshowerW > 0) {
+      // Only R‑shower – keep at bottom (consistent behaviour)
+      const rshowerY = (freshCompBottom * scale) - rshowerH_px;
+      const rshowerX = (W / 2 - rshowerW / 2) * scale;
+      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
+              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
     }
   }
 
@@ -678,6 +697,128 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   // ── Obstruction data ──
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
 
+  // Find the fresh compartment index and its world‑space boundaries
+  let freshCompIdx = -1, freshTopWorld = 0, freshBottomWorld = 0;
+  if (compHeights.length === 1) {
+    freshCompIdx = 0;
+    freshTopWorld = innerTopY;
+    freshBottomWorld = innerBottomY;
+  } else {
+    freshCompIdx = compartmentTypes.findIndex(t => t === 'fresh');
+    if (freshCompIdx >= 0) {
+      let yAcc = innerTopY;
+      for (let i = 0; i < freshCompIdx; i++) {
+        yAcc += compHeights[i];
+        if (i < freshCompIdx - 1) yAcc += dividerThickness;
+      }
+      if (freshCompIdx > 0) yAcc += dividerThickness;
+      freshTopWorld = yAcc;
+      freshBottomWorld = yAcc + compHeights[freshCompIdx];
+    }
+  }
+
+  // Place control box and R‑shower inside the fresh compartment,
+  // with control box at the bottom (touching divider) and R‑shower above.
+  if (freshCompIdx >= 0) {
+    const rearX = compRear[freshCompIdx];
+    const freshHeight = freshBottomWorld - freshTopWorld;
+    const ctrlBoxH_eff = Math.min(ctrlBoxH, freshHeight);
+    const rshowerH_eff = Math.min(rshowerH, freshHeight);
+
+    const drawCtrl = ctrlBoxH > 0 && ctrlBoxL > 0;
+    const drawRshower = rshowerH > 0 && rshowerL > 0;
+    const totalH_needed = (drawCtrl ? ctrlBoxH_eff : 0) + (drawRshower ? rshowerH_eff : 0);
+
+    if (totalH_needed <= freshHeight) {
+      let yCursor = freshBottomWorld;  // bottom of fresh compartment = divider
+
+      // Control box (bottommost)
+      if (drawCtrl) {
+        const boxTop = yCursor - ctrlBoxH_eff;
+        const boxH = ctrlBoxH_eff * scale;
+        const boxW = ctrlBoxL * scale;
+        const boxX = rearX * scale;
+
+        ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.strokeStyle = '#aa6600';
+        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.fillStyle = '#333';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+        ctrlBoxFrontX = rearX + ctrlBoxL;
+        ctrlBoxTop = boxTop;        // world coords
+        ctrlBoxBottom = yCursor;
+
+        yCursor = boxTop;           // move up for next element
+      }
+
+      // R‑Shower (above control box)
+      if (drawRshower) {
+        const boxTop = yCursor - rshowerH_eff;
+        const boxH = rshowerH_eff * scale;
+        const boxW = rshowerL * scale;
+        const boxX = rearX * scale;
+
+        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.strokeStyle = '#0066aa';
+        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.fillStyle = '#333';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+        rshowerFrontX = rearX + rshowerL;
+        rshowerTop = boxTop;
+        rshowerBottom = yCursor;
+      }
+    } else {
+      // Not enough space – fall back to drawing only the control box
+      // (or only the R‑shower if control box absent)
+      if (drawCtrl) {
+        const boxTop = freshBottomWorld - ctrlBoxH_eff;
+        const boxH = ctrlBoxH_eff * scale;
+        const boxW = ctrlBoxL * scale;
+        const boxX = rearX * scale;
+
+        ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.strokeStyle = '#aa6600';
+        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.fillStyle = '#333';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+        ctrlBoxFrontX = rearX + ctrlBoxL;
+        ctrlBoxTop = boxTop;
+        ctrlBoxBottom = freshBottomWorld;
+      } else if (drawRshower) {
+        const boxTop = freshBottomWorld - rshowerH_eff;
+        const boxH = rshowerH_eff * scale;
+        const boxW = rshowerL * scale;
+        const boxX = rearX * scale;
+
+        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.strokeStyle = '#0066aa';
+        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+        ctx.fillStyle = '#333';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+        rshowerFrontX = rearX + rshowerL;
+        rshowerTop = boxTop;
+        rshowerBottom = freshBottomWorld;
+      }
+    }
+  }
+
+  // ── Evaporator drawing (unchanged) ──
   if (numCompartments === 1 && evapDepth > 0) {
     const rearX = compRear[0];
     const evapX = (rearX + evapDepth) * scale;
@@ -694,126 +835,34 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Evap', evapX, innerTopY * scale + 10);
-
-    if (ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const boxRearX = rearX + evapDepth; 
-      const boxX = boxRearX * scale;
-      const boxY = innerTopY * scale;
-      const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
-      const boxW = ctrlBoxL * scale;
-
-      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#aa6600';
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
-
-      ctrlBoxFrontX = boxRearX + ctrlBoxL;
-      ctrlBoxTop = innerTopY;
-      ctrlBoxBottom = innerTopY + Math.min(ctrlBoxH, innerBottomY - innerTopY);
-    }
   } else {
-    let freshCompIdx = -1;
-    let freshTopWorld = 0, freshBottomWorld = 0;
-    if (compHeights.length === 1) {
-      freshCompIdx = 0;
-      freshTopWorld = innerTopY;
-      freshBottomWorld = innerBottomY;
-    } else {
-      for (let i = 0; i < compHeights.length; i++) {
-        if (compartmentTypes[i] === 'fresh') {
-          freshCompIdx = i;
-          break;
-        }
-      }
-      let yAcc = innerTopY;
-      for (let i = 0; i < freshCompIdx; i++) {
-        yAcc += compHeights[i];
-        if (i < freshCompIdx - 1) yAcc += dividerThickness;
-      }
-      if (freshCompIdx > 0) yAcc += dividerThickness;
-      freshTopWorld = yAcc;
-      freshBottomWorld = yAcc + compHeights[freshCompIdx];
-    }
+    let yOffset = innerTopY;
+    for (let i = 0; i < compHeights.length; i++) {
+      if (isFreezer(i)) {
+        const compTopY = yOffset;
+        let compBottomY = yOffset + compHeights[i];
+        if (i === compHeights.length - 1) {
+          compBottomY = Math.min(compBottomY, floorRaisedY);
+        }          
+        const rearX = compRear[i];
+        const evapX = (rearX + evapDepth) * scale;
+        ctx.save();
+        ctx.strokeStyle = '#cc0000';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(evapX, compTopY * scale);
+        ctx.lineTo(evapX, compBottomY * scale);
+        ctx.stroke();
+        ctx.restore();
 
-    if (evapDepth > 0) {
-      let yOffset = innerTopY;
-      for (let i = 0; i < compHeights.length; i++) {
-        if (isFreezer(i)) {
-          const compTopY = yOffset;
-          let compBottomY = yOffset + compHeights[i];
-          if (i === compHeights.length - 1) {
-            compBottomY = Math.min(compBottomY, floorRaisedY);
-          }          
-          const rearX = compRear[i];
-          const evapX = (rearX + evapDepth) * scale;
-          ctx.save();
-          ctx.strokeStyle = '#cc0000';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([5, 3]);
-          ctx.beginPath();
-          ctx.moveTo(evapX, compTopY * scale);
-          ctx.lineTo(evapX, compBottomY * scale);
-          ctx.stroke();
-          ctx.restore();
-
-          ctx.fillStyle = '#cc0000';
-          ctx.font = '9px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('Evap', evapX, compTopY * scale + 10);
-        }
-        yOffset += compHeights[i];
-        if (i < compHeights.length - 1) yOffset += dividerThickness;
-      }
-    }
-
-    if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const rearX = compRear[freshCompIdx];
-      const boxX = rearX * scale;
-      const boxY = freshTopWorld * scale;
-      const boxH = Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld)) * scale;
-      const boxW = ctrlBoxL * scale;
-
-      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#aa6600';
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
-
-      ctrlBoxFrontX = rearX  + ctrlBoxL;
-      ctrlBoxTop = freshTopWorld;
-      ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld));
-    }
-
-    if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
-      const rearX = compRear[freshCompIdx];
-      const rTop = freshTopWorld + ctrlBoxH;
-      if (rTop < freshBottomWorld) {
-        const h = Math.min(rshowerH, freshBottomWorld - rTop);
-        const boxX = rearX * scale;
-        const boxY = rTop * scale;
-        const boxW = rshowerL * scale;
-        const boxH = h * scale;
-
-        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-        ctx.fillRect(boxX, boxY, boxW, boxH);
-        ctx.strokeStyle = '#0066aa';
-        ctx.strokeRect(boxX, boxY, boxW, boxH);
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#cc0000';
         ctx.font = '9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('R-Shower', boxX + boxW/2, boxY + boxH/2 + 3);
-
-        rshowerFrontX = rearX + rshowerL;
-        rshowerTop = rTop;
-        rshowerBottom = rTop + h;
+        ctx.fillText('Evap', evapX, compTopY * scale + 10);
       }
+      yOffset += compHeights[i];
+      if (i < compHeights.length - 1) yOffset += dividerThickness;
     }
   }
 

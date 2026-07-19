@@ -676,13 +676,10 @@ function computeObstacleVolumes(geometry) {
  * Then subtracts remaining fixed elements for Total Volume.
  */
 function displayPreciseResults(leaves, geometry) {
-  // 1. Compute adjusted gross per leaf (subtract rails+dikes proportionally? 
-  //    Actually the old code subtracted rails+dikes per compartment.
-  //    We'll compute per‑compartment rails+dikes and subtract from each leaf's gross.
+  // 1. Compute adjusted gross per leaf (subtract rails+dikes)
   const comps = compartmentsData;
   const special = geometry.special || {};
 
-  // Per‑compartment rails & dikes in litres
   const perCompRailsDikesL = comps.map(c => {
     const shelfCount = c.shelfCount || 0;
     const innerW = geometry.W - c.left - c.right;
@@ -702,7 +699,6 @@ function displayPreciseResults(leaves, geometry) {
     return railsVol + dikesVol;
   });
 
-  // Adjust each leaf's gross by subtracting its compartment's rails+dikes
   const adjustedLeaves = leaves.map((leaf, idx) => ({
     ...leaf,
     gross: Math.max(0, leaf.gross - perCompRailsDikesL[idx]),
@@ -711,21 +707,50 @@ function displayPreciseResults(leaves, geometry) {
   const grossL = adjustedLeaves.reduce((sum, l) => sum + l.gross, 0);
   const grossCuft = grossL * settings.lToCuft;
 
-  // Remaining fixed obstacles (evap, control box, R‑shower)
   const obstacles = computeObstacleVolumes(geometry);
   const totalL = Math.max(0, grossL - obstacles.evaporator - obstacles.controlBox - obstacles.rshower);
   const totalCuft = totalL * settings.lToCuft;
 
+  // Update combined results
+  document.getElementById('grossVol').textContent      = roundForDisplay(grossL, 'L');
+  document.getElementById('grossVolCuft').textContent  = roundForDisplay(grossCuft, 'cuft');
+  document.getElementById('totalVol').textContent      = roundForDisplay(totalL, 'L');
+  document.getElementById('totalVolCuft').textContent  = roundForDisplay(totalCuft, 'cuft');
+
+  // ---- Per‑compartment volumes (using compartmentsData types) ----
+  const getDisplay = (val, unit) => (val != null && !isNaN(val)) ? roundForDisplay(val, unit) : '--';
+  const getCuft = (val) => (val != null && !isNaN(val)) ? roundForDisplay(val * settings.lToCuft, 'cuft') : '--';
+
+  const freezerIdx = comps.findIndex(c => c.type === 'freezer');
+  const freshIdx   = comps.findIndex(c => c.type === 'fresh');
+
+  const freezerGross = freezerIdx >= 0 ? adjustedLeaves[freezerIdx]?.gross : null;
+  const freshGross   = freshIdx >= 0 ? adjustedLeaves[freshIdx]?.gross : null;
+
+  const freezerTotal = freezerGross != null
+    ? Math.max(0, freezerGross - (obstacles.evaporator || 0))
+    : null;
+
+  const freshTotal = freshGross != null
+    ? Math.max(0, freshGross - (obstacles.controlBox || 0) - (obstacles.rshower || 0))
+    : null;
+
+  document.getElementById('freezerGrossVol').textContent      = getDisplay(freezerGross, 'L');
+  document.getElementById('freezerGrossVolCuft').textContent  = getCuft(freezerGross);
+  document.getElementById('freezerTotalVol').textContent      = getDisplay(freezerTotal, 'L');
+  document.getElementById('freezerTotalVolCuft').textContent  = getCuft(freezerTotal);
+  document.getElementById('fridgeGrossVol').textContent       = getDisplay(freshGross, 'L');
+  document.getElementById('fridgeGrossVolCuft').textContent   = getCuft(freshGross);
+  document.getElementById('fridgeTotalVol').textContent       = getDisplay(freshTotal, 'L');
+  document.getElementById('fridgeTotalVolCuft').textContent   = getCuft(freshTotal);
+
   // ---- PU Estimation (unchanged) ----
-  // Door volumes use the original per‑compartment inner width and dike volumes
   let fdoorPUVolL = 0, rdoorPUVolL = 0;
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i];
     const innerW = geometry.W - c.left - c.right;
     const doorThick = c.door || 0;
     const baseVol = doorThick * innerW * c.height * settings.mm3ToL;
-    const dikeVol = perCompRailsDikesL[i] // we need only dike for door PU
-    // Actually we want total door volume including dike, so we can recompute dikes:
     const dikeH = special.doorDikeHeight || 0;
     const dikeBaseW = special.doorDikeBaseWidth || 0;
     const dikeTopW = special.doorDikeTopWidth || 0;
@@ -737,17 +762,10 @@ function displayPreciseResults(leaves, geometry) {
     else if (c.type === 'fresh') rdoorPUVolL = totalDoorVol;
   }
 
-  // Cabinet PU (external vol - internal vol - door vols)
   const extVolMm3 = geometry.H * geometry.W * geometry.D;
   const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
   const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
-  const cabPUVolL = extVolL - grossL - fdoorPUVolL - rdoorPUVolL; // grossL already excludes rails+dikes inside? No, internal volume for PU should be the actual cavity volume without deductions. But the old code used the same gross (after rail/dike subtraction) for PU, so we'll follow that.
-
-  // Update UI
-  document.getElementById('grossVol').textContent      = roundForDisplay(grossL, 'L');
-  document.getElementById('grossVolCuft').textContent  = roundForDisplay(grossCuft, 'cuft');
-  document.getElementById('totalVol').textContent      = roundForDisplay(totalL, 'L');
-  document.getElementById('totalVolCuft').textContent  = roundForDisplay(totalCuft, 'cuft');
+  const cabPUVolL = extVolL - grossL - fdoorPUVolL - rdoorPUVolL;
 
   document.getElementById('cabpuVol').textContent      = roundForDisplay(cabPUVolL, 'L');
   document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(cabPUVolL * settings.lToCuft, 'cuft');
@@ -1198,7 +1216,13 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (frontCanvas) frontCanvas.style.display = 'none';
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
-
+document.getElementById('tabInverter').addEventListener('click', () => {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById('panelInverter').classList.remove('hidden');
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tabInverter').classList.add('active');
+  // hide schematics / show thermo results if needed
+});
 // Thermo UI init with geometry provider
 initThermoUI({
   getGeometry: () => readGeometryFromPanel(),
