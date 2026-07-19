@@ -670,65 +670,90 @@ function fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, cen
 }
 
 // ========== Auto‑split detection ==========
-function autoSplitRPM(dataPoints, targetCol, normalizeRPM, centerTE, centerTC) {
-  const cvRes = cvInverter(dataPoints, targetCol, 'n_quad', false, [0.001], normalizeRPM, centerTE, centerTC);
-  if (!cvRes || cvRes.avgRMSE > 100) return null;
-  // crude heuristic: if max RPM error is much larger than median
-  const groups = dataPoints.map(d => d.RPM);
-  const uniqueRPMs = [...new Set(groups)].sort((a,b)=>a-b);
-  if (uniqueRPMs.length < 2) return null;
-  const maxRPM = uniqueRPMs[uniqueRPMs.length-1];
-  // compute fold errors again manually? Not efficient; just return maxRPM as split if high RMSE
-  if (cvRes.avgRMSE > 3.0) return maxRPM;
-  return null;
+/**
+ * Evaluate candidate split points and return the best model.
+ * Returns an object: { type: 'global'|'piecewise', model: {...} }
+ */
+function selectBestInverterModel(dataPoints, targetCol, targetRMSE, normalizeRPM, centerTE, centerTC) {
+    const uniqueRPMs = [...new Set(dataPoints.map(d => d.RPM))].sort((a,b)=>a-b);
+    if (uniqueRPMs.length < 3) {
+        // Not enough RPM levels for piecewise; use global
+        return buildGlobalModel(dataPoints, targetCol, normalizeRPM, centerTE, centerTC, targetRMSE);
+    }
+
+    // First, fit the best global model
+    const globalBest = buildGlobalModel(dataPoints, targetCol, normalizeRPM, centerTE, centerTC, targetRMSE);
+    if (!globalBest) return null;
+
+    // Evaluate piecewise models for each possible split (between the 2nd and second-last RPM)
+    let bestPiecewise = null;
+    let bestPiecewiseRMSE = Infinity;
+    for (let idx = 1; idx < uniqueRPMs.length - 1; idx++) {
+        const splitRPM = uniqueRPMs[idx];
+        try {
+            const pw = fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, centerTE, centerTC);
+            if (pw.rmse < bestPiecewiseRMSE) {
+                bestPiecewiseRMSE = pw.rmse;
+                bestPiecewise = pw;
+            }
+        } catch (e) {
+            // skip if fitting fails
+        }
+    }
+
+    // Compare using a penalty for piecewise complexity (e.g., +0.5 to RMSE)
+    const globalRMSE = globalBest.cvRMSE || globalBest.rmse;
+    const piecewisePenalty = 0.5; // adjust based on desired complexity trade-off
+    const adjustedPiecewiseRMSE = bestPiecewise ? bestPiecewise.rmse + piecewisePenalty : Infinity;
+
+    if (bestPiecewise && adjustedPiecewiseRMSE < globalRMSE) {
+        return { type: 'piecewise', model: bestPiecewise };
+    } else {
+        return { type: 'global', model: globalBest };
+    }
 }
 
+/**
+ * Fit the best global model (choose among forms and log transforms)
+ */
+function buildGlobalModel(dataPoints, targetCol, normalizeRPM, centerTE, centerTC, targetRMSE) {
+    const globalCandidates = ['n_lin', 'n_quad', 'ln_n_lin', 'ln_n_quad'];
+    const logOptions = [false, true];
+    const alphas = [0.001, 0.01, 0.1, 1, 10, 100];
+
+    let best = null;
+    let bestRMSE = Infinity;
+
+    for (const rpmForm of globalCandidates) {
+        for (const logTrans of logOptions) {
+            const cv = cvInverter(dataPoints, targetCol, rpmForm, logTrans, alphas, normalizeRPM, centerTE, centerTC);
+            if (cv.avgRMSE < bestRMSE) {
+                bestRMSE = cv.avgRMSE;
+                best = { type: 'global', rpmForm, logTransform: logTrans, alpha: cv.alpha, cvRMSE: cv.avgRMSE };
+            }
+        }
+    }
+
+    if (!best) return null;
+
+    // Refit on all data with best parameters
+    const X = dataPoints.map(d => makeFeatures(best.rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC));
+    const y = best.logTransform ? dataPoints.map(d => Math.log(d[targetCol])) : dataPoints.map(d => d[targetCol]);
+    const coeffs = solveRidge(X, y, best.alpha);
+    return { ...best, coeffs, rmse: bestRMSE };
+}
 // ========== Main selector ==========
 function selectInverterModel(dataPoints, targetCol, targetRMSE, normalizeRPM, centerTE, centerTC) {
-  const globalCandidates = ['n_lin', 'n_quad', 'ln_n_lin', 'ln_n_quad'];
-  const logOptions = [false, true];
-  const alphas = [0.001, 0.01, 0.1, 1, 10, 100];
-
-  let bestGlobal = null;
-  let bestGlobalRMSE = Infinity;
-
-  for (const rpmForm of globalCandidates) {
-    for (const logTrans of logOptions) {
-      const cv = cvInverter(dataPoints, targetCol, rpmForm, logTrans, alphas, normalizeRPM, centerTE, centerTC);
-      if (cv.avgRMSE < bestGlobalRMSE) {
-        bestGlobalRMSE = cv.avgRMSE;
-        bestGlobal = { type: 'global', rpmForm, logTransform: logTrans, alpha: cv.alpha, cvRMSE: cv.avgRMSE };
-      }
+    const best = selectBestInverterModel(dataPoints, targetCol, targetRMSE, normalizeRPM, centerTE, centerTC);
+    if (!best) {
+        // Fallback: simplest global model
+        const fallback = buildGlobalModel(dataPoints, targetCol, normalizeRPM, centerTE, centerTC, targetRMSE);
+        if (!fallback) throw new Error(`Could not fit model for ${targetCol}`);
+        return fallback;
     }
-    if (bestGlobalRMSE <= targetRMSE) break;
-  }
-
-  if (bestGlobal && bestGlobal.cvRMSE <= targetRMSE) {
-    // Refit on all data with best parameters to get final coefficients
-    const X = dataPoints.map(d => makeFeatures(bestGlobal.rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC));
-    const y = bestGlobal.logTransform ? dataPoints.map(d => Math.log(d[targetCol])) : dataPoints.map(d => d[targetCol]);
-    const coeffs = solveRidge(X, y, bestGlobal.alpha);
-    return { ...bestGlobal, coeffs };
-  }
-
-  // Try piecewise
-  const splitRPM = autoSplitRPM(dataPoints, targetCol, normalizeRPM, centerTE, centerTC) || Math.max(...dataPoints.map(d => d.RPM));
-  try {
-    const pw = fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, centerTE, centerTC);
-    if (pw.rmse <= targetRMSE) return pw;
-  } catch (e) {}
-
-  // Fallback to best global even if above target
-  if (bestGlobal) {
-    const X = dataPoints.map(d => makeFeatures(bestGlobal.rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC));
-    const y = bestGlobal.logTransform ? dataPoints.map(d => Math.log(d[targetCol])) : dataPoints.map(d => d[targetCol]);
-    const coeffs = solveRidge(X, y, bestGlobal.alpha);
-    return { ...bestGlobal, coeffs };
-  }
-
-  throw new Error(`Could not fit model for ${targetCol}`);
+    if (best.type === 'global') return best.model;
+    else return best.model; // piecewise model already returned as an object
 }
-
 // ========== Public API ==========
 
 /**

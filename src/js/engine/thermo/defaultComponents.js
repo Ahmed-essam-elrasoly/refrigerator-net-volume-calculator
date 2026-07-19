@@ -4,7 +4,7 @@ export const SJ54H_COMPONENTS = Object.freeze({
     rpm: 2900,
     rpm0: 2900,
     Vc: 11.14,          // cc
-    T_suction: 32.2,    // °C – fixed suction temperature from Excel H11
+    T_suction: 30,    // °C – fixed suction temperature from Excel H11
     volEffCoeffs: {
       A: 0.9260142251566365,
       B: -0.01221312333322575,

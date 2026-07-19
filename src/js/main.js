@@ -766,7 +766,7 @@ function displayPreciseResults(leaves, geometry) {
   const extVolMm3 = geometry.H * geometry.W * geometry.D;
   const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
   const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
-  const cabPUVolL = extVolL - grossL - fdoorPUVolL - rdoorPUVolL;
+  const cabPUVolL = extVolL - grossL;
 
   document.getElementById('cabpuVol').textContent      = roundForDisplay(cabPUVolL, 'L');
   document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(cabPUVolL * settings.lToCuft, 'cuft');
@@ -1060,7 +1060,19 @@ loadBtn.addEventListener('click', () => {
 
 exportBtn.addEventListener('click', () => {
   if (!currentConfig) { alert('Calculate first'); return; }
-  const result = runCalculation(currentConfig); // fallback for CSV if needed
+  const geometry = currentConfig.cabinet.geometry;
+  const layout = currentConfig.cabinet.layout;
+  const { leaves, errors, warnings } = traverseAndComputePrecise(layout, geometry);
+  if (errors.length) {
+    alert('Errors in calculation: ' + errors.map(e => e.message).join('; '));
+    return;
+  }
+  // Build a result object compatible with the CSV exporter
+  const result = {
+    leaves: leaves.map(l => ({ leafId: l.leafId, gross: l.gross })),
+    totals: { gross: leaves.reduce((sum, l) => sum + l.gross, 0) },
+    warnings: warnings,
+  };
   downloadResultsCSV(result, currentConfig.meta.name);
 });
 
