@@ -1,4 +1,5 @@
 // solver.js – Universal thermal solver (SI units, corrected)
+
 import { calcHeatLoads } from './heatLoad.js';
 import { calcQCout } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
@@ -8,16 +9,11 @@ const RHO_AIR       = PHYSICAL_CONSTANTS.air.density;   // kg/m³
 const CP_AIR        = PHYSICAL_CONSTANTS.air.cp;        // kJ/(kg·K)
 const KELVIN_OFFSET = 273.16;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper constants for air‑side calculations
-// ─────────────────────────────────────────────────────────────────────────────
+// Helper constants for air-side calculations
 // Volumetric heat capacity: W per (m³/h) per K
 const CV = RHO_AIR * CP_AIR * 1000 / 3600;   // (J/(m³·K)) / 3600 = W/(m³/h·K)
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Helpers & Safe Wrappers
-// ─────────────────────────────────────────────────────────────────────────────
-
 function getRefrigerantIndex(name) {
   if (name === 'R-134a') return 1;
   if (name === 'R-600a') return 2;
@@ -27,8 +23,7 @@ function getRefrigerantIndex(name) {
 /**
  * Unified compressor evaluation. If the compressor has inverter coefficients
  * and an RPM is provided, the inverter model is used; otherwise the
- * constant‑speed polynomial model is used.
- *
+ * constant speed polynomial model is used.
  * @param {number} TE
  * @param {number} TC
  * @param {number} refIndex
@@ -37,18 +32,17 @@ function getRefrigerantIndex(name) {
  * @returns {object}
  */
 function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
-    // Primary: if a compressorModel object exists, treat as inverter
+  // Primary: if a compressorModel object exists, treat as inverter
   if (compParams.compressorModel && typeof compParams.compressorModel === 'object') {
-    // Optionally re‑validate isInverter
     if (!compParams.isInverter) {
-      console.warn('compParams.isInverter is false but compressorModel exists – forcing inverter mode.');
+      console.warn('compParams.isInverter is false but compressorModel exists — forcing inverter mode.');
     }
     return inverterCompressorPerformance(TE, TC, RPM, refIndex, compParams.compressorModel);
   }
 
   // Legacy inverter flag (only if no model)
   if (compParams.isInverter) {
-    throw new Error('Inverter compressor selected but no fitted model. Re‑load performance data in Advanced Settings.');
+    throw new Error('Inverter compressor selected but no fitted model. Re-load performance data in Advanced Settings.');
   }
 
   // Use inverter model whenever a compressorModel is provided and RPM is known
@@ -56,13 +50,14 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
     return inverterCompressorPerformance(TE, TC, RPM, refIndex, compParams.compressorModel);
   }
 
-  // Constant‑speed fallback
+  // Constant speed fallback
   if (compParams.useMap) {
     throw new Error('Compressor map logic is required but missing.');
   }
   if (!compParams.wCoeffs || !compParams.etaCoeffs) {
-    throw new Error('Missing polynomial coefficients for constant‑speed compressor.');
+    throw new Error('Missing polynomial coefficients for constant speed compressor.');
   }
+
   return compressorPower(
     TE, TC, refIndex,
     compParams.wCoeffs, compParams.etaCoeffs,
@@ -71,28 +66,7 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2×2 Newton-Raphson with damping & bounds checking
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Solves a 2D system of non-linear equations F(x) = 0 using Newton-Raphson.
- * Features:
- * - Numerical Jacobian (forward difference).
- * - Fallback to Gradient Descent if Jacobian is singular.
- * - Backtracking line search with Armijo condition for robust step sizing.
- * - Variable bounds checking.
- * - Detailed debug logging.
- *
- * @param {function(number[]): number[]} F - The residual function to solve.
- * @param {number[]} x0 - Initial guess vector [x1, x2].
- * @param {number[]} dx - Step sizes for numerical differentiation, e.g., [1e-3, 1e-4].
- * @param {number} tol - Convergence tolerance for the norm of F.
- * @param {number} maxIter - Maximum number of iterations.
- * @param {number[][]} bounds - Bounds for each variable, e.g., [[min1, max1], [min2, max2]].
- * @param {boolean} [debug=false] - Enable verbose logging to the console.
- * @returns {{x: number[], f: number[], normF: number, converged: boolean, iterations: number, error?: string}}
- */
+// 2x2 Newton-Raphson with damping & bounds checking
 function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
   const logger = {
     log: (...args) => debug && console.log(...args),
@@ -102,7 +76,6 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
   let x = [...x0];
   let f, normF;
 
-  // Initial evaluation with error handling
   try {
     f = F(x);
     normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
@@ -122,15 +95,12 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
       return { x, f, normF, converged: true, iterations: i + 1 };
     }
 
-    // 1. Numerical Jacobian
     const J = [[0, 0], [0, 0]];
     try {
       for (let j = 0; j < 2; j++) {
-        // Compute a relative step: 1e-7 * max(1, |x_j|)
         const h = Math.max(1e-7, Math.abs(x[j]) * 1e-6);
         const xp = [...x];
         xp[j] += h;
-
         const fp = F(xp);
         J[0][j] = (fp[0] - f[0]) / h;
         J[1][j] = (fp[1] - f[1]) / h;
@@ -139,6 +109,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
       logger.log('ERROR: Jacobian evaluation failed.', e);
       return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian evaluation failed: ${e.message}` };
     }
+
     const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
     if (debug) {
       logger.log('    Jacobian:');
@@ -146,10 +117,8 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
       logger.log(`    det(J) = ${det.toExponential(3)}`);
     }
 
-    // 2. Determine search direction (Newton or Gradient Descent)
     let direction;
     if (Math.abs(det) > 1e-12) {
-      // Newton's direction: d = -J⁻¹ * f
       const invDet = 1.0 / det;
       direction = [
         -invDet * (J[1][1] * f[0] - J[0][1] * f[1]),
@@ -157,47 +126,38 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
       ];
       logger.log(`    Newton direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
     } else {
-      // Fallback to Gradient Descent: d = -Jᵀ * f
-      // This is the gradient of the squared norm 0.5 * ||f||²
       direction = [
         -(J[0][0] * f[0] + J[1][0] * f[1]),
         -(J[0][1] * f[0] + J[1][1] * f[1])
       ];
       logger.log(`    Singular Jacobian. Using Gradient Descent direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
-
       const normGrad = Math.sqrt(direction[0]**2 + direction[1]**2);
       if (normGrad < 1e-12) {
-        // Return failure with current x
         return { x, f, normF, converged: false, iterations: i + 1, error: 'Gradient is zero at a non-solution point (saddle or local minimum).' };
       }
     }
 
-    // 3. Backtracking line search
     let alpha = 1.0;
     const maxBacktracks = 15;
     let accept = false;
     let newX, newF, newNorm;
 
     for (let bt = 0; bt < maxBacktracks; bt++) {
-      // Apply step and clamp to bounds
       newX = [
         Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
         Math.max(bounds[1][0], Math.min(bounds[1][1], x[1] + alpha * direction[1]))
       ];
-
       try {
         newF = F(newX);
         newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]);
       } catch (e) {
         logger.log(`    Line search F(x) failed at α=${alpha.toExponential(2)}`, e);
-        alpha *= 0.5; // Treat as a bad step and backtrack
+        alpha *= 0.5;
         continue;
       }
 
-      // Armijo condition for sufficient decrease
       const sufficientDecrease = normF - 1e-4 * alpha * normF;
       logger.log(`      bt=${bt}, α=${alpha.toExponential(2)}, newNorm=${newNorm.toExponential(2)}, required < ${sufficientDecrease.toExponential(2)}`);
-
       if (newNorm < sufficientDecrease) {
         accept = true;
         break;
@@ -206,61 +166,55 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     }
 
     if (!accept) {
-      return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed – cannot find step size to reduce residual.' };
+      return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed — cannot find step size to reduce residual.' };
     }
 
-    // 4. Update state for next iteration
     x = newX;
     f = newF;
     normF = newNorm;
     logger.log(`    Step accepted with α=${alpha.toExponential(2)}. New norm=${normF.toExponential(2)}`);
 
-    // 5. Check for clamping at physical bounds (indicative of model limits)
     const isClamped = (x[1] <= bounds[1][0] || x[1] >= bounds[1][1]);
-    if (isClamped && i > 5 && normF > tol * 100) { // Check after a few iterations
+    if (isClamped && i > 5 && normF > tol * 100) {
       const clampedAt = x[1] <= bounds[1][0] ? 'lower' : 'upper';
-      const errorMsg = `PR clamped at ${clampedAt} bound (${x[1].toFixed(4)}) – compressor may be undersized or oversized.`;
+      const errorMsg = `PR clamped at ${clampedAt} bound (${x[1].toFixed(4)}) — compressor may be undersized or oversized.`;
       logger.log(`    WARNING: ${errorMsg}`);
       return { x, f, normF, converged: false, iterations: i + 1, error: errorMsg };
     }
   }
+
   return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inner solver: (T2, PR) ← Newton-Raphson
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Inner solver: (T2, PR) — Newton-Raphson
 function solveInner(
   TC, geom, compParams, refrigerant, subcool,
   fixedTemps, fan, electrical, condenserConfig,
   TE, freezerPos, innerOpts = {},
-  fixedPR               // NEW
+  fixedPR
 ) {
   const {
     tol      = 1e-4,
     maxIter  = 100,
     initialT2,
     initialPR,
-    debug= true,           // existing flag for Newton‑Raphson logs
-    debugHeatLoads= true,  // ← NEW flag for heat‑load logging
-    dx = 1e-3,             // ← added: step size for numerical differentiation
+    debug= true,
+    debugHeatLoads= true,
+    dx = 1e-3,
   } = innerOpts;
-  const dx_steps = [dx, dx];   // ← define the array of step sizes
 
+  const dx_steps = [dx, dx];
   const logger = { log: (...args) => debug && console.log(...args) };
 
   const { T0, TF, TR } = fixedTemps;
-
   const PIPEPITCH = {
     side: condenserConfig.sidePipePitch_mm,
     back: condenserConfig.backPipePitch_mm,
   };
   const backCondenserEfficiency = condenserConfig.backCondenserEfficiency ?? 0;
   const backCondenser = condenserConfig.backCondenser ?? 'No';
-
   const refIndex = getRefrigerantIndex(refrigerant);
-  // ── Guard: ensure fixedPR is provided for inverter ──
+
   if (compParams.isInverter && fixedPR === undefined) {
     throw new Error(
       'Inverter compressor selected but no fixed PR provided. ' +
@@ -268,13 +222,13 @@ function solveInner(
     );
   }
 
-  const isInverterMode = compParams.isInverter && fixedPR !== undefined;   // ← ADD THIS
+  const isInverterMode = compParams.isInverter && fixedPR !== undefined;
 
   let bounds, initialGuess, variableNames;
   if (isInverterMode) {
     bounds = [
-      [-80, 20],                        // T2
-      [compParams.rpmMin || 1000, compParams.rpmMax || 6000]  // RPM
+      [-80, 20],
+      [compParams.rpmMin || 1000, compParams.rpmMax || 6000]
     ];
     initialGuess = [
       innerOpts.initialT2 ?? -21.25,
@@ -283,8 +237,8 @@ function solveInner(
     variableNames = ['T2', 'RPM'];
   } else {
     bounds = [
-      [-80, 20],      // T2
-      [0.001, 0.999]  // PR
+      [-80, 20],
+      [0.001, 0.999]
     ];
     initialGuess = [
       innerOpts.initialT2 ?? -21.25,
@@ -293,10 +247,9 @@ function solveInner(
     variableNames = ['T2', 'PR'];
   }
 
-  // Residual vector
   const F = (vars) => {
     const T2 = vars[0];
-    const secondVar = vars[1];   // PR or RPM
+    const secondVar = vars[1];
     const PR = isInverterMode ? fixedPR : secondVar;
     const RPM = isInverterMode ? secondVar : undefined;
 
@@ -316,8 +269,9 @@ function solveInner(
       console.error('calcHeatLoads threw:', e.message, e.stack);
       throw e;
     }
+
     if (innerOpts.debugHeatLoads) {
-      console.group('calcHeatLoads – Detailed Output');
+      console.group('calcHeatLoads — Detailed Output');
       logger.log('Geometry:', geom);
       logger.log('Input parameters:', {
         T0, TF, TR, T2, TC, PR, TE,
@@ -325,9 +279,10 @@ function solveInner(
         freezerPos, backCondenser
       });
       logger.log('Full result:', loads);
-      console.table(loads);  // if loads is an object, prints a table view
+      console.table(loads);
       console.groupEnd();
     }
+
     let comp;
     try {
       comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM);
@@ -341,30 +296,28 @@ function solveInner(
       logger.log(`    comp: QComp=${comp.QCompressor}, Power=${comp.CompPower}, Pe=${comp.Pe}, Pc=${comp.Pc}`);
     }
 
-    // Air side calculations using volumetric heat capacity CV (W per m³/h per K)
-    const C_tot = fan.totalAirflow * CV;               
-    const T3 = T2 + loads.QEV / (C_tot * PR);         
-    const denomR = CV * Math.max(0.01, TR - T3) * PR; 
+    const C_tot = fan.totalAirflow * CV;
+    const T3 = T2 + loads.QEV / (C_tot * PR);
+    const denomR = CV * Math.max(0.01, TR - T3) * PR;
     const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
-    const MF = fan.totalAirflow - MR;                  
+    const MF = fan.totalAirflow - MR;
+
     if (debug) {
       logger.log(`    T3=${T3.toFixed(2)}, MR=${MR.toFixed(2)}, MF=${MF.toFixed(2)}`);
     }
-    // F1 = QF - MF * CV * (TF - T3) * PR   (W)
+
     const F1 = loads.QF - MF * CV * (TF - T3) * PR;
-    // F2 = total heat load - cooling capacity * PR  (W)
     const F2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
+
     return [F1, F2];
   };
 
-  // Solve — fall back through alternative guesses on failure
   let totalIter = 0;
   const T2_guess = initialT2 ?? -21.25;
   const PR_guess = initialPR ?? 0.59;
   let res = newton2(F, initialGuess, dx_steps, tol, maxIter, bounds, debug);
   totalIter += res.iterations;
 
-  // Add a guard:
   if (!res.converged && res.error && res.error.includes('compressor undersized')) {
     return {
       T2: res.x[0],
@@ -376,11 +329,9 @@ function solveInner(
     };
   }
 
-  // Modify the fallback block:
   if (!res.converged) {
     logger.log('Initial guess failed.');
     if (isInverterMode) {
-      // Don't try fallback PRs; let the outer loop handle it
       return {
         T2: res.x[0],
         PR: fixedPR,
@@ -390,6 +341,7 @@ function solveInner(
         error: res.error
       };
     }
+
     logger.log('Initial guess failed. Trying fallback guesses...');
     for (const [t2, pr] of [[T2_guess, 0.4], [T2_guess - 2, 0.5], [-21, 0.3]]) {
       logger.log(`  Fallback guess: T2=${t2}, PR=${pr}`);
@@ -410,18 +362,17 @@ function solveInner(
     };
   }
 
-  // Final evaluation at the converged point
   const [fT2, second] = res.x;
   const fPR = isInverterMode ? fixedPR : second;
   const fRPM = isInverterMode ? second : undefined;
+
   const loads = calcHeatLoads(
     geom, { T0, TF, TR, T2: fT2, TC, PR: fPR, TE }, electrical,
     PIPEPITCH, backCondenserEfficiency, fan.inputPower_W, freezerPos, backCondenser
   );
+
   const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
 
-  // ── Explicit recalculation of MR and MF from converged state ──
-  // (removes dependence on closure variables, guarantees consistency)
   const C_tot = fan.totalAirflow * CV;
   const finalT3 = fT2 + loads.QEV / (C_tot * fPR);
   const denomR = CV * Math.max(0.01, TR - finalT3) * fPR;
@@ -431,7 +382,7 @@ function solveInner(
   return {
     T2: fT2,
     PR: fPR,
-    RPM: fRPM,           // NEW: undefined for constant speed
+    RPM: fRPM,
     TE,
     converged: true,
     iterations: totalIter,
@@ -457,17 +408,14 @@ function createFailure(TC, errorMsg, inner = {}) {
     T2: inner.T2 ?? NaN,
     PR: inner.PR ?? NaN,
     RPM: inner.RPM ?? undefined,
-    TE: config.initialTE ?? NaN,
+    TE: NaN, // TE logic handled externally or fallback NaN
     error: errorMsg,
     outerIterations: 0,
     innerTotalIterations: 0,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Outer solver: TC ← secant on F3 = QCout − QCin
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Outer solver: TC — secant on F3 = QCout - QCin
 export function solveThermalSystem(config, TE_override = null) {
   const {
     geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp,
@@ -483,7 +431,7 @@ export function solveThermalSystem(config, TE_override = null) {
   const T0      = fixedTemps.T0;
   const debug   = innerOptions.debug ?? false;
   const TE      = TE_override ?? config.initialTE ?? -25.27;
-  const fixedPR = config.inverterPR;   // NEW
+  const fixedPR = config.inverterPR; 
 
   const PIPEPITCH = {
     side: condenserConfig.sidePipePitch_mm,
@@ -513,16 +461,19 @@ export function solveThermalSystem(config, TE_override = null) {
       TC, geom, compParams, refrigerant, subcool,
       fixedTemps, fan, electrical, condenserConfig,
       TE, freezerPosition, innerOptions,
-      fixedPR                              // NEW
+      fixedPR
     );
+
     if (debug) {
       console.log('inner.compressor:', inner.compressor);
       console.log('inner.converged:', inner.converged, inner.error || '');
     }
+
     if (!inner.converged) {
       if (inner.error && inner.error.includes('undersized')) {
         return createFailure(TC, `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.`, inner);
       }
+
       if (iter > 0 && typeof prevTC !== 'undefined') {
         const MAX_BACKTRACK = 3;
         let success = false;
@@ -530,12 +481,14 @@ export function solveThermalSystem(config, TE_override = null) {
           const step = (TC - prevTC) * 0.5;
           const backtrackTC = prevTC + step;
           if (debug) console.log(`  Backtrack TC=${backtrackTC.toFixed(3)}`);
+
           const opts = { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM };
           const innerRetry = solveInner(
             backtrackTC, geom, compParams, refrigerant, subcool,
             fixedTemps, fan, electrical, condenserConfig,
             TE, freezerPosition, opts, fixedPR
           );
+
           if (innerRetry.converged) {
             TC = backtrackTC;
             inner = innerRetry;
@@ -556,30 +509,46 @@ export function solveThermalSystem(config, TE_override = null) {
       prevInner = { T2: inner.T2, PR: inner.PR, RPM: inner.RPM };
     }
 
-    // Condenser heat balance
     const QCout = calcQCout(
       geom, TC, T0, fixedTemps.TF, fixedTemps.TR, inner.PR,
       PIPEPITCH, freezerPosition, backCondenserEfficiency
-    );  // returns object, QCout.QCout in W
+    ); 
 
     let compOuter;
-      if (fixedPR !== undefined && inner.RPM !== undefined) {
-        compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams, inner.RPM);
-      } else {
-        compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams);
-      }
+    if (fixedPR !== undefined && inner.RPM !== undefined) {
+      compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams, inner.RPM);
+    } else {
+      compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams);
+    }
+
     const Pc = prop.satPressure(TC + KELVIN_OFFSET);
-    const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);   // kJ/kg
-    const h_liq = prop.liquidEnthalpy(TC - subcool);                      // kJ/kg
-    const QCin_W = compOuter.massFlow * (h_dis - h_liq) / 3.6;           // kg/h * kJ/kg = kJ/h → /3.6 → W
+    const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);
+    const h_liq = prop.liquidEnthalpy(TC - subcool);
+    const QCin_W = compOuter.massFlow * (h_dis - h_liq) / 3.6;
 
     const F3 = QCout.QCout - QCin_W;
-
     if (debug) console.log(
       `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
     );
 
     if (Math.abs(F3) < tolOuter) {
+      // -----------------------------------------------------------------------
+      // PART 1: Validation Checkpoint 1 (Compressor Sizing Verification)
+      // -----------------------------------------------------------------------
+      console.log(`[Validation Checkpoint 1] Verifying compressor sizing at TC=${TC.toFixed(2)}`);
+      const isInverterMode = compParams.isInverter && fixedPR !== undefined;
+      
+      if (isInverterMode) {
+        const rpmMax = compParams.rpmMax || 4500;
+        if (inner.RPM > rpmMax) {
+          return createFailure(TC, `Compressor undersized: Required RPM (${inner.RPM.toFixed(0)}) exceeds maximum (${rpmMax})`, inner);
+        }
+      } else {
+        if (inner.PR > 1.0) {
+          return createFailure(TC, `Compressor undersized: Required PR (${inner.PR.toFixed(4)}) exceeds 1.0`, inner);
+        }
+      }
+
       return {
         TC,
         T2: inner.T2,
@@ -600,15 +569,13 @@ export function solveThermalSystem(config, TE_override = null) {
       };
     }
 
-    // Numerical derivative
     let innerPert = null;
-    // ── Perturbation – forward ──────────────────────────────
     let appliedDH = DH;
     const pertOpts = {
       ...innerOptions,
       initialT2: inner.T2,
       initialPR: inner.PR,
-      initialRPM: inner.RPM,   // optional but consistent
+      initialRPM: inner.RPM,
     };
 
     try {
@@ -616,14 +583,13 @@ export function solveThermalSystem(config, TE_override = null) {
         TC + appliedDH, geom, compParams, refrigerant, subcool,
         fixedTemps, fan, electrical, condenserConfig,
         TE, freezerPosition, pertOpts,
-        fixedPR                        // ★ pass fixedPR
+        fixedPR
       );
     } catch (e) {
       console.warn('Forward perturbation failed:', e.message);
       innerPert = null;
     }
 
-    // ── Perturbation – backward (if forward fails) ──────────
     if (!innerPert || !innerPert.converged) {
       appliedDH = -DH;
       try {
@@ -631,7 +597,7 @@ export function solveThermalSystem(config, TE_override = null) {
           TC + appliedDH, geom, compParams, refrigerant, subcool,
           fixedTemps, fan, electrical, condenserConfig,
           TE, freezerPosition, pertOpts,
-          fixedPR                        // ★ pass fixedPR
+          fixedPR
         );
       } catch (e) {
         console.warn('Backward perturbation failed:', e.message);
@@ -641,7 +607,6 @@ export function solveThermalSystem(config, TE_override = null) {
 
     let F3_pert, QCin_pert, dF3dTC;
     if (innerPert && innerPert.converged) {
-      // For inverter mode, the perturbation also returns an RPM
       const pertRPM = (fixedPR !== undefined) ? innerPert.RPM : undefined;
       const compOuter_pert = evaluateCompressorSafely(
         TE, TC + appliedDH, refIndex, compParams, pertRPM
@@ -653,11 +618,12 @@ export function solveThermalSystem(config, TE_override = null) {
       const Pc_pert = prop.satPressure(TC + appliedDH + KELVIN_OFFSET);
       const h_dis_pert = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc_pert);
       const h_liq_pert = prop.liquidEnthalpy(TC + appliedDH - subcool);
+
       QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert) / 3.6;
       F3_pert = QCout_pert.QCout - QCin_pert;
       dF3dTC = (F3_pert - F3) / appliedDH;
-    } else {
 
+    } else {
       if (typeof prevF3 !== 'undefined' && typeof prevTC !== 'undefined') {
         const deltaTC = TC - prevTC;
         const safeDeltaTC = Math.abs(deltaTC) < 1e-6 ? 1e-6 * Math.sign(deltaTC || 1) : deltaTC;
@@ -683,57 +649,35 @@ export function solveThermalSystem(config, TE_override = null) {
     const step = F3 / dF3dTC;
     TC -= Math.max(-5, Math.min(5, step));
   }
+
   return createFailure(TC, 'Outer loop max iterations reached', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Dynamic TE wrapper
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Calculates a new evaporating temperature (TE) based on the results of a
- * full system solve, using an NTU-effectiveness model for the evaporator.
- * @param {object} result - The converged result from `solveInner`.
- * @param {object} fan - Fan parameters, including `totalAirflow`.
- * @param {object} evapGeom - Evaporator geometry.
- * @param {number} TF - Freezer compartment temperature (°C).
- * @param {number} TR - Refrigerator compartment temperature (°C).
- * @returns {number} The newly calculated evaporating temperature (°C).
- */
 function calculateNewTE(result, fan, evapGeom, TF, TR) {
   const { MR, MF, T2 } = result;
 
-  // Evaporator geometry with defaults
   const evapWidth_m = (evapGeom?.evapWidth_mm ?? 460) / 1000;
   const evapDepth_m = (evapGeom?.evapDepth_mm ?? 60) / 1000;
   const evapArea_m2 = evapGeom?.evapArea_m2 ?? 1.754;
 
-  // Heat transfer coefficient correlation for air over evaporator
-  // alpha = 12.93 * v_ms^0.415 * 1.16279  [W/(m²·K)]
-  // The 1.16279 factor converts from kcal/(h·m²·°C) to W/(m²·K).
   const ALPHA_COEFF = 12.93 * 1.16279;
   const ALPHA_EXP = 0.415;
 
-  // 1. Calculate mixed air temperature entering the evaporator (T1)
   const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
 
-  // 2. Calculate evaporator effectiveness (ε)
   const faceArea = evapWidth_m * evapDepth_m;
   const v_ms = fan.totalAirflow / faceArea / 3600;
   const alpha = ALPHA_COEFF * Math.pow(v_ms, ALPHA_EXP);
-  const C_air = (fan.totalAirflow / 3600) * RHO_AIR * CP_AIR * 1000; // W/K
-  const UA_on = alpha * evapArea_m2; // W/K
+
+  const C_air = (fan.totalAirflow / 3600) * RHO_AIR * CP_AIR * 1000;
+  const UA_on = alpha * evapArea_m2;
   const NTU = UA_on / C_air;
   const effectiveness = 1 - Math.exp(-NTU);
 
-  // 3. Calculate new TE using the effectiveness definition: ε = (T1 - T2) / (T1 - TE)
-  // Avoid division by zero if effectiveness is very small
   if (effectiveness < 1e-6) {
-    // If effectiveness is near zero, T2 is very close to T1, and TE is indeterminate.
-    // Returning T1 is a safe fallback, though this case is physically unlikely.
     return T1;
   }
-
   const newTE = T1 - (T1 - T2) / effectiveness;
   return newTE;
 }
@@ -741,6 +685,7 @@ function calculateNewTE(result, fan, evapGeom, TF, TR) {
 export function runThermalAnalysisDynamic(config) {
   const { fixedTemps, fan, evapGeom, solverOptions } = config;
   const { TF, TR } = fixedTemps;
+
   const debug = solverOptions?.innerOptions?.debug ?? false;
   const logger = { log: (...args) => debug && console.log(...args) };
 
@@ -756,34 +701,112 @@ export function runThermalAnalysisDynamic(config) {
   for (let i = 0; i < MAX_ITER; i++) {
     logger.log(`TE Iteration ${i}: Trying TE = ${TE.toFixed(4)} °C`);
 
-    // 1. Solve the full system for the current TE
     result = solveThermalSystem(config, TE);
+
     if (!result.converged) {
       logger.log(`  ERROR: Inner solver failed for TE=${TE.toFixed(4)}. Aborting TE loop.`);
-      return result; // Propagate the failure from the inner solver
-    }
-
-    // 2. Calculate the next TE based on the evaporator model
-    const newTE = calculateNewTE(result, fan, evapGeom, TF, TR);
-    const error = newTE - TE;
-    logger.log(`  Result: T2=${result.T2.toFixed(3)}, PR=${result.PR.toFixed(4)}. New TE = ${newTE.toFixed(4)} (error = ${error.toFixed(4)})`);
-
-    // 3. Check for convergence
-    if (Math.abs(error) < TOL) {
-      result.TE = newTE; // Update result with the converged TE
-      logger.log(`  TE converged in ${i + 1} iterations.`);
       return result;
     }
 
-    // 4. Update TE for the next iteration using Secant method
+    const newTE = calculateNewTE(result, fan, evapGeom, TF, TR);
+    const error = newTE - TE;
+
+    logger.log(`  Result: T2=${result.T2.toFixed(3)}, PR=${result.PR.toFixed(4)}. New TE = ${newTE.toFixed(4)} (error = ${error.toFixed(4)})`);
+
+    if (Math.abs(error) < TOL) {
+      result.TE = newTE; 
+      logger.log(`  TE converged in ${i + 1} iterations.`);
+
+      // -----------------------------------------------------------------------
+      // PART 2: Validation Checkpoints 2, 3, and 4
+      // -----------------------------------------------------------------------
+
+      // Checkpoint 2: Evaporator Approach Validity
+      console.log(`[Validation Checkpoint 2] Evaporator Approach Validity`);
+      const TE_conv = result.TE;
+      const T2_conv = result.T2;
+      
+      if (TE_conv > T2_conv) {
+        result.converged = false;
+        result.error = `Approach constraint failed: TE (${TE_conv.toFixed(2)}°C) > T2 (${T2_conv.toFixed(2)}°C) (reverse heat transfer)`;
+        return result;
+      }
+      if ((T2_conv - TE_conv) > 2) {
+        result.converged = false;
+        result.error = `Approach constraint failed: T2 - TE (${(T2_conv - TE_conv).toFixed(2)}°C) > 2°C`;
+        return result;
+      }
+
+      // Checkpoint 3: Peak Heat Load Evaluation (43°C Ambient)
+      console.log(`[Validation Checkpoint 3] Peak Heat Load Evaluation (43°C Ambient)`);
+      
+      const peakConfig = { 
+        ...config, 
+        fixedTemps: { ...config.fixedTemps },
+        solverOptions: { 
+          ...config.solverOptions, 
+          innerOptions: { ...(config.solverOptions?.innerOptions || {}) } 
+        },
+        compParams: { ...config.compParams }
+      };
+
+      peakConfig.fixedTemps.T0 = 43;
+
+      if (peakConfig.compParams.isInverter) {
+        peakConfig.compParams.rpmMin = peakConfig.compParams.rpmMax; // Force RPM boundaries
+        peakConfig.solverOptions.innerOptions.initialRPM = peakConfig.compParams.rpmMax;
+        peakConfig.inverterPR = 1.0;
+      } else {
+        peakConfig.solverOptions.innerOptions.initialPR = 1.0;
+        peakConfig.inverterPR = 1.0;
+      }
+
+      const peakResult = solveThermalSystem(peakConfig, TE_conv);
+
+      if (!peakResult.converged) {
+        result.converged = false;
+        result.error = "Peak heat load evaluation failed: System cannot physically balance at 43°C.";
+        return result;
+      }
+
+      const Q_Total_43 = peakResult.heatLoads.QF + peakResult.heatLoads.QR + peakResult.heatLoads.QEV;
+      console.log(`[Validation Checkpoint 3] Q_Total_43 = ${Q_Total_43.toFixed(2)} W`);
+
+      // Checkpoint 4: Evaporator Capacity Safety Margin (15% Required)
+      console.log(`[Validation Checkpoint 4] Evaporator Capacity Safety Margin (15% Required)`);
+      
+      const evapWidth_m = (evapGeom?.evapWidth_mm ?? 460) / 1000;
+      const evapDepth_m = (evapGeom?.evapDepth_mm ?? 60) / 1000;
+      const evapArea_m2 = evapGeom?.evapArea_m2 ?? 1.754;
+
+      const faceArea = evapWidth_m * evapDepth_m;
+      const v_ms = fan.totalAirflow / faceArea / 3600;
+      const alpha = 12.93 * Math.pow(v_ms, 0.415) * 1.16279;
+
+      const TE_limit = T2_conv - 2;
+      const T1 = (result.MF * TF + result.MR * TR) / fan.totalAirflow;
+
+      const LMTD_limit = ((T1 - TE_limit) - (T2_conv - TE_limit)) / Math.log((T1 - TE_limit) / (T2_conv - TE_limit));
+      const Q_Evap_Max = alpha * evapArea_m2 * LMTD_limit;
+
+      console.log(`[Validation Checkpoint 4] Q_Evap_Max = ${Q_Evap_Max.toFixed(2)} W (Required: ${(1.15 * Q_Total_43).toFixed(2)} W)`);
+
+      if (Q_Evap_Max < 1.15 * Q_Total_43) {
+        result.converged = false;
+        result.error = `Evaporator lacks the 15% physical safety margin at a 43°C ambient. Max capacity: ${Q_Evap_Max.toFixed(2)} W.`;
+        return result;
+      }
+
+      return result;
+    }
+
     const currentTE = TE;
     const currentError = error;
 
     if (i > 0 && prevError !== undefined) {
       const te_diff = currentTE - prevTE;
       const error_diff = currentError - prevError;
-
-      if (Math.abs(error_diff) > 1e-4) { // Avoid division by zero
+      if (Math.abs(error_diff) > 1e-4) {
         const step = -currentError * te_diff / error_diff;
         const boundedStep = Math.max(-3.0, Math.min(3.0, step));
         TE = currentTE + boundedStep;
@@ -802,8 +825,9 @@ export function runThermalAnalysisDynamic(config) {
   }
 
   result.TE = TE;
-  result.warning = `TE iteration did not fully converge within ${MAX_ITER} iterations (tolerance=${TOL}°C). Final error = ${prevError.toFixed(4)}°C.`;
+  result.warning = `TE iteration did not fully converge within ${MAX_ITER} iterations (tolerance=${TOL} °C). Final error = ${prevError.toFixed(4)} °C.`;
   logger.log(`  WARNING: ${result.warning}`);
+  
   return result;
 }
 
