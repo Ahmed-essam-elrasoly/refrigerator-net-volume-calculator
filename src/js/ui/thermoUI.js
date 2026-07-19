@@ -118,7 +118,7 @@ if (panelInverter) {
       <p id="currentInverterName" style="margin:4px 0 0; font-weight:bold;">—</p>
 
       <label>Running Ratio PR:
-        <input type="number" id="inverterPR" value="0.6" step="0.01" min="0.01" max="1">
+        <input type="number" id="inverterPR" value="0.85" step="0.01" min="0.01" max="1">
       </label>
       <label>Ambient T0 (°C):
         <input type="number" id="inverterT0" value="30" step="any">
@@ -1208,6 +1208,7 @@ function displayResults(res, energy, isInverter = false) {
   const fanAirflow_CFM = fanAirflow_m3h * 0.588578;
 
   const configLabel = res.configLabel || 'Unknown';
+  const totalLoad = res.heatLoads?.totalLoad ?? '—';
   const html = `
     <table class="thermo-results-table">
       <thead>
@@ -1246,6 +1247,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr><td>QEV — Evaporator total</td><td>${fmt(res.heatLoads.QEV)}</td></tr>
         <tr><td>Fan load</td><td>${fmt(res.heatLoads.fanLoad)}</td></tr>
         <tr><td>Defrost load</td><td>${fmt(res.heatLoads.defrostLoad)}</td></tr>
+        <tr><td>Total load</td><td>${fmt(res.heatLoads.totalLoad)}</td></tr>
 
         <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
         <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m³/h)</td></tr>
@@ -1458,6 +1460,30 @@ const result = runThermoAnalysis(config);
     energy = EnergyConsumption(result.results);
   }
   result.results.fanAirflow = fanFlow;
+
+  let evapDetails = null;
+  const evap = settings.evaporator;
+  const fanP = settings.fanParam;
+  if (evap && fanP && result.results && result.results.converged !== false) {
+    try {
+      const area = computeEvaporatorArea(evap);
+      const v = airSpeed(fanP, evap);
+      const alpha = evaporatorAlpha(v);
+      // TF and TR are already defined at the top of handleInverterRun()
+      const MR = result.results.MR;
+      const MF = result.results.MF;
+      const totalFlow = MR + MF;
+      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T2 = result.results.T2;
+      const TE = result.results.TE;
+      const LMTD = lmtd(T1, T2, TE);
+      const Qevap = evaporatorCapacity(alpha, area, LMTD);
+      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+    } catch (e) { 
+      console.warn('Evaporator calculation failed:', e); 
+    }
+  }
+  if (evapDetails) result.results.evapDetails = evapDetails;
   // Display results: reuse the same display function but adapt to show RPM
   result.results.configLabel = (freezerPos === 'top' ? 'Top Freezer' : 'Bottom Freezer') + ' (Inverter)';
   displayResults(result.results, energy, true);  // true = inverter mode

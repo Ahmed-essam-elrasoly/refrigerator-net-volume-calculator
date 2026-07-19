@@ -4,11 +4,11 @@
  * and returns a human‑readable result object.
  */
 
-import { solveThermalSystem } from './solver.js';
+import { solveThermalSystem, runThermalAnalysisDynamic } from './solver.js';
 import { SJ54H_COMPONENTS } from './defaultComponents.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
 import { DEFAULT_CABINET, toThermalFormat } from '../geometry.js';
-
+import { validateHeatLoad } from './validateHeatLoad.js';
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -73,9 +73,9 @@ export function runThermoAnalysis(config) {
     inverterPR: config.inverterPR,   // ensures it's passed
   };
 
-  try {
-    const result = solveThermalSystem({
-      ...config,                     // spread the whole config (includes inverterPR)
+try {
+    const result = runThermalAnalysisDynamic({
+      ...config,                     
       geom: config.geom,
       compParams: config.compParams,
       condenserConfig: config.condenserConfig,
@@ -87,14 +87,14 @@ export function runThermoAnalysis(config) {
       electrical: config.electrical,
       freezerPosition: config.freezerPosition || 'top',
       initialTE: config.fixedTemps.TE,
-      ...solverOptions,              // solverOptions already contains inverterPR if set
+      ...solverOptions,              
     });
 
     if (!result.converged) {
       errors.push(result.error || 'Thermal solver did not converge.');
       return { success: false, errors, warnings, results: null };
     }
-
+    
     const output = {
       TC: result.TC,
       T2: result.T2,
@@ -106,6 +106,7 @@ export function runThermoAnalysis(config) {
         QEV: result.heatLoads.QEV,
         fanLoad: result.heatLoads.fanLoad,
         defrostLoad: result.heatLoads.defrostLoad,
+        totalLoad: result.heatLoads.totalLoad,  // ← added
       },
       compressor: {
         massFlow: result.compressor.massFlow,
@@ -123,14 +124,19 @@ export function runThermoAnalysis(config) {
         innerTotal: result.innerTotalIterations,
       },
     };
-  if (result.RPM !== undefined) {
-    output.RPM = result.RPM;
-  }
+ if (result.RPM !== undefined) {
+      output.RPM = result.RPM;
+    }
+
+    // Attach any validation warnings from the solver
+    if (result.warnings && result.warnings.length > 0) {
+      warnings.push(...result.warnings);
+    }
 
     if (result.PR >= 1) {
-      warnings.push('Compressor running ratio reached 100% — system may be undersized.');
+      warnings.push('Compressor running ratio reached 100% – system may be undersized.');
     } else if (result.PR <= 0.1) {
-      warnings.push('Compressor running ratio very low — check heat load inputs.');
+      warnings.push('Compressor running ratio very low – check heat load inputs.');
     }
 
     return { success: true, errors: [], warnings, results: output };

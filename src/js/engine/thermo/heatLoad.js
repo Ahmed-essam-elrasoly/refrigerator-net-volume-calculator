@@ -214,5 +214,5 @@ export function calcHeatLoads(
   const fanLoad = (fanInputPower_W ?? 2.1) * PR;
   const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); // 10.5 is the timer period in h
   const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24); 
-  return { QF, QR, QEV: QEV_cond + fanLoad + defrostLoad, fanLoad, defrostLoad };
+  return { QF, QR, QEV: QEV_cond + fanLoad + defrostLoad, fanLoad, defrostLoad, totalLoad: QF + QR + QEV_cond + fanLoad + defrostLoad };
 }
