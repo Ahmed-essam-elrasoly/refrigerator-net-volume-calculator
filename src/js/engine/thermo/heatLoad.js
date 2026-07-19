@@ -3,7 +3,7 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
 function lambdaUrethane(T_in, T_out) {
   const T_avg = (T_in + T_out) / 2;
-  return 0.0165 + 0.00011 * (T_avg-25) * 1.16279;   // Excel formula, shifted to be 0.0165 at 25°C
+  return (0.0165 + 0.00011 * (T_avg-25)) * 1.16279;   // Excel formula, shifted to be 0.0165 at 25°C
 }
 function kExterior(thk, T_in, T_out) {
   const lam = lambdaUrethane(T_in, T_out);
@@ -110,9 +110,8 @@ export function calcHeatLoads(
         + PC.insulation.packing * AFpackin * (T0 - TF);
 
     // Partition losses
-    QF += (0.1219*(TC-TF)*PR + 0.07551*(T0-TF)*(1-PR))
-          * (W - tFleft - tFright) / 1000;
-    QF += (0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000;
+    QF += ((0.1219*(TC-TF)*PR + 0.07551*(T0-TF)*(1-PR)) * (W - tFleft - tFright) / 1000) * 1.16279;
+    QF += ((0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000) * 1.16279;
   }
 
   // ── Refrigerator ───────────────────────────────────────────────
@@ -178,7 +177,7 @@ export function calcHeatLoads(
         + PC.insulation.packing * ARpackin * (T0 - TR);
 
     // DP condenser
-    QR += (0.03322*(TC-TR)-0.030267*(T0-TR))* PR * (Hr*2 ) / 1000;
+    QR += ((0.03322*(TC-TR)-0.030267*(T0-TR))* PR * (Hr*2 ) / 1000) * 1.16279;
   }
 
   // ── Evaporator back (always on the "freezer" side) ─────────────────
@@ -215,5 +214,5 @@ export function calcHeatLoads(
   const fanLoad = (fanInputPower_W ?? 2.1) * PR;
   const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); // 10.5 is the timer period in h
   const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24); 
-  return { QF: QF * 1.16279, QR: QR * 1.16279, QEV: QEV_cond * 1.16279 + fanLoad + defrostLoad, fanLoad, defrostLoad };
+  return { QF, QR, QEV: QEV_cond + fanLoad + defrostLoad, fanLoad, defrostLoad };
 }

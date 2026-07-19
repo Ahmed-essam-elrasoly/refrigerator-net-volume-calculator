@@ -429,7 +429,7 @@ export function compressorPower(
 
   // ── 4. Thermodynamic state at the fixed suction plane ─────────────────────
   // Must match the convention in computeCompressorCoefficients:
-  //   temperature = SUCTION_TEMP_C (32.2 °C), pressure = Pe
+  //   temperature = SUCTION_TEMP_C (30 °C), pressure = Pe
   const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
   const vGas = prop.specificVolume(suctionTempK, Pe);
   const hLiq = prop.liquidEnthalpy(SUCTION_TEMP_C);
@@ -495,27 +495,76 @@ function identity(n) {
   return I;
 }
 function solveRidge(X, y, alpha) {
+  const n = X.length;
   const p = X[0].length;
-  const Xt = transpose(X);
-  const XtX = matrixMultiply(Xt, X);
-  for (let i = 0; i < p; i++) XtX[i][i] += alpha;
-  const Xty = Xt.map(row => row.reduce((sum, _, j) => sum + row[j] * y[j], 0));
-  return gaussJordanSolve(XtX, Xty);
-}
 
+  // 1. Calculate means
+  const xMeans = new Array(p).fill(0);
+  let yMean = 0;
+  for (let i = 0; i < n; i++) {
+    yMean += y[i];
+    for (let j = 0; j < p; j++) {
+      xMeans[j] += X[i][j];
+    }
+  }
+  yMean /= n;
+  for (let j = 0; j < p; j++) xMeans[j] /= n;
+
+  // 2. Calculate standard deviations (biased variance, matching Python's StandardScaler defaults)
+  const xStds = new Array(p).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < p; j++) {
+      xStds[j] += Math.pow(X[i][j] - xMeans[j], 2);
+    }
+  }
+  for (let j = 0; j < p; j++) {
+    xStds[j] = Math.sqrt(xStds[j] / n);
+    if (xStds[j] === 0) xStds[j] = 1; // Prevent division by zero
+  }
+
+  // 3. Center and Scale X, Center y
+  const X_scaled = Array.from({ length: n }, () => Array(p).fill(0));
+  const y_centered = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    y_centered[i] = y[i] - yMean;
+    for (let j = 0; j < p; j++) {
+      X_scaled[i][j] = (X[i][j] - xMeans[j]) / xStds[j];
+    }
+  }
+
+  // 4. Ridge Regression on Scaled Data: beta = (X^T X + alpha * I)^{-1} X^T y
+  const Xt = transpose(X_scaled);
+  const XtX = matrixMultiply(Xt, X_scaled);
+  for (let j = 0; j < p; j++) XtX[j][j] += alpha; // Intercept is excluded, so penalize all p elements
+
+  const Xty = Xt.map(row => row.reduce((sum, _, i) => sum + row[i] * y_centered[i], 0));
+  const beta_scaled = gaussJordanSolve(XtX, Xty);
+
+  // 5. Unscale coefficients to map back to raw X inputs
+  const coefs_unscaled = new Array(p);
+  let intercept_unscaled = yMean;
+
+  for (let j = 0; j < p; j++) {
+    coefs_unscaled[j] = beta_scaled[j] / xStds[j];
+    intercept_unscaled -= coefs_unscaled[j] * xMeans[j];
+  }
+
+  // Return array: [intercept, feature_1, feature_2, ...]
+  return [intercept_unscaled, ...coefs_unscaled];
+}
 // ========== Feature generation for inverter ==========
 function makeFeatures(rpmForm, n, te, tc) {
   switch (rpmForm) {
     case 'n_lin':
-      return [1, n, n*te, n*tc, n*tc*te, n*te**2]; // intercept added
+      return [n, n*te, n*tc, n*tc*te, n*te**2];
     case 'n_quad':
-      return [1, n, n**2, n*te, n*tc, n*tc*te, n*te**2];
+      return [n, n**2, n*te, n*tc, n*tc*te, n*te**2];
     case 'ln_n_lin':
-      const ln_n = Math.log(Math.max(n, 1e-12));
-      return [1, ln_n, ln_n*te, ln_n*tc, ln_n*tc*te, ln_n*te**2];
+      const ln_n_lin = Math.log(Math.max(n, 1e-12));
+      return [ln_n_lin, ln_n_lin*te, ln_n_lin*tc, ln_n_lin*tc*te, ln_n_lin*te**2];
     case 'ln_n_quad':
-      const ln_n2 = Math.log(Math.max(n, 1e-12));
-      return [1, ln_n2, ln_n2**2, ln_n2*te, ln_n2*tc, ln_n2*tc*te, ln_n2*te**2];
+      const ln_n_quad = Math.log(Math.max(n, 1e-12));
+      return [ln_n_quad, ln_n_quad**2, ln_n_quad*te, ln_n_quad*tc, ln_n_quad*tc*te, ln_n_quad*te**2];
     default:
       throw new Error(`Unknown rpmForm: ${rpmForm}`);
   }
@@ -554,7 +603,8 @@ function cvInverter(dataPoints, targetCol, rpmForm, logTransform, alphas, normal
         const d = dataPoints[i];
         return makeFeatures(rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC);
       });
-      const preds = Xtest.map(xi => xi.reduce((s, x, j) => s + x * coeffs[j], 0));
+      // Shift indices to separate the intercept
+      const preds = Xtest.map(xi => coeffs[0] + xi.reduce((s, x, j) => s + x * coeffs[j + 1], 0));      
       const actual = testIdx.map(i => dataPoints[i][targetCol]);
       const errs = actual.map((a, i) => {
         const p = logTransform ? Math.exp(preds[i]) : preds[i];
@@ -583,6 +633,9 @@ function fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, cen
   const coeffs = solveRidge(X, y, 1.0); // fixed alpha
   const maxRPM = Math.max(...dataPoints.map(d => d.RPM));
   const maxData = dataPoints.filter(d => d.RPM === maxRPM);
+  const X_max = maxData.map(d => makeFeatures('n_quad', 1.0, d.TE - centerTE, d.TC - centerTC));
+  const y_max = maxData.map(d => d[targetCol]);
+  const coeffs_max = solveRidge(X_max, y_max, 1.0);
   const lookup = {};
   maxData.forEach(d => { lookup[`${d.TE},${d.TC}`] = d[targetCol]; });
 
@@ -590,9 +643,11 @@ function fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, cen
   const predict = (RPM, TE, TC) => {
     if (RPM <= splitRPM) {
       const feat = makeFeatures('n_quad', RPM / N_low, TE - centerTE, TC - centerTC);
-      return feat.reduce((s, f, i) => s + f * coeffs[i], 0);
+      // Shift indices to separate the intercept
+      return coeffs[0] + feat.reduce((s, f, i) => s + f * coeffs[i + 1], 0);
     } else if (RPM === maxRPM) {
-      return lookup[`${TE},${TC}`];
+        const feat = makeFeatures('n_quad', 1.0, TE - centerTE, TC - centerTC);
+        return coeffs_max[0] + feat.reduce((s, f, i) => s + f * coeffs_max[i + 1], 0);
     } else {
       const valLow = predict(splitRPM, TE, TC);
       const valMax = predict(maxRPM, TE, TC);
@@ -685,7 +740,8 @@ export function inverterCompressorPerformance(TE, TC, RPM, refrigerantIndex, com
   const predict = (model, TE, TC, RPM) => {
     if (model.type === 'global') {
       const feat = makeFeatures(model.rpmForm, RPM / normalizeRPM, TE - centerTE, TC - centerTC);
-      const y = feat.reduce((s, f, i) => s + f * model.coeffs[i], 0);
+      // Shift indices to separate the intercept
+      const y = model.coeffs[0] + feat.reduce((s, f, i) => s + f * model.coeffs[i + 1], 0);
       return model.logTransform ? Math.exp(y) : y;
     } else if (model.type === 'piecewise') {
       return model.predict(RPM, TE, TC);
