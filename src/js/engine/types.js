@@ -6,13 +6,13 @@
 
 /**
  * @typedef {Object} ExternalDims
- * @property {number} height - mm
- * @property {number} width  - mm
- * @property {number} depth  - mm
+ * @property {number} height - Exterior height in mm
+ * @property {number} width  - Exterior width in mm
+ * @property {number} depth  - Exterior depth in mm
  */
 
 /**
- * Available space passed down the node tree.
+ * Available space passed down the node tree for volumetric calculations.
  * @typedef {Object} Space
  * @property {number} width
  * @property {number} height
@@ -52,9 +52,10 @@
  */
 
 /**
+ * Fittings configuration for a leaf compartment (shelves, drawers, bins).
  * @typedef {Object} FittingConfig
  * @property {Shelf[]}       shelves
- * @property {number}        [shelfCount]    // NEW: just a number, no offsets
+ * @property {number}        [shelfCount]    // Total count, calculated automatically
  * @property {Drawer[]}      drawers
  * @property {DoorBin[]}     doorBins
  * @property {HousingVolume} iceMakerHousing
@@ -101,6 +102,7 @@
  */
 
 /**
+ * Union type representing any node in the layout tree.
  * @typedef {LeafNode|HorizontalSplitNode|VerticalSplitNode} Node
  */
 
@@ -108,26 +110,26 @@
  * @typedef {Object} CabinetConfig
  * @property {string}         schemaVersion
  * @property {{ name: string, createdAt: string, updatedAt: string }} meta
- * @property {{ external: ExternalDims, wallThicknessesByType: WallThicknessesByType, airGap: number, layout: Node }} cabinet
+ * @property {{ geometry: Object, layout: Node }} cabinet
  */
 
 /**
  * @typedef {Object} WallThicknessesByType
  * @property {Object} fresh - {top, bottom, left, right, rear, door}
  * @property {Object} freezer
- * @property {Object} [flex] - optional, treated as zero if absent
+ * @property {Object} [flex] - optional
  */
 
 /**
- * Per-leaf volume result (gross only after simplification).
+ * Per-leaf volume result (gross only).
  * @typedef {Object} LeafResult
  * @property {string} leafId
- * @property {number} gross - L, full precision
+ * @property {number} gross - Litres
  */
 
 /**
  * @typedef {Object} Totals
- * @property {number} gross  - L
+ * @property {number} gross  - Litres
  */
 
 /**
@@ -151,7 +153,7 @@
  */
 
 /**
- * Top-level result returned by runCalculation().
+ * Final result returned by the calculation engine.
  * @typedef {Object} CalcResult
  * @property {LeafResult[]}         leaves
  * @property {Totals|null}          totals
