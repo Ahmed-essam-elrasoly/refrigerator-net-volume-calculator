@@ -1085,6 +1085,62 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
   if (result.warnings.length) showWarnings(result.warnings);
 }
 
+
+
+/**
+ * Build a human-readable equation string from an inverter model.
+ * @param {object} model - The model object (Q or W)
+ * @param {string} varName - "Q" or "W"
+ * @returns {string} e.g. "Q = 10.5 + 2.1·n + ..."
+ */
+function buildInverterEquation(model, varName) {
+    if (!model || model.type !== 'global' || !model.coeffs) {
+        return model?.type === 'piecewise' ? 'Piecewise model' : '—';
+    }
+    const c = model.coeffs;
+    const form = model.rpmForm;
+    const log = model.logTransform;
+    const prefix = log ? `ln(${varName})` : varName;
+    let eq = `${prefix} = ${c[0].toFixed(4)}`;
+
+    const addTerm = (coeff, term) => {
+        if (Math.abs(coeff) < 1e-12) return;
+        const sign = coeff > 0 ? ' + ' : ' − ';
+        eq += `${sign}${Math.abs(coeff).toFixed(4)}·${term}`;
+    };
+
+    if (form === 'n_lin') {
+        addTerm(c[1], 'n');
+        addTerm(c[2], 'n·te');
+        addTerm(c[3], 'n·tc');
+        addTerm(c[4], 'n·tc·te');
+        addTerm(c[5], 'n·te²');
+    } else if (form === 'n_quad') {
+        addTerm(c[1], 'n');
+        addTerm(c[2], 'n²');
+        addTerm(c[3], 'n·te');
+        addTerm(c[4], 'n·tc');
+        addTerm(c[5], 'n·tc·te');
+        addTerm(c[6], 'n·te²');
+    } else if (form === 'ln_n_lin') {
+        addTerm(c[1], 'ln(n)');
+        addTerm(c[2], 'ln(n)·te');
+        addTerm(c[3], 'ln(n)·tc');
+        addTerm(c[4], 'ln(n)·tc·te');
+        addTerm(c[5], 'ln(n)·te²');
+    } else if (form === 'ln_n_quad') {
+        addTerm(c[1], 'ln(n)');
+        addTerm(c[2], 'ln(n)²');
+        addTerm(c[3], 'ln(n)·te');
+        addTerm(c[4], 'ln(n)·tc');
+        addTerm(c[5], 'ln(n)·tc·te');
+        addTerm(c[6], 'ln(n)·te²');
+    }
+    if (log) eq = `ln(${varName}) = ${eq.substring(eq.indexOf('=') + 1)}`;
+    return eq;
+}
+
+
 // ────────────────────────────────────────────────────────────────
 // Display helpers (now includes fan airflow section)
 // ────────────────────────────────────────────────────────────────
@@ -1107,24 +1163,49 @@ function displayResults(res, energy, isInverter = false) {
   const comp = res.compressor || {};
   const pe = (comp.Pe !== undefined ? comp.Pe : res.Pe)?.toFixed(4) ?? '—';
   const pc = (comp.Pc !== undefined ? comp.Pc : res.Pc)?.toFixed(4) ?? '—';
-  const etaV = comp.etaV != null ? fmtP(comp.etaV) : '—';   // null/undefined → '—'
-  const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';  // W
-  const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';      // W
-  const COP = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
-  const mFlow= comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
-
+  const qComp = comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';
+  const pComp = comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';
+  const COP   = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
+  const mFlow = comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
   const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
-  let etaStr = '—', wStr = '—';
-  if (comp.etaCoeffs && comp.etaCoeffs.length === 3) {
-    etaStr = `A = ${comp.etaCoeffs[0].toFixed(5)}, B = ${comp.etaCoeffs[1].toFixed(5)}, C = ${comp.etaCoeffs[2].toFixed(5)}`;
+  // --- Volumetric efficiency ---
+  let etaV = '—';
+  if (isInverter && res.RPM !== undefined && res.refrigerantIndex !== undefined && res.cylinderVolumeCm3 && comp.massFlow) {
+      try {
+          const prop = getRefrigerantProperties(res.refrigerantIndex);
+          const suctionTempK = 32.2 + 273.16; // fixed suction T
+          const Pe = comp.Pe;  // or res.Pe
+          const vGas = prop.specificVolume(suctionTempK, Pe);
+          const displacement_m3h = (res.cylinderVolumeCm3 * res.RPM * 60) / 1e6;
+          const theoMassFlow = displacement_m3h / vGas; // kg/h
+          const actualMassFlow = comp.massFlow;
+          etaV = (actualMassFlow / theoMassFlow * 100).toFixed(1) + ' %';
+      } catch (e) {
+          console.warn('etaV computation failed:', e);
+          etaV = '—';
+      }
+  } else {
+      etaV = comp.etaV != null ? fmtP(comp.etaV) : '—';
   }
-  if (comp.wCoeffs && comp.wCoeffs.length === 5) {
-    wStr = `AW = ${comp.wCoeffs[0].toFixed(5)}, BW = ${comp.wCoeffs[1].toFixed(5)}, CW = ${comp.wCoeffs[2].toFixed(5)}, DW = ${comp.wCoeffs[3].toFixed(5)}, EW = ${comp.wCoeffs[4].toFixed(5)}`;
+
+  // --- Build coefficient strings (equations for inverter) ---
+  let etaStr = '—', wStr = '—';
+  if (isInverter && res.compressorModel) {
+      etaStr = buildInverterEquation(res.compressorModel.Q, 'Q');
+      wStr   = buildInverterEquation(res.compressorModel.W, 'W');
+  } else {
+      // constant‑speed polynomials
+      if (comp.etaCoeffs && comp.etaCoeffs.length === 3) {
+          etaStr = `ηv = A + B·Pc/Pe + C·Pc  (A=${comp.etaCoeffs[0].toFixed(5)}, B=${comp.etaCoeffs[1].toFixed(5)}, C=${comp.etaCoeffs[2].toFixed(5)})`;
+      }
+      if (comp.wCoeffs && comp.wCoeffs.length === 5) {
+          wStr = `W = AW + BW·TE + CW·TC + DW·TC·TE + EW·TE²  (AW=${comp.wCoeffs[0].toFixed(5)}, BW=${comp.wCoeffs[1].toFixed(5)}, CW=${comp.wCoeffs[2].toFixed(5)}, DW=${comp.wCoeffs[3].toFixed(5)}, EW=${comp.wCoeffs[4].toFixed(5)})`;
+      }
   }
 
   const fanAirflow_m3h = res.fanAirflow !== undefined ? res.fanAirflow : 0;
-  const fanAirflow_CFM = fanAirflow_m3h * 0.588578;   // 1 m³/h = 0.588578 CFM
+  const fanAirflow_CFM = fanAirflow_m3h * 0.588578;
 
   const configLabel = res.configLabel || 'Unknown';
   const html = `
