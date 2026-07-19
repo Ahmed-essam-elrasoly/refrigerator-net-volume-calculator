@@ -1192,11 +1192,18 @@ function buildComparisonTable(resultA, resultB) {
 }
 
 // ---- Tab Switching ----
+// ── Tab: Volume ──────────────────────────────────────
 document.getElementById('tabVolume').addEventListener('click', () => {
+  // Show volume panel, hide thermal and inverter panels
   document.getElementById('panelVolume').classList.remove('hidden');
   document.getElementById('panelThermal').classList.add('hidden');
+  document.getElementById('panelInverter').classList.add('hidden');
+
+  // Update active tab button styling
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabVolume').classList.add('active');
-  document.getElementById('tabThermal').classList.remove('active');
+
+  // Show schematics, hide thermo results panel
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1205,11 +1212,16 @@ document.getElementById('tabVolume').addEventListener('click', () => {
   if (sideCanvas)  sideCanvas.style.display  = '';
 });
 
+// ── Tab: Thermal ─────────────────────────────────────
 document.getElementById('tabThermal').addEventListener('click', () => {
   document.getElementById('panelThermal').classList.remove('hidden');
   document.getElementById('panelVolume').classList.add('hidden');
+  document.getElementById('panelInverter').classList.add('hidden');
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabThermal').classList.add('active');
-  document.getElementById('tabVolume').classList.remove('active');
+
+  // Show thermo results panel, hide schematics
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1217,13 +1229,26 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (frontCanvas) frontCanvas.style.display = 'none';
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
+
+// ── Tab: Inverter ────────────────────────────────────
 document.getElementById('tabInverter').addEventListener('click', () => {
+  // Hide all tab panels, then show inverter panel
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   document.getElementById('panelInverter').classList.remove('hidden');
+
+  // Update active tab style
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabInverter').classList.add('active');
-  // hide schematics / show thermo results if needed
+
+  // Inverter shares the same results display as Thermal – show it, hide schematics
+  const thermoRight = document.getElementById('thermoRightPanel');
+  const frontCanvas = document.getElementById('schematicFront');
+  const sideCanvas  = document.getElementById('schematicSide');
+  if (thermoRight) thermoRight.classList.remove('hidden');
+  if (frontCanvas) frontCanvas.style.display = 'none';
+  if (sideCanvas)  sideCanvas.style.display = 'none';
 });
+
 // Thermo UI init with geometry provider
 initThermoUI({
   getGeometry: () => readGeometryFromPanel(),
