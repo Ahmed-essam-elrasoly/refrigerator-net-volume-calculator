@@ -62,9 +62,20 @@ export function runThermoAnalysis(config) {
     innerOptions: { dx: 0.001, tol: 1e-4, maxIter: 100 },
   };
   const solverOptions = { ...solverDefaults, ...(config.solverOptions || {}) };
+  // If inverterPR is provided, attach to solver options
+  if (config.inverterPR !== undefined) {
+    solverOptions.inverterPR = config.inverterPR;   // will be forwarded by solveThermalSystem
+  }
+  // ... (call solveThermalSystem with merged config)
+  const fullConfig = {
+    ...config,
+    ...solverOptions,
+    inverterPR: config.inverterPR,   // ensures it's passed
+  };
 
   try {
     const result = solveThermalSystem({
+      ...config,                     // spread the whole config (includes inverterPR)
       geom: config.geom,
       compParams: config.compParams,
       condenserConfig: config.condenserConfig,
@@ -74,9 +85,9 @@ export function runThermoAnalysis(config) {
       fixedTemps: config.fixedTemps,
       fan: config.fan,
       electrical: config.electrical,
-      freezerPosition: config.freezerPosition || 'top',   // new field
-      initialTE: config.fixedTemps.TE,                    // solver needs initial TE
-      ...solverOptions,
+      freezerPosition: config.freezerPosition || 'top',
+      initialTE: config.fixedTemps.TE,
+      ...solverOptions,              // solverOptions already contains inverterPR if set
     });
 
     if (!result.converged) {
@@ -112,6 +123,9 @@ export function runThermoAnalysis(config) {
         innerTotal: result.innerTotalIterations,
       },
     };
+  if (result.RPM !== undefined) {
+    output.RPM = result.RPM;
+  }
 
     if (result.PR >= 1) {
       warnings.push('Compressor running ratio reached 100% — system may be undersized.');
@@ -159,7 +173,7 @@ export function buildDefaultConfig(overrides = {}) {
   };
   const base = {
     geom: toThermalFormat(DEFAULT_CABINET),
-    compParams,
+    compParams: null,   // will be filled by the caller
     condenserConfig: {
       sidePipePitch_mm: condRaw.sidePipePitch_mm,
       backPipePitch_mm: condRaw.backPipePitch_mm,

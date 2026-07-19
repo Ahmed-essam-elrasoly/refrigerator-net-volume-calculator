@@ -16,11 +16,15 @@ import {
   getCurrentCompressor,
   setSelectedCompressor,
   addCompressor,
+  saveCompressors,   // <-- add this line
   deleteCompressor
 } from '../compressorManager.js';
+import { fitInverterCoefficients } from '../engine/thermo/CompressorPerformance.js';
 import { computeCompressorCoefficients } from '../engine/thermo/CompressorPerformance.js';
 import { EnergyConsumption } from '../engine/thermo/solver.js';
 import { settings, updateSettings } from '../settings.js';
+import { getRefrigerantProperties } from '../engine/thermo/CompressorPerformance.js';
+import { INVERTER_EXAMPLE_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
 
 // ---------------------------------------------------------------------------
@@ -28,14 +32,21 @@ import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapac
 //   Returns m³/h. Uses a simplified axial‑flow fan model.
 //   Adjust the axialVelocityFactor (0.15) based on empirical data if needed.
 // ---------------------------------------------------------------------------
-function computeFanAirflow(fanParam = {}) {
-  const { fanDiam = 100, fanRPM = 2200 } = fanParam;   // mm, RPM
-  const D = fanDiam / 1000;                            // convert to m
-  const tipSpeed = (Math.PI * D * fanRPM) / 60;        // m/s
-  const axialVelocity = tipSpeed * 0.15;               // typical axial‑to‑tip ratio
-  const area = (Math.PI * D * D) / 4;                  // m²
+function computeFanAirflow(fanParam) {
+  const { fanDiam, fanRPM } = fanParam;
+  if (!fanParam || !Number.isFinite(fanDiam) || fanDiam <= 0 ||
+      !Number.isFinite(fanRPM)  || fanRPM  <= 0) {
+    throw new Error(
+      'Fan diameter (mm) and RPM must be positive numbers. ' +
+      'Please enter them in Advanced Settings.'
+    );
+  }
+  const D = fanDiam / 1000;
+  const tipSpeed = (Math.PI * D * fanRPM) / 60;
+  const axialVelocity = tipSpeed * 0.15;   // typical axial‑to‑tip ratio
+  const area = (Math.PI * D * D) / 4;
   const flow_m3s = axialVelocity * area;
-  return flow_m3s * 3600;                              // m³/h
+  return flow_m3s * 3600;
 }
 
 // Module-level state
@@ -56,43 +67,89 @@ let thermalModalInputs = {};
 // ────────────────────────────────────────────────────────────────
 // Public init
 // ────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────
+// Public init – now builds BOTH constant‑speed and inverter panels
+// ────────────────────────────────────────────────────────────────
 export function initThermoUI(options) {
-  if (typeof options === 'function') {        // backward compatibility
+  // Resolve geometry provider (backward compatible)
+  if (typeof options === 'function') {
     getGeometryFn = options;
   } else if (options && options.getGeometry) {
     getGeometryFn = options.getGeometry;
   }
 
-  const panel = document.getElementById('panelThermal');
-  if (!panel) return;
+  // ─── Constant‑speed compressor panel (existing) ───────────────
+  const panelThermal = document.getElementById('panelThermal');
+  if (panelThermal) {
+    panelThermal.innerHTML = `
+      <button id="thermoRunBtn">Run Thermal Analysis</button>
+      <div id="thermoErrors"></div>
+      <fieldset>
+        <legend>Constant‑Speed Compressor</legend>
+        <label>Ambient T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
+        <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
+        <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
+        <label>Refrigerant:
+          <select id="thermoRefrigerant">
+            <option value="R-600a">R-600a</option>
+            <option value="R-134a">R-134a</option>
+          </select>
+        </label>
+        <button id="thermoAdvancedBtn" type="button">⚙️ Advanced</button>
+      </fieldset>
+    `;
+    // Event bindings
+    document.getElementById('thermoRunBtn').addEventListener('click', handleRun);
+    document.getElementById('thermoAdvancedBtn').addEventListener('click', openThermalSettings);
+  }
 
-  panel.innerHTML = `
-    <button id="thermoRunBtn">Run Thermal Analysis</button>
-    <div id="thermoErrors"></div>
+  // ─── Inverter compressor panel (new) ──────────────────────────
+const panelInverter = document.getElementById('panelInverter');
+if (panelInverter) {
+  panelInverter.innerHTML = `
+    <button id="inverterRunBtn">Run Inverter Analysis</button>
+    <div id="inverterErrors"></div>
     <fieldset>
-      <legend>Design Inputs</legend>
-      <label>Ambient T0 (°C): <input type="number" id="thermoT0" value="30" step="any"></label>
-      <label>Freezer TF (°C): <input type="number" id="thermoTF" value="-18" step="any"></label>
-      <label>Refrigerator TR (°C): <input type="number" id="thermoTR" value="3" step="any"></label>
+      <legend>Inverter Compressor</legend>
+      <p style="margin:0; font-size:0.9em; color:#555;">
+        ⚙️ Uses the compressor selected in <strong>Advanced Settings</strong>.
+        <br>Ensure it is an inverter type.
+      </p>
+      <p id="currentInverterName" style="margin:4px 0 0; font-weight:bold;">—</p>
+
+      <label>Running Ratio PR:
+        <input type="number" id="inverterPR" value="0.6" step="0.01" min="0.01" max="1">
+      </label>
+      <label>Ambient T0 (°C):
+        <input type="number" id="inverterT0" value="30" step="any">
+      </label>
+      <label>Freezer TF (°C):
+        <input type="number" id="inverterTF" value="-18" step="any">
+      </label>
+      <label>Refrigerator TR (°C):
+        <input type="number" id="inverterTR" value="3" step="any">
+      </label>
       <label>Refrigerant:
-        <select id="thermoRefrigerant">
+        <select id="inverterRefrigerant">
           <option value="R-600a">R-600a</option>
           <option value="R-134a">R-134a</option>
         </select>
       </label>
-      <button id="thermoAdvancedBtn" type="button">⚙️ Advanced</button>
+      <button id="inverterAdvancedBtn" type="button">⚙️ Advanced</button>
     </fieldset>
   `;
-
-  // Load saved advanced values from localStorage (if any)
+  document.getElementById('inverterRunBtn').addEventListener('click', handleInverterRun);
+  document.getElementById('inverterAdvancedBtn').addEventListener('click', openThermalSettings);
+}
+  refreshInverterCompressorSelect()
+  // Load saved advanced values (subcool, discharge, defrost, etc.)
   const saved = localStorage.getItem('thermoAdvanced');
   if (saved) thermalAdvanced = { ...thermalAdvanced, ...JSON.parse(saved) };
 
-  document.getElementById('thermoAdvancedBtn').addEventListener('click', openThermalSettings);
-  document.getElementById('thermoRunBtn').addEventListener('click', handleRun);
-
-  // Build the modal once and keep it hidden
+  // Build the advanced settings modal once (condenser, evaporator, fan, compressor)
   buildThermalModalOnce();
+  updateInverterCompressorDisplay()
+  // Make sure constant‑speed panel is visible, inverter hidden (tabs control later)
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -221,7 +278,7 @@ function buildThermalModalOnce() {
     setSelectedCompressor(e.target.value);
   };
   document.getElementById('saveThermalSettings').onclick = saveThermalSettings;
-
+  
   // Close when clicking outside modal
   thermalModal.onclick = (e) => {
     if (e.target === thermalModal) thermalModal.classList.add('hidden');
@@ -266,7 +323,7 @@ function openThermalSettings() {
 
   // Compressor dropdown
   refreshCompressorSelect();
-
+  updateInverterCompressorDisplay()
   thermalModal.classList.remove('hidden');
 }
 
@@ -326,55 +383,60 @@ function saveThermalSettings() {
   // Compressor
   const compSelect = thermalModalInputs.compressorSelect;
   if (compSelect) setSelectedCompressor(compSelect.value);
-
+  updateInverterCompressorDisplay()
   thermalModal.classList.add('hidden');
 }
-
-// Helper: parse Excel/CSV file and extract data points
-function parseCompressorDataFile(file) {
+export function parseCompressorDataFile(file, wantsInverter = false) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet);
-
-        // Find columns by header (case-insensitive)
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet);
         const headers = Object.keys(rows[0] || {});
-        const findCol = (names) => {
-          for (const name of names) {
-            const found = headers.find(h => h.toLowerCase() === name.toLowerCase());
-            if (found) return found;
-          }
-          return null;
-        };
-        const teCol = findCol(['TE', 'Te', 'Evap Temp', 'T_E']);
-        const tcCol = findCol(['TC', 'Tc', 'Cond Temp', 'T_C']);
-        const wCol  = findCol(['W', 'Power', 'Input Power']);
-        const qCol  = findCol(['Q', 'Capacity', 'Cooling Capacity']);
-
+        
+        // Corrected column finder: header string must contain the candidate substring
+        const findCol = (candidates) =>
+          headers.find(h => candidates.some(c => h.toLowerCase().includes(c)));
+        
+        const teCol = findCol(['te', 'evap temp']);
+        const tcCol = findCol(['tc', 'cond temp']);
+        const wCol  = findCol(['w', 'power']);
+        const qCol  = findCol(['q', 'capacity']);
+        
         if (!teCol || !tcCol || !wCol || !qCol) {
-          reject(new Error('Could not find required columns: TE, TC, W, Q'));
-          return;
+          return reject(new Error('Missing TE/TC/W/Q columns.'));
         }
 
-        const dataPoints = rows.map(row => ({
-          TE: parseFloat(row[teCol]),
-          TC: parseFloat(row[tcCol]),
-          W:  parseFloat(row[wCol]),
-          Q:  parseFloat(row[qCol])
-        })).filter(dp => !isNaN(dp.TE) && !isNaN(dp.TC) && !isNaN(dp.W) && !isNaN(dp.Q));
-
-        if (dataPoints.length < 5) {
-          reject(new Error(`Only ${dataPoints.length} valid data points found. At least 5 are required.`));
-          return;
+        if (wantsInverter) {
+          const rpmCol = findCol(['rpm', 'speed', 'r/min']);
+          if (!rpmCol) return reject(new Error('RPM column missing – required for inverter.'));
+          
+          const data = rows.map(r => ({
+            RPM: parseFloat(r[rpmCol]),
+            TE: parseFloat(r[teCol]),
+            TC: parseFloat(r[tcCol]),
+            W:  parseFloat(r[wCol]),
+            Q:  parseFloat(r[qCol]),
+          })).filter(d => Object.values(d).every(v => !isNaN(v)));
+          
+          if (data.length < 5) return reject(new Error(`Only ${data.length} valid points.`));
+          resolve(data);
+        } else {
+          // constant‑speed parsing (unchanged)
+          const data = rows.map(r => ({
+            TE: parseFloat(r[teCol]),
+            TC: parseFloat(r[tcCol]),
+            W:  parseFloat(r[wCol]),
+            Q:  parseFloat(r[qCol]),
+          })).filter(d => Object.values(d).every(v => !isNaN(v)));
+          
+          if (data.length < 5) return reject(new Error(`Only ${data.length} valid points.`));
+          resolve(data);
         }
-
-        resolve(dataPoints);
       } catch (err) {
-        reject(new Error('Failed to parse file: ' + err.message));
+        reject(new Error('Parsing error: ' + err.message));
       }
     };
     reader.onerror = () => reject(new Error('File read error'));
@@ -397,28 +459,37 @@ function buildDataTable(dataPoints, containerId) {
 
 // --- Add Compressor Modal ---
 function openAddCompressorModal() {
-  const modal = document.getElementById('addCompressorModal');
-  if (!modal) return;
+  // Ensure the modal container exists
+  let modal = document.getElementById('addCompressorModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'addCompressorModal';
+    modal.className = 'modal hidden';
+    document.body.appendChild(modal);
+  }
+  // Ensure the content div exists
+  let contentDiv = document.getElementById('addCompressorContent');
+  if (!contentDiv) {
+    contentDiv = document.createElement('div');
+    contentDiv.id = 'addCompressorContent';
+    modal.appendChild(contentDiv);
+  }
 
-  // Defaults
-  const defaultComp = {
-    name: 'EGX80CLC',
-    cylinderVolumeCm3: 10.17,
-    speedRpm: 2220,
-  };
-  const defaultRef = 2; // R-600a
-
-  // Build the modal content
-  document.getElementById('addCompressorContent').innerHTML = `
-    <style>
-      .data-table th, .data-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
-      .data-table { margin: 10px 0; }
-    </style>
+  contentDiv.innerHTML = `
     <fieldset>
-      <legend>Compressor Basic Data</legend>
-      <label>Name: <input id="acName" type="text" value="${defaultComp.name}"></label>
-      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${defaultComp.cylinderVolumeCm3}"></label>
-      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${defaultComp.speedRpm}"></label>
+      <legend>Compressor Type</legend>
+      <label>
+        <input type="radio" name="compType" value="constant" checked> Constant‑Speed
+      </label>
+      <label>
+        <input type="radio" name="compType" value="inverter"> Inverter
+      </label>
+    </fieldset>
+
+    <!-- Common fields (always visible) -->
+    <fieldset>
+      <legend>Basic Information</legend>
+      <label>Name: <input id="acName" type="text" value=""></label>
       <label>Refrigerant:
         <select id="acRef">
           <option value="1">R-134a</option>
@@ -426,25 +497,66 @@ function openAddCompressorModal() {
         </select>
       </label>
     </fieldset>
-    <fieldset>
-      <legend>Load Performance Data from Excel</legend>
-      <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
-      <button id="acLoadBtn" type="button">Load Data</button>
-      <div id="acDataContainer"><p>No data loaded yet.</p></div>
-    </fieldset>
+
+    <!-- Constant‑Speed fields -->
+    <div id="constantFields">
+      <fieldset>
+        <legend>Constant‑Speed Data</legend>
+        <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any"></label>
+        <label>Speed (rpm): <input id="acRpm" type="number" step="any"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Load Performance Data from Excel</legend>
+        <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
+        <button id="acLoadBtn" type="button">Load Data</button>
+        <div id="acDataContainer"><p>No data loaded yet.</p></div>
+      </fieldset>
+    </div>
+
+    <!-- Inverter fields: only name / refrigerant / displacement + file -->
+    <div id="inverterFields" style="display:none;">
+      <fieldset>
+        <legend>Basic Information</legend>
+        <label>Name: <input id="acInvName" type="text" value=""></label>
+        <label>Refrigerant:
+          <select id="acInvRef">
+            <option value="1">R-134a</option>
+            <option value="2" selected>R-600a</option>
+          </select>
+        </label>
+        <label>Cyl. Volume (cm³): <input id="acInvCyl" type="number" step="any" value="10.17"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Load Performance Data from Excel</legend>
+        <input type="file" id="acInvFileInput" accept=".xlsx,.xls,.csv">
+        <button id="acInvLoadBtn" type="button">Load Data</button>
+        <div id="acInvDataContainer"><p>No data loaded yet.</p></div>
+      </fieldset>
+    </div>
+
     <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
     <div class="settings-actions">
-      <button id="fitCompressorBtn">Fit & Add</button>
+      <button id="fitCompressorBtn">Add Compressor</button>
       <button id="cancelAddCompressor">Cancel</button>
     </div>
   `;
 
   modal.classList.remove('hidden');
 
+  // Toggle visibility when type changes
+  document.querySelectorAll('input[name="compType"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      const isInverter = e.target.value === 'inverter';
+      document.getElementById('constantFields').style.display = isInverter ? 'none' : 'block';
+      document.getElementById('inverterFields').style.display = isInverter ? 'block' : 'none';
+    });
+  });
+
   // Store loaded data points
   let loadedDataPoints = null;
+  let loadedInverterPoints = null;
 
-  // File input change / load button
+  // Constant‑speed file load
   document.getElementById('acLoadBtn').onclick = async () => {
     const fileInput = document.getElementById('acFileInput');
     const file = fileInput.files[0];
@@ -460,6 +572,31 @@ function openAddCompressorModal() {
     } catch (err) {
       document.getElementById('acError').textContent = err.message;
       loadedDataPoints = null;
+    }
+  };
+
+  // Inverter file load
+  document.getElementById('acInvLoadBtn').onclick = async () => {
+    const fileInput = document.getElementById('acInvFileInput');
+    const file = fileInput.files[0];
+    if (!file) {
+      document.getElementById('acError').textContent = 'Please select a file.';
+      return;
+    }
+    try {
+      const points = await parseCompressorDataFile(file, true);
+      loadedInverterPoints = points;
+      let html = `<table class="data-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead><tr><th>RPM</th><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
+      points.forEach(dp => {
+        html += `<tr><td>${dp.RPM.toFixed(0)}</td><td>${dp.TE.toFixed(2)}</td><td>${dp.TC.toFixed(2)}</td><td>${dp.W.toFixed(2)}</td><td>${dp.Q.toFixed(2)}</td></tr>`;
+      });
+      html += `</tbody></table><p>${points.length} data points loaded.</p>`;
+      document.getElementById('acInvDataContainer').innerHTML = html;
+      document.getElementById('acError').textContent = '';
+    } catch (err) {
+      document.getElementById('acError').textContent = err.message;
+      loadedInverterPoints = null;
     }
   };
 
@@ -473,49 +610,81 @@ function openAddCompressorModal() {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
 
-    if (!loadedDataPoints || loadedDataPoints.length < 5) {
-      errorDiv.textContent = 'Please load at least 5 data points from an Excel file.';
-      return;
-    }
-
+    const compType = document.querySelector('input[name="compType"]:checked').value;
     const name = document.getElementById('acName').value.trim();
-    const cyl = parseFloat(document.getElementById('acCyl').value);
-    const rpm = parseFloat(document.getElementById('acRpm').value);
     const refIdx = parseInt(document.getElementById('acRef').value);
 
     if (!name) { errorDiv.textContent = 'Name is required.'; return; }
-    if (isNaN(cyl) || cyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
-    if (isNaN(rpm) || rpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
-    try {
-      const { etaCoeffs, wCoeffs } = computeCompressorCoefficients({
-        cylinderVolumeCm3: cyl,
-        speedRpm: rpm,
-        refrigerantIndex: refIdx,
-        dataPoints: loadedDataPoints,
-      });
+    if (compType === 'constant') {
+      if (!loadedDataPoints || loadedDataPoints.length < 5) {
+        errorDiv.textContent = 'Please load at least 5 data points.';
+        return;
+      }
+      const cyl = parseFloat(document.getElementById('acCyl').value);
+      const rpm = parseFloat(document.getElementById('acRpm').value);
+      if (isNaN(cyl) || cyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
+      if (isNaN(rpm) || rpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
+      try {
+        const { etaCoeffs, wCoeffs } = computeCompressorCoefficients({
+          cylinderVolumeCm3: cyl,
+          speedRpm: rpm,
+          refrigerantIndex: refIdx,
+          dataPoints: loadedDataPoints,
+        });
+        addCompressor({
+          id: name.replace(/\s/g, ''),
+          name, model: name, voltage: 100, frequency: 50,
+          cylinderVolumeCm3: cyl, speedRpm: rpm,
+          refrigerantIndex: refIdx,
+          wCoeffs, etaCoeffs,
+          dataPoints: loadedDataPoints,
+        });
+      } catch (err) { errorDiv.textContent = err.message; return; }
+    } else {
+      // Inverter branch
+      const invCyl = parseFloat(document.getElementById('acInvCyl')?.value) || 0;
+      if (!loadedInverterPoints || loadedInverterPoints.length < 5) {
+        errorDiv.textContent = 'Load inverter data file (needs RPM, TE, TC, W, Q). At least 5 points required.';
+        return;
+      }
+      try {
+      // New code – after fixing parameters:
+      const normalizeRPM = Math.max(...loadedInverterPoints.map(d => d.RPM));
+      // Use the center values from the compressor definition or defaults
+        const centerTE = loadedInverterPoints.reduce((s, d) => s + d.TE, 0) / loadedInverterPoints.length;
+        const centerTC = loadedInverterPoints.reduce((s, d) => s + d.TC, 0) / loadedInverterPoints.length;      
+        const compressorModel = fitInverterCoefficients(
+        loadedInverterPoints,
+        normalizeRPM,
+        centerTE,
+        centerTC,
+        3.0    // target RMSE
+      );
       addCompressor({
         id: name.replace(/\s/g, ''),
         name,
         model: name,
-        voltage: 100,
+        voltage: 220,
         frequency: 50,
-        cylinderVolumeCm3: cyl,
-        speedRpm: rpm,
+        isInverter: true,
+        cylinderVolumeCm3: invCyl,
         refrigerantIndex: refIdx,
-        wCoeffs,
-        etaCoeffs,
-        dataPoints: loadedDataPoints,
+        compressorModel,
+        dataPoints: loadedInverterPoints,
       });
-
-      modal.classList.add('hidden');
-      openThermalSettings(); // refresh compressor list
-    } catch (err) {
-      errorDiv.textContent = err.message;
+      } catch (e) {
+        errorDiv.textContent = 'Fitting failed: ' + e.message;
+        return;
+      }
     }
+
+    modal.classList.add('hidden');
+    openThermalSettings();   // refresh compressor lists
   };
 
+  // Close when clicking outside modal
   modal.onclick = (e) => {
     if (e.target === modal) modal.classList.add('hidden');
   };
@@ -523,49 +692,85 @@ function openAddCompressorModal() {
 
 // --- Edit Compressor Modal ---
 function openEditCompressorModal() {
-  const modal = document.getElementById('addCompressorModal');
-  if (!modal) return;
-
-  loadCompressors();
+  // Ensure modal exists
+  let modal = document.getElementById('addCompressorModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'addCompressorModal';
+    modal.className = 'modal hidden';
+    document.body.appendChild(modal);
+  }
+  let contentDiv = document.getElementById('addCompressorContent');
+  if (!contentDiv) {
+    contentDiv = document.createElement('div');
+    contentDiv.id = 'addCompressorContent';
+    modal.appendChild(contentDiv);
+  }
+    loadCompressors();
   const comp = getCurrentCompressor();
   if (!comp) {
     alert('No compressor selected.');
     return;
   }
 
-  // Pre-fill data points if they exist
-  let existingPoints = comp.dataPoints || [];
+  const isInverter = comp.isInverter === true;
+  const existingPoints = comp.dataPoints || [];
 
+  // Build data table HTML depending on compressor type
+  const buildDataTableHTML = (points) => {
+    if (!points || points.length === 0) return '<p>No data points stored.</p>';
+    if (isInverter) {
+      let html = `<table class="data-table"><thead><tr><th>RPM</th><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
+      points.forEach(dp => {
+        html += `<tr><td>${dp.RPM?.toFixed(0) ?? '—'}</td><td>${dp.TE?.toFixed(2) ?? '—'}</td><td>${dp.TC?.toFixed(2) ?? '—'}</td><td>${dp.W?.toFixed(2) ?? '—'}</td><td>${dp.Q?.toFixed(2) ?? '—'}</td></tr>`;
+      });
+      html += `</tbody></table><p>${points.length} points.</p>`;
+      return html;
+    }
+    // constant‑speed table
+    let html = `<table class="data-table"><thead><tr><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
+    points.forEach(dp => {
+      html += `<tr><td>${dp.TE?.toFixed(2) ?? '—'}</td><td>${dp.TC?.toFixed(2) ?? '—'}</td><td>${dp.W?.toFixed(2) ?? '—'}</td><td>${dp.Q?.toFixed(2) ?? '—'}</td></tr>`;
+    });
+    html += `</tbody></table><p>${points.length} points.</p>`;
+    return html;
+  };
+
+  // Set up modal HTML
   document.getElementById('addCompressorContent').innerHTML = `
-    <style>
-      .data-table th, .data-table td { border: 1px solid #ccc; padding: 4px; text-align: center; }
-      .data-table { margin: 10px 0; }
-    </style>
     <h2>Edit Compressor</h2>
     <fieldset>
-      <legend>Basic Data</legend>
+      <legend>Basic Information</legend>
       <label>Name: <input id="acName" type="text" value="${comp.name}"></label>
-      <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${comp.cylinderVolumeCm3}"></label>
-      <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${comp.speedRpm}"></label>
       <label>Refrigerant:
         <select id="acRef">
           <option value="1" ${comp.refrigerantIndex === 1 ? 'selected' : ''}>R-134a</option>
           <option value="2" ${comp.refrigerantIndex === 2 ? 'selected' : ''}>R-600a</option>
         </select>
       </label>
+      ${isInverter ? '' : `
+        <label>Cyl. Volume (cm³): <input id="acCyl" type="number" step="any" value="${comp.cylinderVolumeCm3}"></label>
+        <label>Speed (rpm): <input id="acRpm" type="number" step="any" value="${comp.speedRpm}"></label>
+      `}
+      ${isInverter ? `
+        <label>Cyl. Volume (cm³) (for reference): <input id="acCyl" type="number" step="any" value="${comp.cylinderVolumeCm3 || ''}"></label>
+      ` : ''}
     </fieldset>
+
     <fieldset>
       <legend>Current Data Points (${existingPoints.length} points)</legend>
       <div id="acDataContainer">
-        ${existingPoints.length ? buildDataTableHTML(existingPoints) : '<p>No data points stored.</p>'}
+        ${buildDataTableHTML(existingPoints)}
       </div>
     </fieldset>
+
     <fieldset>
       <legend>Replace with New Excel File</legend>
       <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
       <button id="acLoadBtn" type="button">Load & Replace</button>
       <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
     </fieldset>
+
     <div class="settings-actions">
       <button id="fitAndSaveBtn">Fit & Save</button>
       <button id="cancelEditCompressor">Cancel</button>
@@ -576,7 +781,7 @@ function openEditCompressorModal() {
 
   let loadedDataPoints = existingPoints.length ? existingPoints : null;
 
-  // Load button to replace data
+  // Handle file loading
   document.getElementById('acLoadBtn').onclick = async () => {
     const fileInput = document.getElementById('acFileInput');
     const file = fileInput.files[0];
@@ -585,9 +790,10 @@ function openEditCompressorModal() {
       return;
     }
     try {
-      const points = await parseCompressorDataFile(file);
+      // For inverter, parse with RPM column
+      const points = await parseCompressorDataFile(file, isInverter);
       loadedDataPoints = points;
-      buildDataTable(points, 'acDataContainer');
+      document.getElementById('acDataContainer').innerHTML = buildDataTableHTML(points);
       document.getElementById('acError').textContent = '';
     } catch (err) {
       document.getElementById('acError').textContent = err.message;
@@ -595,10 +801,12 @@ function openEditCompressorModal() {
     }
   };
 
+  // Cancel
   document.getElementById('cancelEditCompressor').onclick = () => {
     modal.classList.add('hidden');
   };
 
+  // Fit & Save
   document.getElementById('fitAndSaveBtn').onclick = () => {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
@@ -609,63 +817,97 @@ function openEditCompressorModal() {
     }
 
     const newName = document.getElementById('acName').value.trim();
-    const newCyl = parseFloat(document.getElementById('acCyl').value);
-    const newRpm = parseFloat(document.getElementById('acRpm').value);
     const newRefIdx = parseInt(document.getElementById('acRef').value);
 
     if (!newName) { errorDiv.textContent = 'Name is required.'; return; }
-    if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
-    if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
-    // If dataPoints changed or basic data changed, refit
-    const needRefit = (loadedDataPoints !== existingPoints) ||
-                      (newCyl !== comp.cylinderVolumeCm3) ||
-                      (newRpm !== comp.speedRpm) ||
-                      (newRefIdx !== comp.refrigerantIndex);
-
-    let wCoeffs, etaCoeffs, finalPoints;
-    if (needRefit) {
+    if (isInverter) {
+      // Inverter fitting
       try {
-        const coeffs = computeCompressorCoefficients({
-          cylinderVolumeCm3: newCyl,
-          speedRpm: newRpm,
+        const normalizeRPM = Math.max(...loadedInverterPoints.map(d => d.RPM));
+        const centerTE = loadedInverterPoints.reduce((s, d) => s + d.TE, 0) / loadedInverterPoints.length;
+        const centerTC = loadedInverterPoints.reduce((s, d) => s + d.TC, 0) / loadedInverterPoints.length;
+        const compressorModel = fitInverterCoefficients(
+          loadedInverterPoints,
+          normalizeRPM,
+          centerTE,
+          centerTC,
+          3.0   // target RMSE; can be adjusted
+        );
+        const updated = {
+          ...comp,
+          id: comp.id,   // keep original id
+          name: newName,
+          model: newName,
           refrigerantIndex: newRefIdx,
-          dataPoints: loadedDataPoints,
-        });
-        wCoeffs = coeffs.wCoeffs;
-        etaCoeffs = coeffs.etaCoeffs;
-        finalPoints = loadedDataPoints;
+          cylinderVolumeCm3: parseFloat(document.getElementById('acCyl')?.value) || comp.cylinderVolumeCm3 || 0,
+          isInverter: true,
+          normalizeRPM,       // store for info
+          centerTE,
+          centerTC,
+          compressorModel,    // the full model object (Q & W predictors)
+          dataPoints: loadedInverterPoints,
+        };
+        // Replace compressor
+        deleteCompressor(comp.id);
+        addCompressor(updated);
+        setSelectedCompressor(comp.id);
       } catch (err) {
         errorDiv.textContent = 'Fitting failed: ' + err.message;
         return;
       }
     } else {
-      // Keep existing coefficients
-      wCoeffs = comp.wCoeffs;
-      etaCoeffs = comp.etaCoeffs;
-      finalPoints = existingPoints;
+      // Constant‑speed fitting
+      const newCyl = parseFloat(document.getElementById('acCyl').value);
+      const newRpm = parseFloat(document.getElementById('acRpm').value);
+      if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
+      if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
+
+      const needRefit = (loadedDataPoints !== existingPoints) ||
+                        (newCyl !== comp.cylinderVolumeCm3) ||
+                        (newRpm !== comp.speedRpm) ||
+                        (newRefIdx !== comp.refrigerantIndex);
+
+      let wCoeffs, etaCoeffs;
+      if (needRefit) {
+        try {
+          const coeffs = computeCompressorCoefficients({
+            cylinderVolumeCm3: newCyl,
+            speedRpm: newRpm,
+            refrigerantIndex: newRefIdx,
+            dataPoints: loadedDataPoints,
+          });
+          wCoeffs = coeffs.wCoeffs;
+          etaCoeffs = coeffs.etaCoeffs;
+        } catch (err) {
+          errorDiv.textContent = 'Fitting failed: ' + err.message;
+          return;
+        }
+      } else {
+        wCoeffs = comp.wCoeffs;
+        etaCoeffs = comp.etaCoeffs;
+      }
+
+      const updated = {
+        id: comp.id,
+        name: newName,
+        model: newName,
+        voltage: comp.voltage || 100,
+        frequency: comp.frequency || 50,
+        cylinderVolumeCm3: newCyl,
+        speedRpm: newRpm,
+        refrigerantIndex: newRefIdx,
+        wCoeffs,
+        etaCoeffs,
+        dataPoints: loadedDataPoints,
+      };
+      deleteCompressor(comp.id);
+      addCompressor(updated);
+      setSelectedCompressor(comp.id);
     }
 
-    const updatedComp = {
-      id: newName.replace(/\s/g, ''),
-      name: newName,
-      model: newName,
-      voltage: comp.voltage || 100,
-      frequency: comp.frequency || 50,
-      cylinderVolumeCm3: newCyl,
-      speedRpm: newRpm,
-      refrigerantIndex: newRefIdx,
-      wCoeffs,
-      etaCoeffs,
-      dataPoints: finalPoints,
-    };
-
-    deleteCompressor(comp.id);
-    addCompressor(updatedComp);
-    setSelectedCompressor(updatedComp.id);
-
     modal.classList.add('hidden');
-    openThermalSettings();
+    openThermalSettings(); // refresh compressor lists
   };
 
   modal.onclick = (e) => {
@@ -703,8 +945,18 @@ function handleRun() {
   const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
 
   // Fan airflow calculated from fan parameters stored in settings
-  const fanParam = settings.fanParam || {};
-  const fanFlow = computeFanAirflow(fanParam);
+const fanParam = settings.fanParam || {};
+let fanFlow;
+try {
+  fanFlow = computeFanAirflow(fanParam);
+} catch (e) {
+  showError(e.message, 'inverterErrors');
+  return;
+}
+if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
+  showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors');
+  return;
+}
 
   // Determine freezer position correctly for any configuration
   const comps = cabinetGeom._compartments;
@@ -836,7 +1088,7 @@ function handleRun() {
 // ────────────────────────────────────────────────────────────────
 // Display helpers (now includes fan airflow section)
 // ────────────────────────────────────────────────────────────────
-function displayResults(res, energy) {
+function displayResults(res, energy, isInverter = false) {
   if (!res) return;
 
   const resultsDiv = document.getElementById('thermoRightPanel');
@@ -855,7 +1107,7 @@ function displayResults(res, energy) {
   const comp = res.compressor || {};
   const pe = (comp.Pe !== undefined ? comp.Pe : res.Pe)?.toFixed(4) ?? '—';
   const pc = (comp.Pc !== undefined ? comp.Pc : res.Pc)?.toFixed(4) ?? '—';
-  const etaV = comp.etaV !== undefined ? fmtP(comp.etaV) : '—';
+  const etaV = comp.etaV != null ? fmtP(comp.etaV) : '—';   // null/undefined → '—'
   const qComp= comp.coolingCapacity !== undefined ? fmt(comp.coolingCapacity) : '—';  // W
   const pComp= comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';      // W
   const COP = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
@@ -884,8 +1136,12 @@ function displayResults(res, energy) {
         <tr class="section-header"><td colspan="2">Operating Points</td></tr>
         <tr><td>Condensing temp TC</td><td>${fmt(res.TC)} °C</td></tr>
         <tr><td>Evaporating temp TE</td><td>${fmt(res.TE)} °C</td></tr>
-        <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>
-        <tr><td>Running ratio PR</td><td>${fmtP(res.PR)}</td></tr>
+        <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>` +
+        `${isInverter
+          ? `<tr><td>Running Ratio PR (fixed)</td><td>${fmtP(res.PR)}</td></tr>` +
+            `<tr><td>Required Compressor RPM</td><td>${res.RPM !== undefined ? fmt(res.RPM, 0) : '—'} rpm</td></tr>`
+          : `<tr><td>Running Ratio PR</td><td>${fmtP(res.PR)}</td></tr>`
+        }
 
         <tr class="section-header"><td colspan="2">Compressor Details</td></tr>
         <tr class="section-header"><td colspan="2">Compressor Coefficients</td></tr>
@@ -932,20 +1188,20 @@ function displayResults(res, energy) {
   resultsDiv.innerHTML = html;
 }
 
-function clearMessages() {
+function clearMessages(errorDivId = 'thermoErrors') {
+  const errDiv = document.getElementById(errorDivId);
+  if (errDiv) errDiv.innerHTML = '';
   const thermoRight = document.getElementById('thermoRightPanel');
-  const thermoErrors = document.getElementById('thermoErrors');
   if (thermoRight) thermoRight.innerHTML = '';
-  if (thermoErrors) thermoErrors.innerHTML = '';
 }
 
-function showError(msg) {
-  const e = document.getElementById('thermoErrors');
+function showError(msg, errorDivId = 'thermoErrors') {
+  const e = document.getElementById(errorDivId);
   if (e) e.innerHTML = `<p class="error">❌ ${msg}</p>`;
 }
 
-function showWarnings(warnings) {
-  const e = document.getElementById('thermoErrors');
+function showWarnings(warnings, errorDivId = 'thermoErrors') {
+  const e = document.getElementById(errorDivId);
   if (!e) return;
   const ul = document.createElement('ul');
   warnings.forEach(w => {
@@ -1003,4 +1259,191 @@ if (data.compressor) {
   setSelectedCompressor(data.compressor.id);
 }
   updateSettings(settings);
+}
+function handleInverterRun() {
+  clearMessages('inverterErrors');   // new error div id
+  if (!getGeometryFn) { showError('Geometry source not available.', 'inverterErrors'); return; }
+  const cabinetGeom = getGeometryFn();
+  const geom = toThermalFormat(cabinetGeom);
+
+  const PR = parseFloat(document.getElementById('inverterPR')?.value);
+  if (isNaN(PR) || PR <= 0 || PR > 1) {
+    showError('Please enter a valid Running Ratio (0.01–1).', 'inverterErrors');
+    return;
+  }
+
+  const T0 = parseFloat(document.getElementById('inverterT0')?.value);
+  const TF = parseFloat(document.getElementById('inverterTF')?.value);
+  const TR = parseFloat(document.getElementById('inverterTR')?.value);
+  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) {
+    showError('Please fill all temperatures.', 'inverterErrors');
+    return;
+  }
+  const refrigerant = document.getElementById('inverterRefrigerant')?.value || 'R-600a';
+
+// Validate fan parameters
+const fanParam = settings.fanParam || {};
+let fanFlow;
+try {
+  fanFlow = computeFanAirflow(fanParam);
+} catch (e) {
+  showError(e.message, 'inverterErrors');
+  return;
+}
+if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
+  showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors');
+  return;
+}
+ const compartments = cabinetGeom._compartments;
+  const freezerPos = (compartments?.length === 1)
+    ? 'top'
+    : (compartments && compartments[0].type === 'freezer' ? 'top' : 'bottom');
+
+  // Build config
+  const config = buildDefaultConfig({
+    geom,
+    freezerPosition: freezerPos,
+    refrigerant,
+    subcool: thermalAdvanced.subcool,
+    dischargeTemp: thermalAdvanced.dischargeTemp,
+    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    condenserConfig: {
+      sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
+      backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
+      backCondenserEfficiency: 0.7,
+      backCondenser: 'Yes',
+    },
+  });
+
+  // Override compressor with the currently selected inverter compressor
+loadCompressors();
+let comp = getCurrentCompressor();
+if (!comp || !comp.isInverter) {
+  showError('Selected compressor is not an inverter type.', 'inverterErrors');
+  return;
+}
+
+// Always refit from stored dataPoints (or default data)
+const pts = comp.dataPoints?.length >= 5 ? comp.dataPoints : INVERTER_EXAMPLE_COMPONENTS?.compressor?.dataPoints;
+if (!pts) {
+  showError('No performance data available for inverter compressor.', 'inverterErrors');
+  return;
+}
+
+comp.compressorModel = fitInverterCoefficients(
+  pts,
+  comp.normalizeRPM || Math.max(...pts.map(d => d.RPM)),
+  comp.centerTE || pts.reduce((s,d) => s + d.TE, 0) / pts.length,
+  comp.centerTC || pts.reduce((s,d) => s + d.TC, 0) / pts.length,
+  3.0
+);
+if (!comp.compressorModel) {
+  showError('Failed to fit inverter model.', 'inverterErrors');
+  return;
+}
+saveCompressors();
+
+// Build compParams explicitly
+config.compParams = {
+  name: comp.name,
+  isInverter: true,
+  compressorModel: comp.compressorModel,
+  centerTE: comp.centerTE || -25,
+  centerTC: comp.centerTC || 45,
+  rpmMin: comp.rpmMin || 1600,
+  rpmMax: comp.rpmMax || 4500,
+};
+config.inverterPR = PR;
+
+// DEBUG: verify before calling solver
+console.log('Running inverter with config:', { compParams: config.compParams, inverterPR: config.inverterPR });
+const result = runThermoAnalysis(config);
+  if (!result.success) {
+    showError(result.errors.join('; '), 'inverterErrors');
+    return;
+  }
+  if (result.warnings.length) showWarnings(result.warnings, 'inverterErrors');
+  if (result.success && result.results) {
+      result.results.refrigerantIndex = comp.refrigerantIndex;
+      result.results.cylinderVolumeCm3 = comp.cylinderVolumeCm3;
+      result.results.compressorModel = comp.compressorModel;
+  }
+
+  // Energy consumption (same as before, but ensure PR is the fixed one)
+  let energy = null;
+  if (result.results && (result.results.converged !== false)) {
+    energy = EnergyConsumption(result.results);
+  }
+  result.results.fanAirflow = fanFlow;
+  // Display results: reuse the same display function but adapt to show RPM
+  result.results.configLabel = (freezerPos === 'top' ? 'Top Freezer' : 'Bottom Freezer') + ' (Inverter)';
+  displayResults(result.results, energy, true);  // true = inverter mode
+}
+function refreshInverterCompressorSelect() {
+  loadCompressors();
+  const select = document.getElementById('inverterCompressorSelect');
+  if (!select) return;
+  select.innerHTML = '';
+  const inverters = getCompressorList().filter(c => c.isInverter);
+  inverters.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    select.appendChild(opt);
+  });
+  // Optionally select the first one by default
+  if (select.options.length > 0 && !select.value) {
+    select.value = inverters[0].id;
+  }
+}
+function populateInverterCompressorSelect() {
+  loadCompressors();
+  const select = document.getElementById('inverterCompressorSelect');
+  if (!select) return;
+  select.innerHTML = '';
+  getCompressorList().filter(c => c.isInverter).forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    select.appendChild(opt);
+  });
+  // auto-select the first if none selected
+  if (select.options.length && !select.value)
+    select.value = select.options[0].value;
+}
+function updateInverterCompressorDisplay() {
+  const comp = getCurrentCompressor();
+  const nameEl = document.getElementById('currentInverterName');
+  if (!nameEl) return;
+  if (comp && comp.isInverter) {
+    nameEl.textContent = comp.name;
+    nameEl.style.color = '#2e7d32';
+  } else {
+    nameEl.textContent = 'No inverter compressor selected';
+    nameEl.style.color = '#d32f2f';
+  }
+}
+
+export function ensureInverterModel(comp) {
+  if (!comp || !comp.isInverter) return comp;
+  if (comp.compressorModel) return comp;   // already fitted
+
+  const pts = comp.dataPoints;
+  if (!pts || pts.length < 5) {
+    console.warn(
+      `Inverter compressor “${comp.name}” has insufficient data points ` +
+      `(${pts ? pts.length : 0} provided). The model will NOT be fitted.`
+    );
+    return comp;   // leave model as null, caller will show error
+  }
+
+  const normalizeRPM = Math.max(...pts.map(d => d.RPM));
+  const centerTE = pts.reduce((s, d) => s + d.TE, 0) / pts.length;
+  const centerTC = pts.reduce((s, d) => s + d.TC, 0) / pts.length;
+  comp.compressorModel = fitInverterCoefficients(pts, normalizeRPM, centerTE, centerTC);
+
+  saveCompressors();   // persist the model immediately
+  return comp;
 }

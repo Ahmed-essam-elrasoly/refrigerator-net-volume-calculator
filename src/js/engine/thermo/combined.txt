@@ -1,0 +1,2340 @@
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\CompressorPerformance.js =====
+/**
+ * CompressorPerformance.js
+ *
+ * Replicates the VBA macros "Record2" and "JOTA" for a reciprocating
+ * compressor performance model.
+ *
+ * Two polynomial models are fitted by ordinary least squares:
+ *   ηv  = A  + B·(Pc/Pe) + C·Pc
+ *   W   = AW + BW·TE + CW·TC + DW·TC·TE + EW·TE²
+ *
+ * Refrigerant property correlations are from the JOTA subroutine:
+ *   REI = 1 → R-134a
+ *   REI = 2 → R-600a
+ *
+ * References:
+ *   Record2 subroutine – data reading, coefficient fitting, output
+ *   JOTA    subroutine – refrigerant property correlations
+ *   MATX    subroutine – Gauss-Jordan elimination solver
+ */
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Fixed suction gas temperature (°C) — macro variable T */
+const SUCTION_TEMP_C = 30;
+
+/** Celsius-to-Kelvin offset — macro uses 273.16 */
+const KELVIN_OFFSET = 273.16;
+
+// =============================================================================
+// R-134a property correlations (JOTA, REI = 1)
+// =============================================================================
+
+/**
+ * R-134a saturation pressure.
+ * @param {number} T_K - Temperature in Kelvin
+ * @returns {number} Pressure in bar
+ */
+function r134a_satPressure(T_K) {
+  return Math.exp(
+    104.918 -
+      5301.3 / T_K -
+      16.2481 * Math.log(T_K) +
+      0.0246593 * T_K
+  );
+}
+
+/**
+ * R-134a saturated liquid enthalpy.
+ * @param {number} T_C - Temperature in °C
+ * @returns {number} Enthalpy in KJ/kg
+ */
+function r134a_liquidEnthalpy(T_C) {
+  return (
+    100.019 * 4.1868 +
+    0.31763 * T_C * 4.1868 +
+    0.00033057 * T_C ** 2 * 4.1868 +
+    0.0000035281 * T_C ** 3 * 4.1868
+  );
+}
+
+/**
+ * R-134a superheated suction gas enthalpy.
+ * @param {number} T_K - Suction temperature in Kelvin
+ * @param {number} Pe  - Evaporating pressure in bar
+ * @returns {number} Enthalpy in KJ/kg
+ */
+function r134a_gasEnthalpy(T_K, Pe) {
+  return (
+    119.36 * 4.1868 +
+    0.023174 * T_K * 4.1868 +
+    0.00031297 * 4.1868 * T_K ** 2 -
+    (138.07 * 4.1868 * Pe) / T_K
+  );
+}
+
+/**
+ * R-134a suction gas specific volume.
+ * @param {number} T_K - Suction temperature in Kelvin
+ * @param {number} Pe  - Evaporating pressure in bar
+ * @returns {number} Specific volume in m³/kg
+ */
+function r134a_specificVolume(T_K, Pe) {
+  return (
+    0.01077 +
+    (0.0008278 * T_K) / Pe -
+    4.511 / T_K -
+    0.000118 * Pe
+  );
+}
+
+// =============================================================================
+// R-600a property correlations (JOTA, REI = 2)
+// =============================================================================
+
+/**
+ * R-600a saturation pressure.
+ * @param {number} T_K - Temperature in Kelvin
+ * @returns {number} Pressure in bar
+ */
+function r600a_satPressure(T_K) {
+  return Math.exp(
+    68.322 -
+      4401 / T_K -
+      9.8436 * Math.log(T_K) +
+      0.0127711 * T_K
+  );
+}
+
+/**
+ * R-600a saturated liquid enthalpy.
+ * @param {number} T_C - Temperature in °C
+ * @returns {number} Enthalpy in KJ/kg
+ */
+function r600a_liquidEnthalpy(T_C) {
+  return (
+    75.545 * 4.1868 +
+    0.55731 * T_C * 4.1868 +
+    0.0007088 * T_C ** 2 * 4.1868 +
+    0.0000029408 * T_C ** 3 * 4.1868
+  );
+}
+
+/**
+ * R-600a superheated suction gas enthalpy.
+ * @param {number} T_K - Suction temperature in Kelvin
+ * @param {number} Pe  - Evaporating pressure in bar
+ * @returns {number} Enthalpy in KJ/kg
+ */
+function r600a_gasEnthalpy(T_K, Pe) {
+  return (
+    104.5 * 4.1868 +
+    0.049951 * T_K * 4.1868 +
+    0.00058822 * 4.1868 * T_K ** 2 -
+    (249.18 * 4.1868 * Pe) / T_K
+  );
+}
+
+/**
+ * R-600a suction gas specific volume.
+ * @param {number} T_K - Suction temperature in Kelvin
+ * @param {number} Pe  - Evaporating pressure in bar
+ * @returns {number} Specific volume in m³/kg
+ */
+function r600a_specificVolume(T_K, Pe) {
+  return (
+    0.015883 +
+    (0.001455 * T_K) / Pe -
+    7.2936 / T_K -
+    0.0004645 * Pe
+  );
+}
+
+// =============================================================================
+// Refrigerant selector — mirrors JOTA dispatch logic
+// =============================================================================
+
+/**
+ * Returns the property function set for the given refrigerant index.
+ *
+ * @param {number} REI - 1 = R-134a, 2 = R-600a
+ * @returns {{ satPressure: Function, liquidEnthalpy: Function,
+ *             gasEnthalpy: Function, specificVolume: Function }}
+ * @throws {Error} If REI is not 1 or 2
+ */
+export function getRefrigerantProperties(REI) {
+  if (REI === 1) {
+    return {
+      satPressure:    r134a_satPressure,
+      liquidEnthalpy: r134a_liquidEnthalpy,
+      gasEnthalpy:    r134a_gasEnthalpy,
+      specificVolume: r134a_specificVolume,
+    };
+  }
+  if (REI === 2) {
+    return {
+      satPressure:    r600a_satPressure,
+      liquidEnthalpy: r600a_liquidEnthalpy,
+      gasEnthalpy:    r600a_gasEnthalpy,
+      specificVolume: r600a_specificVolume,
+    };
+  }
+  throw new Error(
+    `Unsupported refrigerant index ${REI}. Use 1 (R-134a) or 2 (R-600a).`
+  );
+}
+export function getRefrigerantFunctionsC(refrigerantIndex) {
+  const prop = getRefrigerantProperties(refrigerantIndex);
+  return {
+    satPressure:     (t)    => prop.satPressure(t + 273.16),
+    specificVolume:  (t, p) => prop.specificVolume(t + 273.16, p),
+    vaporEnthalpy:   (t, p) => prop.gasEnthalpy(t + 273.16, p),
+    liquidEnthalpy:  (t)    => prop.liquidEnthalpy(t),        // already °C
+  };
+}
+// =============================================================================
+// Gauss-Jordan solver with partial pivoting — mirrors MATX subroutine
+// Partial pivoting was absent in the original; added for numerical stability.
+// =============================================================================
+
+/**
+ * Solves Ax = b by Gauss-Jordan elimination with partial pivoting.
+ * A working copy of the augmented matrix is used; A and b are not modified.
+ *
+ * @param {number[][]} A - Square n×n coefficient matrix
+ * @param {number[]}   b - Right-hand side vector (length n)
+ * @returns {number[]} Solution vector x (length n)
+ * @throws {Error} If the matrix is singular or near-singular
+ */
+function gaussJordanSolve(A, b) {
+  const n = b.length;
+  // Augmented matrix [A | b]
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  for (let k = 0; k < n; k++) {
+    // Partial pivot: find row with largest |value| in column k at or below row k
+    let maxRow = k;
+    let maxAbs = Math.abs(M[k][k]);
+    for (let i = k + 1; i < n; i++) {
+      const abs = Math.abs(M[i][k]);
+      if (abs > maxAbs) { maxAbs = abs; maxRow = i; }
+    }
+    if (maxRow !== k) {
+      [M[k], M[maxRow]] = [M[maxRow], M[k]];
+    }
+
+    const pivot = M[k][k];
+    if (Math.abs(pivot) < 1e-12) {
+      throw new Error(
+        `Near-zero pivot at column ${k}. ` +
+        `Normal equation matrix is singular — check for duplicate or linearly dependent data.`
+      );
+    }
+
+    // Normalise pivot row
+    for (let j = k; j <= n; j++) {
+      M[k][j] /= pivot;
+    }
+    // Zero out column k in every other row
+    for (let i = 0; i < n; i++) {
+      if (i === k) continue;
+      const factor = M[i][k];
+      for (let j = k; j <= n; j++) {
+        M[i][j] -= factor * M[k][j];
+      }
+    }
+  }
+
+  // Solution is the last column of the reduced matrix
+  return M.map((row) => row[n]);
+}
+
+// =============================================================================
+// Normal equations builder (OLS: Φᵀ Φ · x = Φᵀ y)
+// =============================================================================
+
+/**
+ * Assembles the normal equation system for ordinary least squares.
+ *
+ * @param {number[][]} features - Design matrix (n rows × m columns)
+ * @param {number[]}   targets  - Observed outputs (length n)
+ * @returns {{ A: number[][], b: number[] }}
+ */
+function buildNormalEquations(features, targets) {
+  const n = features.length;
+  const m = features[0].length;
+  const A = Array.from({ length: m }, () => new Array(m).fill(0));
+  const b = new Array(m).fill(0);
+
+  for (let i = 0; i < n; i++) {
+    const f = features[i];
+    const y = targets[i];
+    for (let j = 0; j < m; j++) {
+      for (let k = 0; k < m; k++) {
+        A[j][k] += f[j] * f[k];
+      }
+      b[j] += f[j] * y;
+    }
+  }
+  return { A, b };
+}
+
+// =============================================================================
+// Coefficient fitting — mirrors macro Record2
+// =============================================================================
+
+/**
+ * Fits volumetric efficiency and input power polynomial coefficients
+ * to compressor test data using ordinary least squares.
+ *
+ * Models:
+ *   ηv = A  + B·(Pc/Pe) + C·Pc
+ *   W  = AW + BW·TE + CW·TC + DW·TC·TE + EW·TE²
+ *
+ * Algorithm (per test point):
+ *   Pe   = satPressure(TE)                              [bar]
+ *   Pc   = satPressure(TC)                              [bar]
+ *   hGas = gasEnthalpy(T_suction, Pe)                  [kW/kg]
+ *   hLiq = liquidEnthalpy(T_suction)                   [kW/kg]
+ *   G    = Q / (hGas − hLiq)                           [kg/h, actual mass flow]
+ *   GK   = (VC·N·60 / 1e6) / vGas                  [kg/h, theoretical mass flow]
+ *   ηv   = G / GK
+ *
+ * @param {object} params
+ * @param {number} params.cylinderVolumeCm3  - Swept volume (cm³)
+ * @param {number} params.speedRpm           - Shaft speed (RPM)
+ * @param {number} params.refrigerantIndex   - 1 = R-134a, 2 = R-600a
+ * @param {Array<{TE: number, TC: number, Q: number, W: number}>} params.dataPoints - Test data
+ *   TE: evaporating temperature (°C)
+ *   TC: condensing temperature  (°C)
+ *   Q:  cooling capacity        (W)
+ *   W:  compressor input power  (W)
+ *
+ * @returns {{ etaCoeffs: number[], wCoeffs: number[] }}
+ *   etaCoeffs = [A, B, C]
+ *   wCoeffs   = [AW, BW, CW, DW, EW]
+ *
+ * @throws {Error} If fewer than 5 data points are provided
+ * @throws {Error} If the refrigerant index is invalid
+ */
+export function computeCompressorCoefficients({
+  cylinderVolumeCm3,
+  speedRpm,
+  refrigerantIndex,
+  dataPoints,
+}) {
+  // W model has 5 coefficients — that is the hard minimum.
+  if (!Array.isArray(dataPoints) || dataPoints.length < 5) {
+    throw new Error(
+      `At least 5 data points required (W model needs 5 coefficients). ` +
+      `Got ${dataPoints?.length ?? 0}.`
+    );
+  }
+
+  const prop         = getRefrigerantProperties(refrigerantIndex);
+  const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
+  const hLiquid      = prop.liquidEnthalpy(SUCTION_TEMP_C);
+
+  const etaFeatures = [];
+  const etaTargets  = [];
+  const wFeatures   = [];
+  const wTargets    = [];
+
+  for (const { TE, TC, Q, W } of dataPoints) {
+    const Pe = prop.satPressure(TE + KELVIN_OFFSET);
+    const Pc = prop.satPressure(TC + KELVIN_OFFSET);
+
+    const hGas = prop.gasEnthalpy(suctionTempK, Pe);
+    const vGas = prop.specificVolume(suctionTempK, Pe);
+
+    // Actual mass flow from measured cooling capacity
+    const G = Q * 3.6 / (hGas - hLiquid);
+
+    // Theoretical (displacement) mass flow
+    const displacement_m3h = (cylinderVolumeCm3 * speedRpm * 60) / 1e6;
+    const GK = displacement_m3h / vGas;
+
+    const etaV = G / GK;
+
+    etaFeatures.push([1, Pc / Pe, Pc]);
+    etaTargets.push(etaV);
+
+    wFeatures.push([1, TE, TC, TC * TE, TE * TE]);
+    wTargets.push(W);
+  }
+
+  const { A: A_eta, b: b_eta } = buildNormalEquations(etaFeatures, etaTargets);
+  const etaCoeffs = gaussJordanSolve(A_eta, b_eta);
+
+  const { A: A_w, b: b_w } = buildNormalEquations(wFeatures, wTargets);
+  const wCoeffs = gaussJordanSolve(A_w, b_w);
+
+  return { etaCoeffs, wCoeffs };
+}
+
+// =============================================================================
+// Performance evaluation at a duty point
+// =============================================================================
+
+/**
+ * Evaluates compressor performance at a given (TE, TC) operating point
+ * using previously fitted polynomial coefficients.
+ *
+ * All thermodynamic properties at the suction plane use the fixed suction
+ * temperature (32.2 °C) and the evaporating pressure Pe — identical to the
+ * convention used during coefficient fitting in computeCompressorCoefficients.
+ *
+ * @param {number}   TE               - Evaporating temperature (°C)
+ * @param {number}   TC               - Condensing temperature (°C)
+ * @param {number}   refrigerantIndex - 1 = R-134a, 2 = R-600a
+ * @param {number[]} wCoeffs          - [AW, BW, CW, DW, EW]
+ * @param {number[]} etaCoeffs        - [A, B, C]
+ * @param {number}   cylinderVolumeCm3 - Swept volume (cm³)
+ * @param {number}   speedRpm          - Shaft speed (RPM)
+ *
+ * @returns {{
+ *   Pe:                   number,  // Evaporating pressure (bar)
+ *   Pc:                   number,  // Condensing pressure (bar)
+ *   VolumetricEfficiency: number,  // ηv = A + B·(Pc/Pe) + C·Pc  (dimensionless)
+ *   QCompressor:          number,  // Cooling capacity (W)
+ *   CompPower:            number   // Electrical input power (W)
+ * }}
+ *
+ * @throws {Error} If the refrigerant index is invalid
+ */
+export function compressorPower(
+  TE,
+  TC,
+  refrigerantIndex,
+  wCoeffs,
+  etaCoeffs,
+  cylinderVolumeCm3,
+  speedRpm
+) {
+  // ── 1. Input power from W polynomial ──────────────────────────────────────
+  const [AW, BW, CW, DW, EW] = wCoeffs;
+  const CompPower = AW + BW * TE + CW * TC + DW * TC * TE + EW * TE * TE;
+
+  // ── 2. Saturation pressures ────────────────────────────────────────────────
+  const prop = getRefrigerantProperties(refrigerantIndex);
+
+  const Pe = prop.satPressure(TE + KELVIN_OFFSET);
+  const Pc = prop.satPressure(TC + KELVIN_OFFSET);
+
+  // ── 3. Volumetric efficiency from ηv polynomial ───────────────────────────
+  const [A, B, C] = etaCoeffs;
+  const VolumetricEfficiency = A + B * (Pc / Pe) + C * Pc;
+
+  // ── 4. Thermodynamic state at the fixed suction plane ─────────────────────
+  // Must match the convention in computeCompressorCoefficients:
+  //   temperature = SUCTION_TEMP_C (32.2 °C), pressure = Pe
+  const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
+  const vGas = prop.specificVolume(suctionTempK, Pe);
+  const hLiq = prop.liquidEnthalpy(SUCTION_TEMP_C);
+  const hGas = prop.gasEnthalpy(suctionTempK, Pe);
+
+  // ── 5. Actual mass flow and cooling capacity ──────────────────────────────
+  //   displacement [m³/h] = VC [cm³] × N [rpm] × 60 / 1×10⁶
+  //   G [kg/h]            = ηv × displacement / v_gas
+  //   Q [W]          = G × (h_gas − h_liq)
+  const displacement_m3h = (cylinderVolumeCm3 * speedRpm * 60) / 1e6;
+  const G           = VolumetricEfficiency * displacement_m3h / vGas;
+  const QCompressor = G * (hGas - hLiq)/3.6;
+
+  return {
+    Pe,
+    Pc,
+    VolumetricEfficiency,
+    QCompressor,
+    CompPower,
+    massFlow: G
+  };
+}
+
+/**
+ * Fits inverter compressor models for Q and W, returns a compressorModel object.
+ * Automatically selects the best global or piecewise model using Ridge‑CV.
+ *
+ * @param {Array} dataPoints - {RPM, TE, TC, Q, W}
+ * @param {number} normalizeRPM - typical max RPM
+ * @param {number} centerTE
+ * @param {number} centerTC
+ * @param {number} targetRMSE - desired accuracy threshold
+ * @returns {Object} compressorModel ready for inverterCompressorPerformance
+ */
+export function fitInverterCoefficients(dataPoints, normalizeRPM, centerTE, centerTC, targetRMSE = 3.0) {
+  const Qmodel = selectInverterModel(dataPoints, 'Q', targetRMSE, normalizeRPM, centerTE, centerTC);
+  const Wmodel = selectInverterModel(dataPoints, 'W', targetRMSE, normalizeRPM, centerTE, centerTC);
+
+  return {
+    Q: Qmodel,
+    W: Wmodel,
+    normalizeRPM,
+    centerTE,
+    centerTC,
+  };
+}
+// ========== Matrix utilities ==========
+function matrixMultiply(A, B) {
+  const rowsA = A.length, colsA = A[0].length, colsB = B[0].length;
+  const C = Array.from({ length: rowsA }, () => Array(colsB).fill(0));
+  for (let i = 0; i < rowsA; i++)
+    for (let k = 0; k < colsA; k++)
+      for (let j = 0; j < colsB; j++)
+        C[i][j] += A[i][k] * B[k][j];
+  return C;
+}
+function transpose(A) {
+  return A[0].map((_, c) => A.map(row => row[c]));
+}
+function identity(n) {
+  const I = Array.from({ length: n }, () => Array(n).fill(0));
+  for (let i = 0; i < n; i++) I[i][i] = 1;
+  return I;
+}
+function solveRidge(X, y, alpha) {
+  const p = X[0].length;
+  const Xt = transpose(X);
+  const XtX = matrixMultiply(Xt, X);
+  for (let i = 0; i < p; i++) XtX[i][i] += alpha;
+  const Xty = Xt.map(row => row.reduce((sum, _, j) => sum + row[j] * y[j], 0));
+  return gaussJordanSolve(XtX, Xty);
+}
+
+// ========== Feature generation for inverter ==========
+function makeFeatures(rpmForm, n, te, tc) {
+  switch (rpmForm) {
+    case 'n_lin':
+      return [1, n, n*te, n*tc, n*tc*te, n*te**2]; // intercept added
+    case 'n_quad':
+      return [1, n, n**2, n*te, n*tc, n*tc*te, n*te**2];
+    case 'ln_n_lin':
+      const ln_n = Math.log(Math.max(n, 1e-12));
+      return [1, ln_n, ln_n*te, ln_n*tc, ln_n*tc*te, ln_n*te**2];
+    case 'ln_n_quad':
+      const ln_n2 = Math.log(Math.max(n, 1e-12));
+      return [1, ln_n2, ln_n2**2, ln_n2*te, ln_n2*tc, ln_n2*tc*te, ln_n2*te**2];
+    default:
+      throw new Error(`Unknown rpmForm: ${rpmForm}`);
+  }
+}
+
+// ========== Cross‑validation (Leave‑One‑Group‑Out by RPM) ==========
+function cvInverter(dataPoints, targetCol, rpmForm, logTransform, alphas, normalizeRPM, centerTE, centerTC) {
+  const groups = dataPoints.map(d => d.RPM);
+  const uniqueGroups = [...new Set(groups)];
+  if (uniqueGroups.length < 2) return { avgRMSE: Infinity };
+
+  let bestAlpha = null, bestAvgRMSE = Infinity;
+  for (const alpha of alphas) {
+    let sumRMSE = 0, validFolds = 0;
+    for (const g of uniqueGroups) {
+      const trainIdx = [], testIdx = [];
+      dataPoints.forEach((d, i) => {
+        if (d.RPM === g) testIdx.push(i);
+        else trainIdx.push(i);
+      });
+      if (trainIdx.length < 2 || testIdx.length === 0) continue;
+
+      // Build training matrix
+      const Xtrain = trainIdx.map(i => {
+        const d = dataPoints[i];
+        return makeFeatures(rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC);
+      });
+      const yTrain = trainIdx.map(i => {
+        const v = dataPoints[i][targetCol];
+        return logTransform ? Math.log(v) : v;
+      });
+      const coeffs = solveRidge(Xtrain, yTrain, alpha);
+
+      // Evaluate on test
+      const Xtest = testIdx.map(i => {
+        const d = dataPoints[i];
+        return makeFeatures(rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC);
+      });
+      const preds = Xtest.map(xi => xi.reduce((s, x, j) => s + x * coeffs[j], 0));
+      const actual = testIdx.map(i => dataPoints[i][targetCol]);
+      const errs = actual.map((a, i) => {
+        const p = logTransform ? Math.exp(preds[i]) : preds[i];
+        return (p - a) ** 2;
+      });
+      const rmse = Math.sqrt(errs.reduce((s, e) => s + e, 0) / errs.length);
+      sumRMSE += rmse;
+      validFolds++;
+    }
+    const avgRMSE = validFolds > 0 ? sumRMSE / validFolds : Infinity;
+    if (avgRMSE < bestAvgRMSE) {
+      bestAvgRMSE = avgRMSE;
+      bestAlpha = alpha;
+    }
+  }
+  return { alpha: bestAlpha, avgRMSE: bestAvgRMSE };
+}
+
+// ========== Piecewise model ==========
+function fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, centerTE, centerTC) {
+  const lowData = dataPoints.filter(d => d.RPM <= splitRPM);
+  if (lowData.length < 6) throw new Error('Not enough low‑range points for piecewise fit.');
+  const N_low = splitRPM;
+  const X = lowData.map(d => makeFeatures('n_quad', d.RPM / N_low, d.TE - centerTE, d.TC - centerTC));
+  const y = lowData.map(d => d[targetCol]);
+  const coeffs = solveRidge(X, y, 1.0); // fixed alpha
+  const maxRPM = Math.max(...dataPoints.map(d => d.RPM));
+  const maxData = dataPoints.filter(d => d.RPM === maxRPM);
+  const lookup = {};
+  maxData.forEach(d => { lookup[`${d.TE},${d.TC}`] = d[targetCol]; });
+
+  // Build predict function
+  const predict = (RPM, TE, TC) => {
+    if (RPM <= splitRPM) {
+      const feat = makeFeatures('n_quad', RPM / N_low, TE - centerTE, TC - centerTC);
+      return feat.reduce((s, f, i) => s + f * coeffs[i], 0);
+    } else if (RPM === maxRPM) {
+      return lookup[`${TE},${TC}`];
+    } else {
+      const valLow = predict(splitRPM, TE, TC);
+      const valMax = predict(maxRPM, TE, TC);
+      const frac = (RPM - splitRPM) / (maxRPM - splitRPM);
+      return valLow + (valMax - valLow) * frac;
+    }
+  };
+
+  // Compute overall RMSE
+  const preds = dataPoints.map(d => predict(d.RPM, d.TE, d.TC));
+  const mse = preds.reduce((s, p, i) => s + (p - dataPoints[i][targetCol])**2, 0) / preds.length;
+  return {
+    type: 'piecewise',
+    splitRPM, maxRPM,
+    coeffs_low: coeffs,
+    lookup,
+    rmse: Math.sqrt(mse),
+    predict,
+  };
+}
+
+// ========== Auto‑split detection ==========
+function autoSplitRPM(dataPoints, targetCol, normalizeRPM, centerTE, centerTC) {
+  const cvRes = cvInverter(dataPoints, targetCol, 'n_quad', false, [0.001], normalizeRPM, centerTE, centerTC);
+  if (!cvRes || cvRes.avgRMSE > 100) return null;
+  // crude heuristic: if max RPM error is much larger than median
+  const groups = dataPoints.map(d => d.RPM);
+  const uniqueRPMs = [...new Set(groups)].sort((a,b)=>a-b);
+  if (uniqueRPMs.length < 2) return null;
+  const maxRPM = uniqueRPMs[uniqueRPMs.length-1];
+  // compute fold errors again manually? Not efficient; just return maxRPM as split if high RMSE
+  if (cvRes.avgRMSE > 3.0) return maxRPM;
+  return null;
+}
+
+// ========== Main selector ==========
+function selectInverterModel(dataPoints, targetCol, targetRMSE, normalizeRPM, centerTE, centerTC) {
+  const globalCandidates = ['n_lin', 'n_quad', 'ln_n_lin', 'ln_n_quad'];
+  const logOptions = [false, true];
+  const alphas = [0.001, 0.01, 0.1, 1, 10, 100];
+
+  let bestGlobal = null;
+  let bestGlobalRMSE = Infinity;
+
+  for (const rpmForm of globalCandidates) {
+    for (const logTrans of logOptions) {
+      const cv = cvInverter(dataPoints, targetCol, rpmForm, logTrans, alphas, normalizeRPM, centerTE, centerTC);
+      if (cv.avgRMSE < bestGlobalRMSE) {
+        bestGlobalRMSE = cv.avgRMSE;
+        bestGlobal = { type: 'global', rpmForm, logTransform: logTrans, alpha: cv.alpha, cvRMSE: cv.avgRMSE };
+      }
+    }
+    if (bestGlobalRMSE <= targetRMSE) break;
+  }
+
+  if (bestGlobal && bestGlobal.cvRMSE <= targetRMSE) {
+    // Refit on all data with best parameters to get final coefficients
+    const X = dataPoints.map(d => makeFeatures(bestGlobal.rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC));
+    const y = bestGlobal.logTransform ? dataPoints.map(d => Math.log(d[targetCol])) : dataPoints.map(d => d[targetCol]);
+    const coeffs = solveRidge(X, y, bestGlobal.alpha);
+    return { ...bestGlobal, coeffs };
+  }
+
+  // Try piecewise
+  const splitRPM = autoSplitRPM(dataPoints, targetCol, normalizeRPM, centerTE, centerTC) || Math.max(...dataPoints.map(d => d.RPM));
+  try {
+    const pw = fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, centerTE, centerTC);
+    if (pw.rmse <= targetRMSE) return pw;
+  } catch (e) {}
+
+  // Fallback to best global even if above target
+  if (bestGlobal) {
+    const X = dataPoints.map(d => makeFeatures(bestGlobal.rpmForm, d.RPM / normalizeRPM, d.TE - centerTE, d.TC - centerTC));
+    const y = bestGlobal.logTransform ? dataPoints.map(d => Math.log(d[targetCol])) : dataPoints.map(d => d[targetCol]);
+    const coeffs = solveRidge(X, y, bestGlobal.alpha);
+    return { ...bestGlobal, coeffs };
+  }
+
+  throw new Error(`Could not fit model for ${targetCol}`);
+}
+
+// ========== Public API ==========
+
+/**
+ * Evaluates inverter compressor performance using a pre‑fitted compressorModel.
+ */
+export function inverterCompressorPerformance(TE, TC, RPM, refrigerantIndex, compressorModel) {
+  const { Q, W, normalizeRPM, centerTE, centerTC } = compressorModel;
+
+  const predict = (model, TE, TC, RPM) => {
+    if (model.type === 'global') {
+      const feat = makeFeatures(model.rpmForm, RPM / normalizeRPM, TE - centerTE, TC - centerTC);
+      const y = feat.reduce((s, f, i) => s + f * model.coeffs[i], 0);
+      return model.logTransform ? Math.exp(y) : y;
+    } else if (model.type === 'piecewise') {
+      return model.predict(RPM, TE, TC);
+    }
+    return NaN;
+  };
+
+  const QCompressor = predict(Q, TE, TC, RPM);
+  const CompPower    = predict(W, TE, TC, RPM);
+
+  // Refrigerant properties for mass flow, Pe, Pc (same as old code)
+  const prop         = getRefrigerantProperties(refrigerantIndex);
+  const suctionTempK = SUCTION_TEMP_C + KELVIN_OFFSET;
+  const Pe           = prop.satPressure(TE + KELVIN_OFFSET);
+  const Pc           = prop.satPressure(TC + KELVIN_OFFSET);
+  const hGas         = prop.gasEnthalpy(suctionTempK, Pe);
+  const hLiquid      = prop.liquidEnthalpy(SUCTION_TEMP_C);
+  const massFlow     = QCompressor * 3.6 / (hGas - hLiquid);
+
+  return {
+    QCompressor,
+    CompPower,
+    massFlow,
+    Pe,
+    Pc,
+    VolumetricEfficiency: null,   // not available for inverter
+  };
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\condenser.js =====
+
+export function calcQCout(geom, TC, T0, TF, TR, PR, PIPEPITCH ,freezerPosition = 'top',backCondenserEfficiency=0) {
+  const { H, W, D, Hf, Hr, Hb, Db1, Db2, tFright, tFleft } = geom;
+
+  const sideArea    = ((H * (D - 60)) - ((Db1 + Db2) * Hb / 2)) * 2 / 1e6;
+  const backAreaRaw = (W * (H - Hb)) / 1e6;
+  const backArea    = backAreaRaw * backCondenserEfficiency;
+  const K_side = 1.0738 - 0.004152 * PIPEPITCH.side + 0.00000482 * PIPEPITCH.side ** 2;
+  const K_back = 1.0738 - 0.004152 * PIPEPITCH.back + 0.00000482 * PIPEPITCH.back ** 2;
+  const TRise_side = (TC - T0) * K_side;
+  const TRise_back = (TC - T0) * K_back;
+  const Qdpfr = (0.1984*(TC-T0)+0.1219*(TC-TF))*PR*(W-tFright - tFleft)/1000 * 1.16279;
+
+  const isTop    = freezerPosition === 'top';
+  let Qdpf;
+  let Qdpr;
+  if (isTop) {
+    Qdpf = (0.3395*(TC-T0)+0.0344*(TC-TF))*PR*(Hf*2+W)/1000 * 1.16279;
+    Qdpr = (0.3405*(TC-T0)+0.03322*(TC-TR))*PR*(Hr*2)/1000 * 1.16279;
+  }else{
+    Qdpf = (0.3395*(TC-T0)+0.0344*(TC-TR))*PR*(Hf*2)/1000 * 1.16279;
+    Qdpr = (0.3405*(TC-T0)+0.03322*(TC-TF))*PR*(Hr*2+W)/1000 * 1.16279;
+  }
+  const Qdp   = Qdpfr + Qdpf + Qdpr;
+  const Qside = K_side * sideArea * (TC - T0) * 1.16279;
+  const Qback = K_back * backArea * (TC - T0) * 1.16279;
+  
+  return { Qdpfr, Qdpf, Qdpr, Qdp, Qside, Qback, QCout: Qdp + Qside + Qback };}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\constants.js =====
+/**
+ * @file constants.js
+ * @description Truly universal constants – physical properties, conversion
+ *     factors, and standard heat‑transfer coefficients.
+ *     These do NOT depend on the refrigerator model or its components.
+ */
+
+export const PHYSICAL_CONSTANTS = Object.freeze({
+  // -------------------------------------------------------------------
+  // Dry air properties (at approx. -20 °C to +60 °C – constant for modelling)
+  // -------------------------------------------------------------------
+  air: {
+    density: 1.365,  // kg/m³     
+    cp: 1.0048,        // KJ/kg·K 
+  },
+
+  // -------------------------------------------------------------------
+  // Insulation materials – thermal conductivity (W / (m·°C))
+  // -------------------------------------------------------------------
+  insulation: {
+    urethane: 0.0192,   // rigid polyurethane foam (SIZE B33)
+    polystyrene: 0.0407, // (SIZE B34)
+    packing: 0.035,     // door gasket material (SIZE B36)
+  },
+
+  // -------------------------------------------------------------------
+  // Surface heat‑transfer coefficients (W / (m²·°C))
+  // -------------------------------------------------------------------
+  surfaceCoefficients: {
+    outside: 6.977,  // ambient air to cabinet (SIZE B40)
+    inside: 11.628,  // cabinet interior air to wall (SIZE B41)
+  },
+});
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\defaultComponents.js =====
+export const SJ54H_COMPONENTS = Object.freeze({
+  compressor: {
+    name: 'EGX80CLC 100V 50Hz',
+    rpm: 2900,
+    rpm0: 2900,
+    Vc: 11.14,          // cc
+    T_suction: 32.2,    // °C – fixed suction temperature from Excel H11
+    volEffCoeffs: {
+      A: 0.9260142251566365,
+      B: -0.01221312333322575,
+      C: -0.0023789273042382304,
+    },
+    kEtaV: { a: 1, b: 0, c: 0 },
+    powerCoeffs: {
+      AW: 135.175,
+      BW: 2.6366666666666667,
+      CW: 0.975,
+      DW: 0.02,
+      EW: 0.016666666666666666,
+    },
+    powerKw: { a: 1, b: 0, c: 0 },
+  },
+
+  fan: {
+    diameter_mm: 100,
+    speed_rpm: 2550,
+    inputPower_W: 2.1,
+    totalAirflow_m3h: 59.5,
+    fanAirflow_CFM: 59.5 / 1.699, // convert m³/h to CFM
+  },
+
+  electrical: {
+    pwbOn_W: 2,
+    pwbOff_W: 1,
+    defrostHeater_W: 140,
+    timerPeriod_h: 10.5,
+    defrostOn_min: 20,
+  },
+
+  condenser: {
+    sidePipePitch_mm: 150,
+    backPipePitch_mm: 200,
+    K_side_kcalhm2C: 5.395,
+    K_back_kcalhm2C: 4.17,
+    backCondenserEfficiency: 0.7,
+    k_RFront1: 0.3405,
+    k_RFront2: 0.03322,
+    k_FRPartition1: 0.1984,
+    k_FRPartition2: 0.1219,
+    k_FFront1: 0.3395,
+    k_FFront2: 0.0344,
+  },
+
+  subcool_K: 10,
+  dischargeTemp_C: 60,
+  // Evaporator geometry (used by dynamic TE calculation)
+  evapGeom: {
+    evapWidth_mm: 460,    // E26 (EV WIDTH)
+    evapDepth_mm: 60,     // E27 (EV DEPTH)
+    evapArea_m2: 1.754,   // E33 (SURFACE OF EVAPORATOR)
+  },
+  initialTE: -25.7,
+});
+// needs to be created in defaultComponents.js
+export const SJ_PV73K_COMPONENTS = Object.freeze({
+  compressor: {
+    name: 'SQ47LAEG 220V 50Hz',
+    rpm: 2220,
+    rpm0: 2220,
+    Vc: 10.17,
+    T_suction: 32.2,
+    // use compressorMap instead of polynomial coefficients
+    useMap: true,
+  },
+  fan: {
+    diameter_mm: 100,
+    speed_rpm: 2850,
+    inputPower_W: 2.4,
+    totalAirflow_m3h: 146.4,
+  },
+  electrical: {
+    pwbOn_W: 2,
+    pwbOff_W: 1,
+    defrostHeater_W: 112,
+    timerPeriod_h: 10.5,
+    defrostOn_min: 0,
+  },
+  condenser: {
+    sidePipePitch_mm: 150,
+    backPipePitch_mm: 200,
+    K_side_kcalhm2C: 5.395,
+    K_back_kcalhm2C: 4.17,
+    backCondenserEfficiency: 0.7,
+    k_RFront1: 0.3405,
+    k_RFront2: 0.03322,
+    k_FRPartition1: 0.1984,
+    k_FRPartition2: 0.1219,
+    k_FFront1: 0.3395,
+    k_FFront2: 0.0344,
+  },
+  subcool_K: 10,
+  dischargeTemp_C: 60,
+  evapGeom: {
+    evapWidth_mm: 440.5,
+    evapDepth_mm: 58,
+    evapArea_m2: 1.2985,
+  },
+  freezerPosition: 'bottom',
+  initialTE: -22.7,
+});
+
+export const INVERTER_EXAMPLE_COMPONENTS = Object.freeze({
+  compressor: {
+    name: 'DZ90A1X Inverter',
+    isInverter: true,
+    rpmMin: 1600,
+    rpmMax: 4500,
+    normalizeRPM: 4320,
+    centerTE: -25.0,
+    centerTC: 45.0,
+    refrigerantIndex: 2,
+    // Leave compressorModel as null – it will be generated on first use.
+    compressorModel: null,
+    // Store raw data for fitting
+    dataPoints: [
+    { RPM: 4320, TE: -35.0, TC: 35, W: 90.3, Q: 126.1 },
+    { RPM: 4320, TE: -25.0, TC: 35, W: 121.1, Q: 188.4 },
+    { RPM: 4320, TE: -15.0, TC: 35, W: 152.0, Q: 279.7 },
+    { RPM: 4320, TE: -35.0, TC: 45, W: 83.4, Q: 117.5 },
+    { RPM: 4320, TE: -25.0, TC: 45, W: 109.6, Q: 179.8 },
+    { RPM: 4320, TE: -15.0, TC: 45, W: 134.0, Q: 271.0 },
+    { RPM: 4320, TE: -35.0, TC: 55, W: 75.8, Q: 108.9 },
+    { RPM: 4320, TE: -25.0, TC: 55, W: 96.9, Q: 171.1 },
+    { RPM: 4320, TE: -15.0, TC: 55, W: 114.5, Q: 262.3 },
+    { RPM: 3000, TE: -35.0, TC: 35, W: 53.3, Q: 101.7 },
+    { RPM: 3000, TE: -25.0, TC: 35, W: 68.1, Q: 150.1 },
+    { RPM: 3000, TE: -15.0, TC: 35, W: 80.5, Q: 220.9 },
+    { RPM: 3000, TE: -35.0, TC: 45, W: 58.6, Q: 93.1 },
+    { RPM: 3000, TE: -25.0, TC: 45, W: 77.0, Q: 141.4 },
+    { RPM: 3000, TE: -15.0, TC: 45, W: 94.2, Q: 212.3 },
+    { RPM: 3000, TE: -35.0, TC: 55, W: 63.4, Q: 84.5 },
+    { RPM: 3000, TE: -25.0, TC: 55, W: 85.1, Q: 132.8 },
+    { RPM: 3000, TE: -15.0, TC: 55, W: 106.8, Q: 203.7 },
+    { RPM: 1620, TE: -35.0, TC: 35, W: 28.4, Q: 62.0 },
+    { RPM: 1620, TE: -25.0, TC: 35, W: 36.3, Q: 87.8 },
+    { RPM: 1620, TE: -15.0, TC: 35, W: 42.9, Q: 125.5 },
+    { RPM: 1620, TE: -35.0, TC: 45, W: 31.2, Q: 53.4 },
+    { RPM: 1620, TE: -25.0, TC: 45, W: 41.0, Q: 79.2 },
+    { RPM: 1620, TE: -15.0, TC: 45, W: 50.2, Q: 116.9 },
+    { RPM: 1620, TE: -35.0, TC: 55, W: 33.8, Q: 44.8 },
+    { RPM: 1620, TE: -25.0, TC: 55, W: 45.4, Q: 70.5 },
+    { RPM: 1620, TE: -15.0, TC: 55, W: 56.9, Q: 108.3 },
+    { RPM: 1320, TE: -35.0, TC: 35, W: 23.0, Q: 53.3 },
+    { RPM: 1320, TE: -25.0, TC: 35, W: 29.4, Q: 74.2 },
+    { RPM: 1320, TE: -15.0, TC: 35, W: 34.7, Q: 104.7 },
+    { RPM: 1320, TE: -35.0, TC: 45, W: 25.3, Q: 44.7 },
+    { RPM: 1320, TE: -25.0, TC: 45, W: 33.2, Q: 65.6 },
+    { RPM: 1320, TE: -15.0, TC: 45, W: 40.6, Q: 96.1 },
+    { RPM: 1320, TE: -35.0, TC: 55, W: 27.4, Q: 36.1 },
+    { RPM: 1320, TE: -25.0, TC: 55, W: 36.7, Q: 57.0 },
+    { RPM: 1320, TE: -15.0, TC: 55, W: 46.0, Q: 87.5 }
+    ]},
+  fan: {
+    diameter_mm: 100,
+    speed_rpm: 2850,
+    inputPower_W: 2.4,
+    totalAirflow_m3h: 146.4,
+  },
+  electrical: {
+    pwbOn_W: 2,
+    pwbOff_W: 1,
+    defrostHeater_W: 112,
+    timerPeriod_h: 10.5,
+    defrostOn_min: 0,
+  },
+  condenser: {
+    sidePipePitch_mm: 150,
+    backPipePitch_mm: 200,
+    K_side_kcalhm2C: 5.395,
+    K_back_kcalhm2C: 4.17,
+    backCondenserEfficiency: 0.7,
+    k_RFront1: 0.3405,
+    k_RFront2: 0.03322,
+    k_FRPartition1: 0.1984,
+    k_FRPartition2: 0.1219,
+    k_FFront1: 0.3395,
+    k_FFront2: 0.0344,
+  },
+  subcool_K: 10,
+  dischargeTemp_C: 60,
+  evapGeom: {
+    evapWidth_mm: 440.5,
+    evapDepth_mm: 58,
+    evapArea_m2: 1.2985,
+  },
+  freezerPosition: 'bottom',
+  initialTE: -22.7,
+});
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\evaporator.js =====
+// evaporator.js – exact Excel evaporator model
+import { PHYSICAL_CONSTANTS as PC } from './constants.js';
+
+/**
+ * Compute evaporator total surface area (m²)
+ * Excel SIZE B29-B33: Fin area + Tube area + Side plate area
+ */
+export function computeEvaporatorArea(evap) {
+  const { width_mm, height_mm, depth_mm, rows, tubeOD_mm,  finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
+  // Fin area (both sides) – Excel: (28*60 - π*(4^2))*2 / 1e6 per fin
+  const tubeCrossArea = Math.PI * (tubeOD_mm/2)**2;
+  const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6; // m²
+  const totalFinArea = finAreaPerFin * numFins;
+  // Tube outer area – Excel: (π * tubeOD * width) * rows * 2 / 1e6
+  const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * 2 / 1e6;
+  // Side plate area (Excel B32) – usually zero
+  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows *2 ) * 2 / 1e6;
+  return totalFinArea + tubeArea + sidePlateArea;
+}
+
+/**
+ * Air speed over evaporator (m/s) – Excel MAIN E19
+ * v = fanAirflow_m3h / (width_m * depth_m) / 3600
+ */
+export function airSpeed(fanParam, evap) {
+  const {fanDiam, fanRPM, fanThick} = fanParam
+  const fanAirflow_CFM = (Math.PI * (fanDiam/2)**2 * fanThick) * fanRPM / 28_316_846.6; // CFM
+  const fanAirflow_m3h = fanAirflow_CFM * 1.699; // convert CFM to m³/h
+  const frontArea_m2 = (evap.width_mm * evap.depth_mm) / 1e6;
+  return fanAirflow_m3h / frontArea_m2 / 3600; // m/s
+}
+
+/**
+ * Evaporator heat transfer coefficient (W/m²·°C) – Excel MAIN E21
+ * α = 12.93 * v^0.415
+ */
+export function evaporatorAlpha(v_ms) {
+  return 12.93 * Math.pow(v_ms, 0.415) * 1.16279; // convert to W/m²·°C
+}
+
+/**
+ * Log mean temperature difference – Excel MAIN E20
+ * LMTD = (T1 - T2) / ln((T1 - TE) / (T2 - TE))
+ */
+export function lmtd(T1, T2, TE) {
+  const dT1 = T1 - TE;
+  const dT2 = T2 - TE;
+  if (Math.abs(dT1 - dT2) < 1e-6) return dT1;
+  return (dT1 - dT2) / Math.log(dT1 / dT2);
+}
+
+/**
+ * Evaporator capacity (kcal/h) – Excel MAIN E23
+ * Qevap = α * area * LMTD
+ */
+export function evaporatorCapacity(alpha, area, LMTD) {
+  return alpha * area * LMTD;
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\heatLoad.js =====
+// heatLoad.js – universal top- / bottom-freezer heat load model (physically correct)
+import { PHYSICAL_CONSTANTS as PC } from './constants.js';
+
+function lambdaUrethane(T_in, T_out) {
+  const T_avg = (T_in + T_out) / 2;
+  return 0.0165 + 0.00011 * (T_avg-25) * 1.16279;   // Excel formula, shifted to be 0.0165 at 25°C
+}
+function kExterior(thk, T_in, T_out) {
+  const lam = lambdaUrethane(T_in, T_out);
+  return 1 / (1/PC.surfaceCoefficients.outside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
+}
+function kInterior(thk, T1, T2) {
+  const lam = lambdaUrethane(T1, T2);
+  return 1 / (1/PC.surfaceCoefficients.inside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
+}
+
+export const DEFAULT_GEOMETRY = {
+  H: 1680, W: 800, D: 630, Hf: 550, Hr: 1130, Hb: 260, Db1: 210, Db2: 230,
+  doorGap: 10, packingPos: 15,
+  tFtop: 59.4, tFleft: 59.4, tFright: 59.4, tFbottom: 70, tFdoor: 59.4, tFback: 60, tEvaBack: 60,
+  tRtop: 70, tRleft: 40, tRright: 40, tRback: 60,
+  tRbottom1: 40, tRbottom2: 40, tRbottom3: 40, tRdoor: 40,
+  tFfloor1: 40, tFfloor2: 40, tFfloor3: 40,
+  tRfloor: 70,
+};
+
+export function calcHeatLoads(
+  geom, temps, electrical, PIPEPITCH, BackcondenserEfficiency=0,
+  fanInputPower_W,
+  freezerPosition = 'top', backCondenser = 'No'
+) {
+  const {
+    H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
+    tFtop, tFleft, tFright, tFbottom, tFdoor, tFback, tEvaBack,
+    tRtop, tRleft, tRright, tRback, tRdoor,
+    tRbottom1, tRbottom2, tRbottom3,
+    tFfloor1, tFfloor2, tFfloor3, tRfloor
+  } = geom;
+  const { T0, TF, TR, T2, TC, PR, TE } = temps;
+
+  const K_side = 1.0738-0.004152*PIPEPITCH.side+0.00000482*PIPEPITCH.side**2;
+  const K_back = 1.0738-0.004152*PIPEPITCH.back+0.00000482*PIPEPITCH.back**2;
+  const T_compZone = T0 + (TC - T0) * PR;
+  const TRise_side = (TC - T0)  * K_side;
+  const TRise_back = (TC - T0)  * K_back;
+  const T_wallSide = T0 + TRise_side * PR;
+  const T_wallBack = T0 + TRise_back * PR;
+
+  const isTopFreezer = (freezerPosition === 'top');
+  const isBackCondenserAbsent = (backCondenser !== 'Yes');
+  const hasFreezer = Hf > 0;
+  const hasFresh   = Hr > 0;
+
+  // ── Freezer ───────────────────────────────────────────────────
+  let QF = 0;
+
+  if (hasFreezer) {
+    const AFtop    = (W - (tFleft + tFright)/2) * (D - tFback/2) / 1e6;
+    const AFdoor   = (Hf - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6;
+    const AFpackin = ((Hf - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000;
+
+    let AFleft1, AFleft2, AFright1, AFright2;
+    if (isTopFreezer) {
+      AFleft1  = (D - tEvaBack) * (Hf - (tFtop + tFbottom)/2) / 1e6;
+      AFleft2 = (tEvaBack) * (Hf - (tFtop + tFbottom)/2) / 1e6;
+      AFright1 = AFleft1;
+      AFright2 = AFleft2;
+    } else {
+      const fSideHeight = Hf - (tFtop + tFfloor1)/2;
+      AFleft1  = (fSideHeight * (D - tFback/2) - (Db1 + Db2) * Hb / 2 - tEvaBack*(fSideHeight-Hb)) / 1e6;
+      AFleft2 = (tEvaBack) * (fSideHeight - Hb) / 1e6;
+      AFright1 = AFleft1;
+      AFright2 = AFleft2;
+    }
+
+    // Freezer top
+    QF += (isTopFreezer
+      ? kExterior(tFtop, TF, T0) * AFtop * (T0 - TF)
+      : kInterior(tFtop, TF, TR) * AFtop * (TR - TF));
+
+    // Freezer sides
+    QF += kExterior(tFleft, TF, T_wallSide) * AFleft1 * (T_wallSide - TF)
+        + kExterior(tFright, TF, T_wallSide) * AFright1 * (T_wallSide - TF)
+        + kExterior(tFleft, T2, T_wallSide) * AFleft2 * (T_wallSide - T2)
+        + kExterior(tFright, T2, T_wallSide) * AFright2 * (T_wallSide - T2);
+
+    // Freezer bottom
+    if (!hasFresh) {
+      // single freezer – bottom is exterior stepped floor
+      const AFb1 = (W - (tFleft+tFright)/2) * Db1 / 1e6;
+      const AFb2 = (W - (tFleft+tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
+      const AFb3 = (W - (tFleft+tFright)/2) * (D-Db2) / 1e6;
+      QF += kExterior(tFfloor1, TF, T_compZone) * AFb1 * (T_compZone - TF)
+          + kExterior(tFfloor2, TF, T_compZone) * AFb2 * (T_compZone - TF)
+          + kExterior(tFfloor3, TF, T0)          * AFb3 * (T0 - TF);
+    } else if (isTopFreezer) {
+      const AFbottom = (D - tFback/2) * (W - (tFleft + tFright)/2) / 1e6;
+      QF += kInterior(tFbottom, TF, TR) * AFbottom * (TR - TF);
+    } else {
+      const AFbottom1 = (W - (tFleft + tFright)/2) * Db1 / 1e6;
+      const AFbottom2 = (W - (tFleft + tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
+      const AFbottom3 = (W - (tFleft + tFright)/2) * (D-Db2) / 1e6;
+      QF += kExterior(tFfloor1, TF, T_compZone) * AFbottom1 * (T_compZone - TF)
+          + kExterior(tFfloor2, TF, T_compZone) * AFbottom2 * (T_compZone - TF)
+          + kExterior(tFfloor3, TF, T0)        * AFbottom3 * (T0 - TF);
+    }
+
+    // Freezer door + packing
+    QF += kExterior(tFdoor, TF, T0) * AFdoor * (T0 - TF)
+        + PC.insulation.packing * AFpackin * (T0 - TF);
+
+    // Partition losses
+    QF += (0.1219*(TC-TF)*PR + 0.07551*(T0-TF)*(1-PR))
+          * (W - tFleft - tFright) / 1000;
+    QF += (0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000;
+  }
+
+  // ── Refrigerator ───────────────────────────────────────────────
+  let QR = 0;
+
+  if (hasFresh) {
+    const ARdoor   = (Hr - doorGap/2 - 2*packingPos) * (W - 2*packingPos) / 1e6;
+    const ARpackin = ((Hr - 2*packingPos) + (W - 2*packingPos)) * 2 / 1000;
+
+    let ARtop, ARleft, ARback;
+    if (isTopFreezer) {
+      ARtop  = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
+      const rH = Hr - (tRtop + tRbottom1)/2;
+      ARleft = (rH * (D - tRback/2) - (Db1+Db2)*Hb/2) / 1e6;
+      ARback = (Hr - (tRtop+tRbottom1)/2 - Hb) * (W - (tRleft+tRright)/2) / 1e6;
+    } else {
+      ARtop  = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
+      const rH = Hr - (tRtop + tRfloor)/2;
+      ARleft = (rH * (D - tRback/2)) / 1e6;
+      ARback = (Hr - (tRtop + tRfloor)/2) * (W - (tRleft+tRright)/2) / 1e6;
+    }
+
+    // Refrigerator top
+    QR += (isTopFreezer
+      ? kInterior(tRtop, TF, TR) * ARtop * (TF - TR)
+      : kExterior(tRtop, TR, T0) * ARtop * (T0 - TR));
+
+    // Refrigerator sides
+    QR += kExterior(tRleft, TR, T_wallSide) * ARleft * (T_wallSide - TR)
+        + kExterior(tRright, TR, T_wallSide) * ARleft * (T_wallSide - TR);
+
+    // Refrigerator back
+    if (isBackCondenserAbsent) {
+      QR += kExterior(tRback, TR, T0) * ARback * (T0 - TR);
+    } else {
+      QR += kExterior(tRback, TR, T_wallBack) * ARback * (T_wallBack - TR);
+    }
+
+    // Refrigerator bottom
+    if (!hasFreezer) {
+      // single fresh – bottom is exterior stepped floor
+      const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
+      const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
+      const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
+      QR += kExterior(tRbottom1, TR, T_compZone) * ARb1 * (T_compZone - TR)
+          + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
+          + kExterior(tRbottom3, TR, T0)        * ARb3 * (T0 - TR);
+    } else if (isTopFreezer) {
+      const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
+      const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
+      const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
+      QR += kExterior(tRbottom1, TR, T_compZone) * ARb1 * (T_compZone - TR)
+          + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
+          + kExterior(tRbottom3, TR, T0)        * ARb3 * (T0 - TR);
+    } else {
+      // bottom‑freezer (partition to freezer)
+      const ARbottom = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
+      QR += kInterior(tRfloor, TF, TR) * ARbottom * (TF - TR);
+    }
+
+    // Refrigerator door + packing
+    QR += kExterior(tRdoor, TR, T0) * ARdoor * (T0 - TR)
+        + PC.insulation.packing * ARpackin * (T0 - TR);
+
+    // DP condenser
+    QR += (0.03322*(TC-TR)-0.030267*(T0-TR))* PR * (Hr*2 ) / 1000;
+  }
+
+  // ── Evaporator back (always on the "freezer" side) ─────────────────
+  const H_evap      = hasFreezer ? Hf : Hr;
+  const tTop_evap   = hasFreezer ? tFtop : tRtop;
+  const tLeft_evap  = hasFreezer ? tFleft : tRleft;
+  const tRight_evap = hasFreezer ? tFright : tRright;
+  const tBack_evap  = hasFreezer ? tFback : tRback;
+  let tBottom_evap;
+  if (hasFreezer) {
+    tBottom_evap = (freezerPosition === 'top') ? tFbottom : tFfloor1;
+  } else {
+    tBottom_evap = (isTopFreezer || freezerPosition === 'top') ? tRfloor : tRbottom1;
+  }
+
+  let A_evaBack;
+  if (isTopFreezer || !hasFreezer) {
+    A_evaBack = (W - (tLeft_evap + tRight_evap)/2) * 
+                (H_evap - (tTop_evap + tBottom_evap)/2) / 1e6;
+  } else {
+    A_evaBack = (W - (tLeft_evap + tRight_evap)/2) * 
+                (H_evap - Hb - (tTop_evap + tBottom_evap)/2) / 1e6;
+  }
+
+  let QEV_cond = 0;
+  if (A_evaBack > 0) {
+    if (isBackCondenserAbsent) {
+      QEV_cond = kExterior(tEvaBack, T2, T0) * A_evaBack * (T0 - T2);
+    } else {
+      QEV_cond = kExterior(tEvaBack, T2, T_wallBack) * A_evaBack * (T_wallBack - T2);
+    }
+  }
+
+  const fanLoad = (fanInputPower_W ?? 2.1) * PR;
+  const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); // 10.5 is the timer period in h
+  const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24); 
+  return { QF: QF * 1.16279, QR: QR * 1.16279, QEV: QEV_cond * 1.16279 + fanLoad + defrostLoad, fanLoad, defrostLoad };
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\index.js =====
+/**
+ * @file index.js
+ * Thermo analysis entry point – orchestrates the nested Newton‑Raphson solver
+ * and returns a human‑readable result object.
+ */
+
+import { solveThermalSystem } from './solver.js';
+import { SJ54H_COMPONENTS } from './defaultComponents.js';
+import { PHYSICAL_CONSTANTS } from './constants.js';
+import { DEFAULT_CABINET, toThermalFormat } from '../geometry.js';
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export function runThermoAnalysis(config) {
+  const errors = [];
+  const warnings = [];
+
+  if (!config) {
+    errors.push('No configuration provided.');
+    return { success: false, errors, warnings, results: null };
+  }
+
+  const required = [
+    'geom', 'compParams', 'condenserConfig', 'refrigerant',
+    'subcool', 'dischargeTemp', 'fixedTemps', 'fan', 'electrical'
+  ];
+  for (const key of required) {
+    if (config[key] === undefined) {
+      errors.push(`Missing required config field: ${key}`);
+    }
+  }
+
+  // Fixed temperatures validation
+  if (config.fixedTemps) {
+    const { T0, TF, TR, TE } = config.fixedTemps;
+    if ([T0, TF, TR, TE].some(v => typeof v !== 'number')) {
+      errors.push('fixedTemps must contain numeric T0, TF, TR, TE.');
+    }
+  }
+
+  // Fan defaults
+  if (config.fan) {
+    if (!config.fan.totalAirflow) {
+      errors.push('fan.totalAirflow is required.');
+    }
+    config.fan.density = config.fan.density ?? PHYSICAL_CONSTANTS.air.density;
+    config.fan.cp = config.fan.cp ?? PHYSICAL_CONSTANTS.air.cp;
+  }
+
+  if (errors.length > 0) {
+    return { success: false, errors, warnings, results: null };
+  }
+
+  // Merge solver options with defaults
+  const solverDefaults = {
+    TC0: 54.4,
+    DH: 0.001,
+    tolOuter: 0.0005,
+    maxIterOuter: 100,
+    innerOptions: { dx: 0.001, tol: 1e-4, maxIter: 100 },
+  };
+  const solverOptions = { ...solverDefaults, ...(config.solverOptions || {}) };
+  // If inverterPR is provided, attach to solver options
+  if (config.inverterPR !== undefined) {
+    solverOptions.inverterPR = config.inverterPR;   // will be forwarded by solveThermalSystem
+  }
+  // ... (call solveThermalSystem with merged config)
+  const fullConfig = {
+    ...config,
+    ...solverOptions,
+    inverterPR: config.inverterPR,   // ensures it's passed
+  };
+
+  try {
+    const result = solveThermalSystem({
+      ...config,                     // spread the whole config (includes inverterPR)
+      geom: config.geom,
+      compParams: config.compParams,
+      condenserConfig: config.condenserConfig,
+      refrigerant: config.refrigerant,
+      subcool: config.subcool,
+      dischargeTemp: config.dischargeTemp,
+      fixedTemps: config.fixedTemps,
+      fan: config.fan,
+      electrical: config.electrical,
+      freezerPosition: config.freezerPosition || 'top',
+      initialTE: config.fixedTemps.TE,
+      ...solverOptions,              // solverOptions already contains inverterPR if set
+    });
+
+    if (!result.converged) {
+      errors.push(result.error || 'Thermal solver did not converge.');
+      return { success: false, errors, warnings, results: null };
+    }
+
+    const output = {
+      TC: result.TC,
+      T2: result.T2,
+      PR: result.PR,
+      TE: result.TE,   // dynamic TE result
+      heatLoads: {
+        QF: result.heatLoads.QF,
+        QR: result.heatLoads.QR,
+        QEV: result.heatLoads.QEV,
+        fanLoad: result.heatLoads.fanLoad,
+        defrostLoad: result.heatLoads.defrostLoad,
+      },
+      compressor: {
+        massFlow: result.compressor.massFlow,
+        coolingCapacity: result.compressor.coolingCapacity,
+        inputPower: result.compressor.inputPower,
+        etaV: result.compressor.etaV,
+        Pe: result.compressor.Pe,      // ← added
+        Pc: result.compressor.Pc,      // ← added
+        COP:             result.compressor.COP,    // ★ add this line
+      },
+      fan: result.fan,
+      electrical: result.electrical,
+      iterations: {
+        outer: result.outerIterations,
+        innerTotal: result.innerTotalIterations,
+      },
+    };
+  if (result.RPM !== undefined) {
+    output.RPM = result.RPM;
+  }
+
+    if (result.PR >= 1) {
+      warnings.push('Compressor running ratio reached 100% — system may be undersized.');
+    } else if (result.PR <= 0.1) {
+      warnings.push('Compressor running ratio very low — check heat load inputs.');
+    }
+
+    return { success: true, errors: [], warnings, results: output };
+  } catch (err) {
+    errors.push(`Unexpected error in thermal analysis: ${err.message}`);
+    return { success: false, errors, warnings, results: null };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Default config builder (SJ‑54H)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a complete configuration object for the SJ‑54H baseline,
+ * formatted exactly as the solver expects.
+ */
+export function buildDefaultConfig(overrides = {}) {
+  // Convert compressor coefficients from the old object format to arrays
+  const { compressor: compRaw, condenser: condRaw, fan, electrical } = SJ54H_COMPONENTS;
+
+  const compParams = {
+    name: compRaw.name,
+    cylinderVolumeCm3: compRaw.Vc,
+    speedRpm: compRaw.rpm,
+    rpm0: compRaw.rpm0,
+    T_suction: compRaw.T_suction,
+    wCoeffs: [
+      compRaw.powerCoeffs.AW,
+      compRaw.powerCoeffs.BW,
+      compRaw.powerCoeffs.CW,
+      compRaw.powerCoeffs.DW,
+      compRaw.powerCoeffs.EW,
+    ],
+    etaCoeffs: [
+      compRaw.volEffCoeffs.A,
+      compRaw.volEffCoeffs.B,
+      compRaw.volEffCoeffs.C,
+    ],
+  };
+  const base = {
+    geom: toThermalFormat(DEFAULT_CABINET),
+    compParams: null,   // will be filled by the caller
+    condenserConfig: {
+      sidePipePitch_mm: condRaw.sidePipePitch_mm,
+      backPipePitch_mm: condRaw.backPipePitch_mm,
+      backCondenserEfficiency: condRaw.backCondenserEfficiency,
+      backCondenser: 'Yes',   // SJ‑540 has a back condenser
+    },
+    refrigerant: 'R-600a',
+    subcool: SJ54H_COMPONENTS.subcool_K,
+    dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
+    fixedTemps: {
+      T0: 30,
+      TF: -18,
+      TR: 3,
+      TE: -23.3,          // initial guess (will be updated by dynamic loop if used)
+    },
+    fan: {
+      totalAirflow: fan.totalAirflow_m3h,
+      inputPower_W: fan.inputPower_W,
+    },
+    electrical: { ...electrical },
+    freezerPosition: 'top',   // SJ‑540 is top‑freezer
+    initialTE: -25.27,        // better starting point for TE iterations
+    solverOptions: {
+      TC0: 54.4,
+      DH: 0.001,
+      tolOuter: 0.0005,
+      maxIterOuter: 100,
+      innerOptions: {
+        dx: 0.001,
+        tol: 1e-4,
+        maxIter: 100,
+        initialT2: -21.25,
+        initialPR: 0.59,
+      },
+    },
+  };
+
+  return deepMerge(base, overrides);
+}
+
+// Simple deep merge (one level deep suffices for our configs)
+function deepMerge(target, source) {
+  const out = { ...target };
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key])
+    ) {
+      out[key] = deepMerge(out[key] || {}, source[key]);
+    } else {
+      out[key] = source[key];
+    }
+  }
+  return out;
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\solver.js =====
+// solver.js – Universal thermal solver (SI units, corrected)
+import { calcHeatLoads } from './heatLoad.js';
+import { calcQCout } from './condenser.js';
+import { PHYSICAL_CONSTANTS } from './constants.js';
+import { compressorPower, getRefrigerantProperties, inverterCompressorPerformance } from './CompressorPerformance.js';
+
+const RHO_AIR       = PHYSICAL_CONSTANTS.air.density;   // kg/m³
+const CP_AIR        = PHYSICAL_CONSTANTS.air.cp;        // kJ/(kg·K)
+const KELVIN_OFFSET = 273.16;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper constants for air‑side calculations
+// ─────────────────────────────────────────────────────────────────────────────
+// Volumetric heat capacity: W per (m³/h) per K
+const CV = RHO_AIR * CP_AIR * 1000 / 3600;   // (J/(m³·K)) / 3600 = W/(m³/h·K)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers & Safe Wrappers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getRefrigerantIndex(name) {
+  if (name === 'R-134a') return 1;
+  if (name === 'R-600a') return 2;
+  throw new Error(`Unsupported refrigerant: ${name}`);
+}
+
+/**
+ * Unified compressor evaluation. If the compressor has inverter coefficients
+ * and an RPM is provided, the inverter model is used; otherwise the
+ * constant‑speed polynomial model is used.
+ *
+ * @param {number} TE
+ * @param {number} TC
+ * @param {number} refIndex
+ * @param {object} compParams
+ * @param {number} [RPM] - Speed for inverter compressors (optional)
+ * @returns {object}
+ */
+function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
+    // Primary: if a compressorModel object exists, treat as inverter
+  if (compParams.compressorModel && typeof compParams.compressorModel === 'object') {
+    // Optionally re‑validate isInverter
+    if (!compParams.isInverter) {
+      console.warn('compParams.isInverter is false but compressorModel exists – forcing inverter mode.');
+    }
+    return inverterCompressorPerformance(TE, TC, RPM, refIndex, compParams.compressorModel);
+  }
+
+  // Legacy inverter flag (only if no model)
+  if (compParams.isInverter) {
+    throw new Error('Inverter compressor selected but no fitted model. Re‑load performance data in Advanced Settings.');
+  }
+
+  // Use inverter model whenever a compressorModel is provided and RPM is known
+  if (compParams.compressorModel && RPM !== undefined) {
+    return inverterCompressorPerformance(TE, TC, RPM, refIndex, compParams.compressorModel);
+  }
+
+  // Constant‑speed fallback
+  if (compParams.useMap) {
+    throw new Error('Compressor map logic is required but missing.');
+  }
+  if (!compParams.wCoeffs || !compParams.etaCoeffs) {
+    throw new Error('Missing polynomial coefficients for constant‑speed compressor.');
+  }
+  return compressorPower(
+    TE, TC, refIndex,
+    compParams.wCoeffs, compParams.etaCoeffs,
+    compParams.cylinderVolumeCm3 || compParams.Vc,
+    compParams.speedRpm || compParams.rpm
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2×2 Newton-Raphson with damping & bounds checking
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Solves a 2D system of non-linear equations F(x) = 0 using Newton-Raphson.
+ * Features:
+ * - Numerical Jacobian (forward difference).
+ * - Fallback to Gradient Descent if Jacobian is singular.
+ * - Backtracking line search with Armijo condition for robust step sizing.
+ * - Variable bounds checking.
+ * - Detailed debug logging.
+ *
+ * @param {function(number[]): number[]} F - The residual function to solve.
+ * @param {number[]} x0 - Initial guess vector [x1, x2].
+ * @param {number[]} dx - Step sizes for numerical differentiation, e.g., [1e-3, 1e-4].
+ * @param {number} tol - Convergence tolerance for the norm of F.
+ * @param {number} maxIter - Maximum number of iterations.
+ * @param {number[][]} bounds - Bounds for each variable, e.g., [[min1, max1], [min2, max2]].
+ * @param {boolean} [debug=false] - Enable verbose logging to the console.
+ * @returns {{x: number[], f: number[], normF: number, converged: boolean, iterations: number, error?: string}}
+ */
+function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
+  const logger = {
+    log: (...args) => debug && console.log(...args),
+    table: (data) => debug && console.table(data),
+  };
+
+  let x = [...x0];
+  let f, normF;
+
+  // Initial evaluation with error handling
+  try {
+    f = F(x);
+    normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
+  } catch (e) {
+    logger.log('ERROR: Initial function evaluation failed.', e);
+    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
+  }
+
+  for (let i = 0; i < maxIter; i++) {
+    logger.log(
+      `\n  Newton ${i}: T2=${x[0].toFixed(4)} PR=${x[1].toFixed(6)}` +
+      ` F1=${f[0].toFixed(4)} F2=${f[1].toFixed(4)} norm=${normF.toExponential(2)}`
+    );
+
+    if (normF <= tol) {
+      logger.log(`  Convergence met: normF (${normF.toExponential(2)}) <= tol (${tol.toExponential(2)})`);
+      return { x, f, normF, converged: true, iterations: i + 1 };
+    }
+
+    // 1. Numerical Jacobian
+    const J = [[0, 0], [0, 0]];
+    try {
+      for (let j = 0; j < 2; j++) {
+        const xp = [...x];
+        xp[j] += dx[j];
+        const fp = F(xp);
+        J[0][j] = (fp[0] - f[0]) / dx[j];
+        J[1][j] = (fp[1] - f[1]) / dx[j];
+      }
+    } catch (e) {
+      logger.log('ERROR: Jacobian evaluation failed.', e);
+      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian evaluation failed: ${e.message}` };
+    }
+    const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+    if (debug) {
+      logger.log('    Jacobian:');
+      logger.table(J.map(row => row.map(v => v.toExponential(3))));
+      logger.log(`    det(J) = ${det.toExponential(3)}`);
+    }
+
+    // 2. Determine search direction (Newton or Gradient Descent)
+    let direction;
+    if (Math.abs(det) > 1e-12) {
+      // Newton's direction: d = -J⁻¹ * f
+      const invDet = 1.0 / det;
+      direction = [
+        -invDet * (J[1][1] * f[0] - J[0][1] * f[1]),
+        -invDet * (-J[1][0] * f[0] + J[0][0] * f[1])
+      ];
+      logger.log(`    Newton direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
+    } else {
+      // Fallback to Gradient Descent: d = -Jᵀ * f
+      // This is the gradient of the squared norm 0.5 * ||f||²
+      direction = [
+        -(J[0][0] * f[0] + J[1][0] * f[1]),
+        -(J[0][1] * f[0] + J[1][1] * f[1])
+      ];
+      logger.log(`    Singular Jacobian. Using Gradient Descent direction: [${direction[0].toExponential(3)}, ${direction[1].toExponential(3)}]`);
+
+      const normGrad = Math.sqrt(direction[0]**2 + direction[1]**2);
+      if (normGrad < 1e-12) {
+        return { x, f, normF, converged: false, iterations: i + 1, error: 'Gradient is zero at a non-solution point (saddle or local minimum).' };
+      }
+    }
+
+    // 3. Backtracking line search
+    let alpha = 1.0;
+    const maxBacktracks = 15;
+    let accept = false;
+    let newX, newF, newNorm;
+
+    for (let bt = 0; bt < maxBacktracks; bt++) {
+      // Apply step and clamp to bounds
+      newX = [
+        Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
+        Math.max(bounds[1][0], Math.min(bounds[1][1], x[1] + alpha * direction[1]))
+      ];
+
+      try {
+        newF = F(newX);
+        newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]);
+      } catch (e) {
+        logger.log(`    Line search F(x) failed at α=${alpha.toExponential(2)}`, e);
+        alpha *= 0.5; // Treat as a bad step and backtrack
+        continue;
+      }
+
+      // Armijo condition for sufficient decrease
+      const sufficientDecrease = normF - 1e-4 * alpha * normF;
+      logger.log(`      bt=${bt}, α=${alpha.toExponential(2)}, newNorm=${newNorm.toExponential(2)}, required < ${sufficientDecrease.toExponential(2)}`);
+
+      if (newNorm < sufficientDecrease) {
+        accept = true;
+        break;
+      }
+      alpha *= 0.5;
+    }
+
+    if (!accept) {
+      return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed – cannot find step size to reduce residual.' };
+    }
+
+    // 4. Update state for next iteration
+    x = newX;
+    f = newF;
+    normF = newNorm;
+    logger.log(`    Step accepted with α=${alpha.toExponential(2)}. New norm=${normF.toExponential(2)}`);
+
+    // 5. Check for clamping at physical bounds (indicative of model limits)
+    const isClamped = (x[1] <= bounds[1][0] || x[1] >= bounds[1][1]);
+    if (isClamped && i > 5 && normF > tol * 100) { // Check after a few iterations
+      const clampedAt = x[1] <= bounds[1][0] ? 'lower' : 'upper';
+      const errorMsg = `PR clamped at ${clampedAt} bound (${x[1].toFixed(4)}) – compressor may be undersized or oversized.`;
+      logger.log(`    WARNING: ${errorMsg}`);
+      return { x, f, normF, converged: false, iterations: i + 1, error: errorMsg };
+    }
+  }
+
+  return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inner solver: (T2, PR) ← Newton-Raphson
+// ─────────────────────────────────────────────────────────────────────────────
+
+function solveInner(
+  TC, geom, compParams, refrigerant, subcool,
+  fixedTemps, fan, electrical, condenserConfig,
+  TE, freezerPos, innerOpts = {},
+  fixedPR               // NEW
+) {
+  const {
+    dx_steps = [0.001, 0.0001], // [dx_T2, dx_PR]
+    tol      = 1e-4,
+    maxIter  = 100,
+    initialT2,
+    initialPR,
+    debug= true,           // existing flag for Newton‑Raphson logs
+    debugHeatLoads= true,  // ← NEW flag for heat‑load logging
+  } = innerOpts;
+  const logger = { log: (...args) => debug && console.log(...args) };
+
+  const { T0, TF, TR } = fixedTemps;
+
+  const PIPEPITCH = {
+    side: condenserConfig.sidePipePitch_mm,
+    back: condenserConfig.backPipePitch_mm,
+  };
+  const backCondenserEfficiency = condenserConfig.backCondenserEfficiency ?? 0;
+  const backCondenser = condenserConfig.backCondenser ?? 'No';
+
+  const refIndex = getRefrigerantIndex(refrigerant);
+  if (compParams.isInverter && fixedPR === undefined) {
+    throw new Error(
+      'Inverter compressor selected but no fixed PR provided. ' +
+      'Pass `inverterPR` in the configuration.'
+    );
+  }
+
+  let bounds, initialGuess, variableNames;
+  if (isInverterMode) {
+    bounds = [
+      [-80, 20],                        // T2
+      [compParams.rpmMin || 1000, compParams.rpmMax || 6000]  // RPM
+    ];
+    initialGuess = [
+      innerOpts.initialT2 ?? -21.25,
+      innerOpts.initialRPM ?? (compParams.rpmMax ? (compParams.rpmMin + compParams.rpmMax) / 2 : 3000)
+    ];
+    variableNames = ['T2', 'RPM'];
+  } else {
+    bounds = [
+      [-80, 20],      // T2
+      [0.001, 0.999]  // PR
+    ];
+    initialGuess = [
+      innerOpts.initialT2 ?? -21.25,
+      innerOpts.initialPR ?? 0.59
+    ];
+    variableNames = ['T2', 'PR'];
+  }
+
+  let currentMR = fan.totalAirflow * 0.1;
+  let currentMF = fan.totalAirflow * 0.9;
+
+  // Residual vector
+  const F = (vars) => {
+    const T2 = vars[0];
+    const secondVar = vars[1];   // PR or RPM
+    const PR = isInverterMode ? fixedPR : secondVar;
+    const RPM = isInverterMode ? secondVar : undefined;
+
+    let loads;
+    try {
+      loads = calcHeatLoads(
+        geom,
+        { T0, TF, TR, T2, TC, PR, TE },
+        electrical,
+        PIPEPITCH,
+        backCondenserEfficiency,
+        fan.inputPower_W ?? 2.1,
+        freezerPos,
+        backCondenser
+      );
+    } catch (e) {
+      console.error('calcHeatLoads threw:', e.message, e.stack);
+      throw e;
+    }
+    if (innerOpts.debugHeatLoads) {
+      console.group('calcHeatLoads – Detailed Output');
+      console.log('Geometry:', geom);
+      console.log('Input parameters:', {
+        T0, TF, TR, T2, TC, PR, TE,
+        electrical, PIPEPITCH, backCondenserEfficiency, fanPower: fan.inputPower_W,
+        freezerPos, backCondenser
+      });
+      console.log('Full result:', loads);
+      console.table(loads);  // if loads is an object, prints a table view
+      console.groupEnd();
+    }
+    let comp;
+    try {
+      comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM);
+    } catch (e) {
+      console.error('evaluateCompressorSafely threw:', e.message, 'at TE=', TE, 'TC=', TC);
+      throw e;
+    }
+
+    if (debug) {
+      console.log(`    loads: QF=${loads.QF}, QR=${loads.QR}, QEV=${loads.QEV}`);
+      console.log(`    comp: QComp=${comp.QCompressor}, Power=${comp.CompPower}, Pe=${comp.Pe}, Pc=${comp.Pc}`);
+    }
+
+    // Air side calculations using volumetric heat capacity CV (W per m³/h per K)
+    const C_tot = fan.totalAirflow * CV;               
+    const T3 = T2 + loads.QEV / (C_tot * PR);         
+    const denomR = CV * Math.max(0.01, TR - T3) * PR; 
+    const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
+    const MF = fan.totalAirflow - MR;                  
+    console.log(`    T3=${T3.toFixed(2)}, MR=${MR.toFixed(2)}, MF=${MF.toFixed(2)}`);
+    currentMR = MR;
+    currentMF = MF;
+    // F1 = QF - MF * CV * (TF - T3) * PR   (W)
+    const F1 = loads.QF - MF * CV * (TF - T3) * PR;
+    // F2 = total heat load - cooling capacity * PR  (W)
+    const F2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
+    return [F1, F2];
+  };
+
+  // Solve — fall back through alternative guesses on failure
+  let totalIter = 0;
+  const T2_guess = initialT2 ?? -21.25;
+  const PR_guess = initialPR ?? 0.59;
+let res = newton2(F, initialGuess, dx_steps, tol, maxIter, bounds, debug);
+totalIter += res.iterations;
+
+// Add a guard:
+if (!res.converged && res.error && res.error.includes('compressor undersized')) {
+  return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
+}
+
+// Modify the fallback block:
+if (!res.converged) {
+  logger.log('Initial guess failed.');
+  if (isInverterMode) {
+    // Don't try fallback PRs; let the outer loop handle it
+    return { T2: res.x[0], PR: fixedPR, RPM: res.x[1], converged: false, iterations: totalIter, error: res.error };
+  }
+    logger.log('Initial guess failed. Trying fallback guesses...');
+    for (const [t2, pr] of [[T2_guess, 0.4], [T2_guess - 2, 0.5], [-21, 0.3]]) {
+      logger.log(`  Fallback guess: T2=${t2}, PR=${pr}`);
+      res = newton2(F, [t2, pr], dx_steps, tol, maxIter, bounds, debug);
+      totalIter += res.iterations;
+      if (res.converged) break;
+    }
+  }
+
+  if (!res.converged)
+    return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
+
+  // Final evaluation at the converged point
+  const [fT2, second] = res.x;
+  const fPR = isInverterMode ? fixedPR : second;
+  const fRPM = isInverterMode ? second : undefined;
+  const loads = calcHeatLoads(
+    geom, { T0, TF, TR, T2: fT2, TC, PR: fPR, TE }, electrical,
+    PIPEPITCH, backCondenserEfficiency, fan.inputPower_W, freezerPos, backCondenser
+  );
+  const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
+
+  return {
+    T2: fT2,
+    PR: fPR,
+    RPM: fRPM,           // NEW: undefined for constant speed
+    TE,
+    converged: true,
+    iterations: totalIter,
+    heatLoads: loads,
+    compressor: {
+      etaV: comp.VolumetricEfficiency,
+      coolingCapacity: comp.QCompressor,
+      inputPower: comp.CompPower,
+      COP: comp.QCompressor / comp.CompPower,
+      massFlow: comp.massFlow,
+      Pe: comp.Pe,
+      Pc: comp.Pc,
+    },
+    MR: currentMR,
+    MF: currentMF,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Outer solver: TC ← secant on F3 = QCout − QCin
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function solveThermalSystem(config, TE_override = null) {
+  const {
+    geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp,
+    fixedTemps, fan, electrical,
+    freezerPosition = 'top',
+    TC0          = 45,
+    DH           = 0.001,
+    tolOuter     = 0.001,
+    maxIterOuter = 50,
+    innerOptions = {},
+  } = config;
+
+  const T0      = fixedTemps.T0;
+  const debug   = innerOptions.debug ?? false;
+  const TE      = TE_override ?? config.initialTE ?? -25.27;
+  const fixedPR = config.inverterPR;   // NEW
+
+  const PIPEPITCH = {
+    side: condenserConfig.sidePipePitch_mm,
+    back: condenserConfig.backPipePitch_mm,
+  };
+  const backCondenserEfficiency = condenserConfig.backCondenserEfficiency ?? 0.7;
+
+  const refIndex  = getRefrigerantIndex(refrigerant);
+  const prop      = getRefrigerantProperties(refIndex);
+
+  let TC         = TC0;
+  let totalInner = 0;
+  let prevF3, prevTC;
+  let prevInner  = null;
+
+  for (let iter = 0; iter < maxIterOuter; iter++) {
+    if (debug) console.log(`\nOuter ${iter}, TC=${TC.toFixed(2)}`);
+
+    if (TC < T0) TC = T0 + 2;
+    if (TC > 90) TC = 90;
+
+    const baseOpts = prevInner
+      ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM }
+      : innerOptions;
+
+    let inner = solveInner(
+      TC, geom, compParams, refrigerant, subcool,
+      fixedTemps, fan, electrical, condenserConfig,
+      TE, freezerPosition, innerOptions,
+      fixedPR                              // NEW
+    );
+    console.log('inner.compressor:', inner.compressor);
+    console.log('inner.converged:', inner.converged, inner.error || '');
+    if (!inner.converged) {
+      if (inner.error && inner.error.includes('undersized')) {
+        return { 
+          TC, T2: inner.T2, PR: inner.PR, converged: false, 
+          error: `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.` 
+        };
+      }
+      if (iter > 0 && typeof prevTC !== 'undefined') {
+        const MAX_BACKTRACK = 3;
+        let success = false;
+        for (let bt = 0; bt < MAX_BACKTRACK; bt++) {
+          const step = (TC - prevTC) * 0.5;
+          const backtrackTC = prevTC + step;
+          if (debug) console.log(`  Backtrack TC=${backtrackTC.toFixed(3)}`);
+          const opts = { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM };
+          const innerRetry = solveInner(
+            backtrackTC, geom, compParams, refrigerant, subcool,
+            fixedTemps, fan, electrical, condenserConfig,
+            TE, freezerPosition, opts
+          );
+          if (innerRetry.converged) {
+            TC = backtrackTC;
+            inner = innerRetry;
+            totalInner += innerRetry.iterations;
+            prevInner = { T2: inner.T2, PR: inner.PR, RPM: inner.RPM };
+            success = true;
+            break;
+          }
+        }
+        if (!success) {
+          return { TC, T2: NaN, PR: NaN, converged: false,
+                   error: 'Inner loop failed after backtracking' };
+        }
+      } else {
+        return { TC, T2: NaN, PR: NaN, converged: false,
+                 error: 'Inner loop failed: ' + inner.error };
+      }
+    } else {
+      totalInner += inner.iterations;
+      prevInner = { T2: inner.T2, PR: inner.PR, RPM: inner.RPM };
+    }
+
+    // Condenser heat balance
+    const QCout = calcQCout(
+      geom, TC, T0, fixedTemps.TF, fixedTemps.TR, inner.PR,
+      PIPEPITCH, freezerPosition, backCondenserEfficiency
+    );  // returns object, QCout.QCout in W
+
+    let compOuter;
+      if (fixedPR !== undefined && inner.RPM !== undefined) {
+        compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams, inner.RPM);
+      } else {
+        compOuter = evaluateCompressorSafely(TE, TC, refIndex, compParams);
+      }
+    const Pc = prop.satPressure(TC + KELVIN_OFFSET);
+    const h_dis = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc);   // kJ/kg
+    const h_liq = prop.liquidEnthalpy(TC - subcool);                      // kJ/kg
+    const QCin_W = compOuter.massFlow * (h_dis - h_liq) / 3.6;           // kg/h * kJ/kg = kJ/h → /3.6 → W
+
+    const F3 = QCout.QCout - QCin_W;
+
+    if (debug) console.log(
+      `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
+    );
+
+    if (Math.abs(F3) < tolOuter) {
+      return {
+        TC,
+        T2: inner.T2,
+        PR: inner.PR,
+        RPM: inner.RPM,
+        TE,
+        Pe: inner.compressor.Pe,
+        Pc: inner.compressor.Pc,
+        converged: true,
+        outerIterations:      iter + 1,
+        innerTotalIterations: totalInner,
+        heatLoads:            inner.heatLoads,
+        compressor:           { ...inner.compressor },
+        MR:                   inner.MR,
+        MF:                   inner.MF,
+        fan:                  fan,
+        electrical:           electrical,
+      };
+    }
+
+    // Numerical derivative
+    let innerPert = null;
+    let appliedDH = DH;
+    const pertOpts = { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM };
+
+    try {
+      innerPert = solveInner(
+        TC + appliedDH, geom, compParams, refrigerant, subcool,
+        fixedTemps, fan, electrical, condenserConfig,
+        TE, freezerPosition, pertOpts
+      );
+    } catch (e) {
+      console.warn('Forward perturbation failed:', e.message);
+      innerPert = null;
+    }
+
+    if (!innerPert || !innerPert.converged) {
+      appliedDH = -DH;
+      try {
+        innerPert = solveInner(
+          TC + appliedDH, geom, compParams, refrigerant, subcool,
+          fixedTemps, fan, electrical, condenserConfig,
+          TE, freezerPosition, pertOpts
+        );
+      } catch (e) {
+        console.warn('Backward perturbation failed:', e.message);
+        innerPert = null;
+      }
+    }
+
+    let F3_pert, QCin_pert, dF3dTC;
+
+    if (innerPert && innerPert.converged) {
+      const pertRPM = (fixedPR !== undefined) ? innerPert.RPM : undefined;
+      const compOuter_pert = evaluateCompressorSafely(TE, TC + appliedDH, refIndex, compParams, pertRPM);
+      const QCout_pert = calcQCout(
+        geom, TC + appliedDH, T0, fixedTemps.TF, fixedTemps.TR, innerPert.PR,
+        PIPEPITCH, freezerPosition, backCondenserEfficiency
+      );
+      const Pc_pert = prop.satPressure(TC + appliedDH + KELVIN_OFFSET);
+      const h_dis_pert = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, Pc_pert);
+      const h_liq_pert = prop.liquidEnthalpy(TC + appliedDH - subcool);
+      QCin_pert = compOuter_pert.massFlow * (h_dis_pert - h_liq_pert) / 3.6;  // now uses RPM-aware compOuter_pert
+      F3_pert = QCout_pert.QCout - QCin_pert;
+      dF3dTC = (F3_pert - F3) / appliedDH;
+    } else {
+      if (typeof prevF3 !== 'undefined' && typeof prevTC !== 'undefined') {
+        const deltaTC = TC - prevTC;
+        const safeDeltaTC = Math.abs(deltaTC) < 1e-6 ? 1e-6 * Math.sign(deltaTC || 1) : deltaTC;
+        dF3dTC = (F3 - prevF3) / safeDeltaTC;
+        if (Math.abs(dF3dTC) < 1e-6) dF3dTC = 1e-6;
+        const step = F3 / dF3dTC;
+        TC -= Math.max(-5, Math.min(5, step));
+      } else {
+        TC += (F3 > 0 ? -0.5 : 0.5);
+      }
+      prevF3 = F3;
+      prevTC = TC;
+      continue;
+    }
+
+    prevF3 = F3;
+    prevTC = TC;
+
+    if (Math.abs(dF3dTC) < 1e-9) {
+      return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative in outer loop' };
+    }
+
+    const step = F3 / dF3dTC;
+    TC -= Math.max(-5, Math.min(5, step));
+  }
+
+  return { TC, T2: NaN, PR: NaN, converged: false, error: 'Outer loop max iterations reached' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic TE wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Calculates a new evaporating temperature (TE) based on the results of a
+ * full system solve, using an NTU-effectiveness model for the evaporator.
+ * @param {object} result - The converged result from `solveInner`.
+ * @param {object} fan - Fan parameters, including `totalAirflow`.
+ * @param {object} evapGeom - Evaporator geometry.
+ * @param {number} TF - Freezer compartment temperature (°C).
+ * @param {number} TR - Refrigerator compartment temperature (°C).
+ * @returns {number} The newly calculated evaporating temperature (°C).
+ */
+function calculateNewTE(result, fan, evapGeom, TF, TR) {
+  const { MR, MF, T2 } = result;
+
+  // Evaporator geometry with defaults
+  const evapWidth_m = (evapGeom?.evapWidth_mm ?? 460) / 1000;
+  const evapDepth_m = (evapGeom?.evapDepth_mm ?? 60) / 1000;
+  const evapArea_m2 = evapGeom?.evapArea_m2 ?? 1.754;
+
+  // Heat transfer coefficient correlation for air over evaporator
+  // alpha = 12.93 * v_ms^0.415 * 1.16279  [W/(m²·K)]
+  // The 1.16279 factor converts from kcal/(h·m²·°C) to W/(m²·K).
+  const ALPHA_COEFF = 12.93 * 1.16279;
+  const ALPHA_EXP = 0.415;
+
+  // 1. Calculate mixed air temperature entering the evaporator (T1)
+  const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
+
+  // 2. Calculate evaporator effectiveness (ε)
+  const faceArea = evapWidth_m * evapDepth_m;
+  const v_ms = fan.totalAirflow / faceArea / 3600;
+  const alpha = ALPHA_COEFF * Math.pow(v_ms, ALPHA_EXP);
+  const C_air = (fan.totalAirflow / 3600) * RHO_AIR * CP_AIR * 1000; // W/K
+  const UA_on = alpha * evapArea_m2; // W/K
+  const NTU = UA_on / C_air;
+  const effectiveness = 1 - Math.exp(-NTU);
+
+  // 3. Calculate new TE using the effectiveness definition: ε = (T1 - T2) / (T1 - TE)
+  // Avoid division by zero if effectiveness is very small
+  if (effectiveness < 1e-6) {
+    // If effectiveness is near zero, T2 is very close to T1, and TE is indeterminate.
+    // Returning T1 is a safe fallback, though this case is physically unlikely.
+    return T1;
+  }
+
+  const newTE = T1 - (T1 - T2) / effectiveness;
+  return newTE;
+}
+
+export function runThermalAnalysisDynamic(config) {
+  const { fixedTemps, fan, evapGeom, solverOptions } = config;
+  const { TF, TR } = fixedTemps;
+  const debug = solverOptions?.innerOptions?.debug ?? false;
+  const logger = { log: (...args) => debug && console.log(...args) };
+
+  let TE = config.initialTE ?? -25.27;
+  let result;
+  let prevTE, prevError;
+
+  const MAX_ITER = 15;
+  const TOL = 0.1;
+
+  logger.log('\n===== Starting Dynamic TE Iteration =====');
+
+  for (let i = 0; i < MAX_ITER; i++) {
+    logger.log(`TE Iteration ${i}: Trying TE = ${TE.toFixed(4)} °C`);
+
+    // 1. Solve the full system for the current TE
+    result = solveThermalSystem(config, TE);
+    if (!result.converged) {
+      logger.log(`  ERROR: Inner solver failed for TE=${TE.toFixed(4)}. Aborting TE loop.`);
+      return result; // Propagate the failure from the inner solver
+    }
+
+    // 2. Calculate the next TE based on the evaporator model
+    const newTE = calculateNewTE(result, fan, evapGeom, TF, TR);
+    const error = newTE - TE;
+    logger.log(`  Result: T2=${result.T2.toFixed(3)}, PR=${result.PR.toFixed(4)}. New TE = ${newTE.toFixed(4)} (error = ${error.toFixed(4)})`);
+
+    // 3. Check for convergence
+    if (Math.abs(error) < TOL) {
+      result.TE = newTE; // Update result with the converged TE
+      logger.log(`  TE converged in ${i + 1} iterations.`);
+      return result;
+    }
+
+    // 4. Update TE for the next iteration using Secant method
+    const currentTE = TE;
+    const currentError = error;
+
+    if (i > 0 && prevError !== undefined) {
+      const te_diff = currentTE - prevTE;
+      const error_diff = currentError - prevError;
+
+      if (Math.abs(error_diff) > 1e-4) { // Avoid division by zero
+        const step = -currentError * te_diff / error_diff;
+        const boundedStep = Math.max(-3.0, Math.min(3.0, step));
+        TE = currentTE + boundedStep;
+        logger.log(`  Secant step: dTE = ${boundedStep.toFixed(4)}`);
+      } else {
+        TE = currentTE + 0.5 * currentError;
+        logger.log(`  Secant derivative too small. Falling back to relaxation step.`);
+      }
+    } else {
+      TE = currentTE + 0.5 * currentError;
+      logger.log(`  First iteration: using relaxation step.`);
+    }
+
+    prevTE = currentTE;
+    prevError = currentError;
+  }
+
+  result.TE = TE;
+  result.warning = `TE iteration did not fully converge within ${MAX_ITER} iterations (tolerance=${TOL}°C). Final error = ${prevError.toFixed(4)}°C.`;
+  logger.log(`  WARNING: ${result.warning}`);
+  return result;
+}
+
+export function EnergyConsumption(result) {
+  if (result.converged === false) {
+    console.log('EnergyConsumption: converged === false, returning NaN');
+    return NaN;
+  }
+
+  const PR = result.PR;
+  const compressor = result.compressor || {};
+  const fan = result.fan || {};
+  const electrical = result.electrical || {};
+
+  const pwbOn_W  = electrical.pwbOn_W  ?? 0;
+  const pwbOff_W = electrical.pwboff_W ?? 0;
+  const defrostOn_W    = electrical.defrostOn_W    ?? electrical.defrostHeater_W ?? 0;
+  const defrostOn_min  = electrical.defrostOn_min  ?? 0;
+  const timerPeriod_h  = electrical.timerPeriod_h ?? 10.5;
+  const fanPower       = fan.inputPower_W ?? 0;
+
+  const OnPower_W = (compressor.inputPower ?? 0) + fanPower + pwbOn_W;
+
+  const energy_W =
+    (OnPower_W * PR + pwbOff_W * (1 - PR)) * 24 / 1000 +
+    defrostOn_min * defrostOn_W * (24 / (timerPeriod_h / PR)) / 60 / 1000;
+
+  return {
+    EnergyConsumption_W: energy_W,
+    EnergyConsumption_kWhMonth: energy_W * 30
+  };
+}
+
+===== D:\refrigerator-volume-calculator\src\js\engine\thermo\validateHeatLoad.js =====
+// src/js/engine/thermo/validateHeatLoad.js
+
+export function validateHeatLoad(geom, temps, calculatedLoads) {
+    const errors = [];
+    const warnings = [];
+    
+    // 1. Temperature Logic Checks
+    if (typeof temps.T0 !== 'number' || typeof temps.TF !== 'number' || typeof temps.TR !== 'number') {
+        errors.push("Missing or invalid temperature inputs. T0, TF, and TR must be numbers.");
+    } else {
+        if (temps.TF >= temps.TR) {
+            errors.push(`Freezer temp (TF: ${temps.TF}°C) is warmer than or equal to Refrigerator temp (TR: ${temps.TR}°C).`);
+        }
+        if (temps.TR >= temps.T0) {
+            errors.push(`Refrigerator temp (TR: ${temps.TR}°C) is warmer than or equal to Ambient temp (T0: ${temps.T0}°C). Heat will flow backwards.`);
+        }
+    }
+
+    // 2. Geometry & Insulation Sanity Checks
+    const minInsulation = 30; // mm
+    const criticalInsulations = [
+        { name: 'Freezer Top', val: geom.tFtop },
+        { name: 'Freezer Left', val: geom.tFleft },
+        { name: 'Freezer Right', val: geom.tFright },
+        { name: 'Refrigerator Top', val: geom.tRtop },
+        { name: 'Refrigerator Left', val: geom.tRleft }
+    ];
+
+    criticalInsulations.forEach(insul => {
+        if (insul.val === undefined || insul.val === null) {
+            errors.push(`Missing insulation thickness for ${insul.name}.`);
+        } else if (insul.val < minInsulation) {
+            warnings.push(`${insul.name} insulation is extremely thin (${insul.val}mm). Expect massive heat leaks.`);
+        }
+    });
+
+    // 3. Calculated Load Sanity Checks
+    if (calculatedLoads) {
+        if (calculatedLoads.QF < 0) errors.push(`Freezer heat load (QF: ${calculatedLoads.QF}W) is negative. Physical impossibility.`);
+        if (calculatedLoads.QR < 0) errors.push(`Refrigerator heat load (QR: ${calculatedLoads.QR}W) is negative. Physical impossibility.`);
+        
+        const totalLoad = calculatedLoads.QF + calculatedLoads.QR + (calculatedLoads.QEV || 0);
+        
+        // A typical domestic fridge sits between 50W and 120W total load. 
+        if (totalLoad > 200) {
+            warnings.push(`Total calculated heat load is extremely high (${totalLoad.toFixed(2)}W). Most standard compressors will fail to satisfy this demand.`);
+        }
+    } else {
+        errors.push("No calculated loads provided for validation.");
+    }
+
+    return {
+        isValid: errors.length === 0,
+        errors,
+        warnings
+    };
+}
+
