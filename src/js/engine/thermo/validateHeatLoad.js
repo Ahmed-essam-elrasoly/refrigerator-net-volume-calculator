@@ -48,6 +48,9 @@ export function validateHeatLoad(geom, temps, calculatedLoads) {
     } else {
         errors.push("No calculated loads provided for validation.");
     }
+    if (temps.TE !== undefined && temps.TF !== undefined && temps.TE >= temps.TF) {
+        errors.push(`Evaporator temperature (TE: ${temps.TE}°C) must be lower than Freezer temperature (TF: ${temps.TF}°C) for heat extraction.`);
+    }
 
     return {
         isValid: errors.length === 0,

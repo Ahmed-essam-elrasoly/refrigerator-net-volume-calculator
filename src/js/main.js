@@ -494,6 +494,7 @@ function readGeometryFromPanel() {
     Hf: comps.find(c => c.type === 'freezer')?.height || 0,
     Hr: comps.find(c => c.type === 'fresh')?.height || 0,
     walls,
+    dividerThickness: dividerThick, 
     special: {
       railHeight:    g('geom-railHeight')    ?? 20,
       railWidth:     g('geom-railWidth')     ?? 10,

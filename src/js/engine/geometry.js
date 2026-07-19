@@ -45,41 +45,45 @@ export function toVolumeFormat(geom) {
 }
 
 export function toThermalFormat(geom) {
-  const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls } = geom;
+  const { H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos, walls, dividerThickness } = geom;
+
+  // Determine the configuration type
+  const isBottomFreezer = geom._compartments && geom._compartments[0].type === 'fresh';
+  const isTopFreezer    = geom._compartments && geom._compartments[0].type === 'freezer';
+  
+  // Fallback to 60mm for configurations lacking explicit layout data (e.g., DEFAULT_CABINET)
+  const divThick = dividerThickness ?? 60; 
+
   return {
-    H, W, D,
-    Hf, Hr,
-    Hb, Db1, Db2,
-    doorGap, packingPos,
-    // Freezer walls
-    tFtop:    walls.freezer.top,
+    H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
+
+    // Freezer walls: Assign partition to tFtop in bottom freezer, or tFbottom in top freezer
+    tFtop:    isBottomFreezer ? divThick : walls.freezer.top,
     tFleft:   walls.freezer.left,
     tFright:  walls.freezer.right,
-    tFbottom: walls.freezer.bottom,
+    tFbottom: isTopFreezer ? divThick : walls.freezer.bottom,
     tFdoor:   walls.freezer.door,
     tFback:   walls.freezer.rear,
     tEvaBack: walls.freezer.rear,
 
-    // Refrigerator walls
-    tRtop:    walls.refrigerator.top,
+    // Refrigerator walls: Assign partition to tRfloor in bottom freezer, or tRtop in top freezer
+    tRtop:    isTopFreezer ? divThick : walls.refrigerator.top,
     tRleft:   walls.refrigerator.left,
     tRright:  walls.refrigerator.right,
     tRback:   walls.refrigerator.rear,
+    tRdoor:   walls.refrigerator.door,
+
     tRbottom1: walls.refrigerator.bottom1,
     tRbottom2: walls.refrigerator.bottom2,
     tRbottom3: walls.refrigerator.bottom3,
-    tRdoor:   walls.refrigerator.door,
 
-    // Freezer floor insulation (used only when Hr === 0, i.e. single freezer)
-    // These are the same cabinet bottom‑insulation values as the refrigerator's,
-    // because the stepped floor exists regardless of compartment type.
-    tFfloor1: walls.refrigerator.bottom1,
-    tFfloor2: walls.refrigerator.bottom2,
-    tFfloor3: walls.refrigerator.bottom3,
+    // Isolate exterior stepped floor for the freezer from the refrigerator mapping
+    tFfloor1: walls.freezer.bottom1 ?? walls.refrigerator.bottom1,
+    tFfloor2: walls.freezer.bottom2 ?? walls.refrigerator.bottom2,
+    tFfloor3: walls.freezer.bottom3 ?? walls.refrigerator.bottom3,
 
-    // Refrigerator interior floor (used for partition in two‑compartment bottom‑freezer)
-    // In a single‑fresh configuration this is the exterior floor; value is still correct.
-    tRfloor:  walls.refrigerator.bottom1,  // or bottom1, whichever is the raised floor
+    // Explicitly assign the internal partition to tRfloor 
+    tRfloor: isBottomFreezer ? divThick : walls.refrigerator.bottom1,
   };
 }
 /**

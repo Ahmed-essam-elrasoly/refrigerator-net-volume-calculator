@@ -95,7 +95,7 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
  */
 function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
   const logger = {
-    log: (...args) => debug && console.log(...args),
+    log: (...args) => debug && logger.log(...args),
     table: (data) => debug && console.table(data),
   };
 
@@ -108,7 +108,8 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
   } catch (e) {
     logger.log('ERROR: Initial function evaluation failed.', e);
-    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
+    return createFailure(x, `Initial F(x) failed: ${e.message}`);
+    //return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
   }
 
   for (let i = 0; i < maxIter; i++) {
@@ -126,15 +127,19 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     const J = [[0, 0], [0, 0]];
     try {
       for (let j = 0; j < 2; j++) {
+        // Compute a relative step: 1e-7 * max(1, |x_j|)
+        const h = Math.max(1e-7, Math.abs(x[j]) * 1e-6);
         const xp = [...x];
-        xp[j] += dx[j];
+        xp[j] += h;
+
         const fp = F(xp);
-        J[0][j] = (fp[0] - f[0]) / dx[j];
-        J[1][j] = (fp[1] - f[1]) / dx[j];
+        J[0][j] = (fp[0] - f[0]) / h;
+        J[1][j] = (fp[1] - f[1]) / h;
       }
     } catch (e) {
       logger.log('ERROR: Jacobian evaluation failed.', e);
-      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian evaluation failed: ${e.message}` };
+      return createFailure(x, `Jacobian evaluation failed: ${e.message}`);
+      //return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian evaluation failed: ${e.message}` };
     }
     const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
     if (debug) {
@@ -164,7 +169,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
 
       const normGrad = Math.sqrt(direction[0]**2 + direction[1]**2);
       if (normGrad < 1e-12) {
-        return { x, f, normF, converged: false, iterations: i + 1, error: 'Gradient is zero at a non-solution point (saddle or local minimum).' };
+        return createFailure(x, 'Gradient is zero at a non-solution point (saddle or local minimum).', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
       }
     }
 
@@ -202,7 +207,8 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     }
 
     if (!accept) {
-      return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed – cannot find step size to reduce residual.' };
+      return createFailure(x, 'Line search failed – cannot find step size to reduce residual.', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
+      //return { x, f, normF, converged: false, iterations: i + 1, error: 'Line search failed – cannot find step size to reduce residual.' };
     }
 
     // 4. Update state for next iteration
@@ -217,11 +223,12 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
       const clampedAt = x[1] <= bounds[1][0] ? 'lower' : 'upper';
       const errorMsg = `PR clamped at ${clampedAt} bound (${x[1].toFixed(4)}) – compressor may be undersized or oversized.`;
       logger.log(`    WARNING: ${errorMsg}`);
-      return { x, f, normF, converged: false, iterations: i + 1, error: errorMsg };
+      return createFailure(x, errorMsg, { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
+      //return { x, f, normF, converged: false, iterations: i + 1, error: errorMsg };
     }
   }
-
-  return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
+  return createFailure(x, 'Max iterations reached', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
+  //return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +242,6 @@ function solveInner(
   fixedPR               // NEW
 ) {
   const {
-    dx_steps = [0.001, 0.0001], // [dx_T2, dx_PR]
     tol      = 1e-4,
     maxIter  = 100,
     initialT2,
@@ -288,9 +294,6 @@ function solveInner(
     variableNames = ['T2', 'PR'];
   }
 
-  let currentMR = fan.totalAirflow * 0.1;
-  let currentMF = fan.totalAirflow * 0.9;
-
   // Residual vector
   const F = (vars) => {
     const T2 = vars[0];
@@ -316,13 +319,13 @@ function solveInner(
     }
     if (innerOpts.debugHeatLoads) {
       console.group('calcHeatLoads – Detailed Output');
-      console.log('Geometry:', geom);
-      console.log('Input parameters:', {
+      logger.log('Geometry:', geom);
+      logger.log('Input parameters:', {
         T0, TF, TR, T2, TC, PR, TE,
         electrical, PIPEPITCH, backCondenserEfficiency, fanPower: fan.inputPower_W,
         freezerPos, backCondenser
       });
-      console.log('Full result:', loads);
+      logger.log('Full result:', loads);
       console.table(loads);  // if loads is an object, prints a table view
       console.groupEnd();
     }
@@ -335,8 +338,8 @@ function solveInner(
     }
 
     if (debug) {
-      console.log(`    loads: QF=${loads.QF}, QR=${loads.QR}, QEV=${loads.QEV}`);
-      console.log(`    comp: QComp=${comp.QCompressor}, Power=${comp.CompPower}, Pe=${comp.Pe}, Pc=${comp.Pc}`);
+      logger.log(`    loads: QF=${loads.QF}, QR=${loads.QR}, QEV=${loads.QEV}`);
+      logger.log(`    comp: QComp=${comp.QCompressor}, Power=${comp.CompPower}, Pe=${comp.Pe}, Pc=${comp.Pc}`);
     }
 
     // Air side calculations using volumetric heat capacity CV (W per m³/h per K)
@@ -345,9 +348,9 @@ function solveInner(
     const denomR = CV * Math.max(0.01, TR - T3) * PR; 
     const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
     const MF = fan.totalAirflow - MR;                  
-    console.log(`    T3=${T3.toFixed(2)}, MR=${MR.toFixed(2)}, MF=${MF.toFixed(2)}`);
-    currentMR = MR;
-    currentMF = MF;
+    if (debug) {
+      logger.log(`    T3=${T3.toFixed(2)}, MR=${MR.toFixed(2)}, MF=${MF.toFixed(2)}`);
+    }
     // F1 = QF - MF * CV * (TF - T3) * PR   (W)
     const F1 = loads.QF - MF * CV * (TF - T3) * PR;
     // F2 = total heat load - cooling capacity * PR  (W)
@@ -359,21 +362,23 @@ function solveInner(
   let totalIter = 0;
   const T2_guess = initialT2 ?? -21.25;
   const PR_guess = initialPR ?? 0.59;
-let res = newton2(F, initialGuess, dx_steps, tol, maxIter, bounds, debug);
-totalIter += res.iterations;
+  let res = newton2(F, initialGuess, dx_steps, tol, maxIter, bounds, debug);
+  totalIter += res.iterations;
 
-// Add a guard:
-if (!res.converged && res.error && res.error.includes('compressor undersized')) {
-  return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
-}
-
-// Modify the fallback block:
-if (!res.converged) {
-  logger.log('Initial guess failed.');
-  if (isInverterMode) {
-    // Don't try fallback PRs; let the outer loop handle it
-    return { T2: res.x[0], PR: fixedPR, RPM: res.x[1], converged: false, iterations: totalIter, error: res.error };
+  // Add a guard:
+  if (!res.converged && res.error && res.error.includes('compressor undersized')) {
+    return createFailure(res.x, res.error, { T2: res.x[0], PR: res.x[1], RPM: res.x[1] });
+    //return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
   }
+
+  // Modify the fallback block:
+  if (!res.converged) {
+    logger.log('Initial guess failed.');
+    if (isInverterMode) {
+      // Don't try fallback PRs; let the outer loop handle it
+      return createFailure(res.x, 'Initial guess failed for inverter mode.', { T2: res.x[0], PR: fixedPR, RPM: res.x[1] });
+      //return { T2: res.x[0], PR: fixedPR, RPM: res.x[1], converged: false, iterations: totalIter, error: res.error };
+    }
     logger.log('Initial guess failed. Trying fallback guesses...');
     for (const [t2, pr] of [[T2_guess, 0.4], [T2_guess - 2, 0.5], [-21, 0.3]]) {
       logger.log(`  Fallback guess: T2=${t2}, PR=${pr}`);
@@ -383,8 +388,10 @@ if (!res.converged) {
     }
   }
 
-  if (!res.converged)
-    return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
+  if (!res.converged) {
+    return createFailure(res.x, res.error, { T2: res.x[0], PR: res.x[1], RPM: res.x[1] });
+    //return { T2: res.x[0], PR: res.x[1], converged: false, iterations: totalIter, error: res.error };
+  }
 
   // Final evaluation at the converged point
   const [fT2, second] = res.x;
@@ -395,6 +402,14 @@ if (!res.converged) {
     PIPEPITCH, backCondenserEfficiency, fan.inputPower_W, freezerPos, backCondenser
   );
   const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
+
+  // ── Explicit recalculation of MR and MF from converged state ──
+  // (removes dependence on closure variables, guarantees consistency)
+  const C_tot = fan.totalAirflow * CV;
+  const finalT3 = fT2 + loads.QEV / (C_tot * fPR);
+  const denomR = CV * Math.max(0.01, TR - finalT3) * fPR;
+  const finalMR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
+  const finalMF = fan.totalAirflow - finalMR;
 
   return {
     T2: fT2,
@@ -413,8 +428,22 @@ if (!res.converged) {
       Pe: comp.Pe,
       Pc: comp.Pc,
     },
-    MR: currentMR,
-    MF: currentMF,
+    MR: finalMR,
+    MF: finalMF,
+  };
+}
+
+function createFailure(TC, errorMsg, inner = {}) {
+  return {
+    converged: false,
+    TC: TC,
+    T2: inner.T2 ?? NaN,
+    PR: inner.PR ?? NaN,
+    RPM: inner.RPM ?? undefined,
+    TE: config.initialTE ?? NaN,
+    error: errorMsg,
+    outerIterations: 0,
+    innerTotalIterations: 0,
   };
 }
 
@@ -454,7 +483,7 @@ export function solveThermalSystem(config, TE_override = null) {
   let prevInner  = null;
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
-    if (debug) console.log(`\nOuter ${iter}, TC=${TC.toFixed(2)}`);
+    if (debug) logger.log(`\nOuter ${iter}, TC=${TC.toFixed(2)}`);
 
     if (TC < T0) TC = T0 + 2;
     if (TC > 90) TC = 90;
@@ -469,14 +498,12 @@ export function solveThermalSystem(config, TE_override = null) {
       TE, freezerPosition, innerOptions,
       fixedPR                              // NEW
     );
-    console.log('inner.compressor:', inner.compressor);
-    console.log('inner.converged:', inner.converged, inner.error || '');
+    logger.log('inner.compressor:', inner.compressor);
+    logger.log('inner.converged:', inner.converged, inner.error || '');
     if (!inner.converged) {
       if (inner.error && inner.error.includes('undersized')) {
-        return { 
-          TC, T2: inner.T2, PR: inner.PR, converged: false, 
-          error: `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.` 
-        };
+        return createFailure(TC, `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.`, inner);
+        //return {TC, T2: inner.T2, PR: inner.PR, converged: false, error: `Physical limit reached: Compressor undersized at TC=${TC.toFixed(2)}. Required PR > 1.` };
       }
       if (iter > 0 && typeof prevTC !== 'undefined') {
         const MAX_BACKTRACK = 3;
@@ -484,7 +511,7 @@ export function solveThermalSystem(config, TE_override = null) {
         for (let bt = 0; bt < MAX_BACKTRACK; bt++) {
           const step = (TC - prevTC) * 0.5;
           const backtrackTC = prevTC + step;
-          if (debug) console.log(`  Backtrack TC=${backtrackTC.toFixed(3)}`);
+          if (debug) logger.log(`  Backtrack TC=${backtrackTC.toFixed(3)}`);
           const opts = { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM };
           const innerRetry = solveInner(
             backtrackTC, geom, compParams, refrigerant, subcool,
@@ -501,12 +528,10 @@ export function solveThermalSystem(config, TE_override = null) {
           }
         }
         if (!success) {
-          return { TC, T2: NaN, PR: NaN, converged: false,
-                   error: 'Inner loop failed after backtracking' };
+          return createFailure(TC, 'Inner loop failed after backtracking', { T2: NaN, PR: NaN, RPM: NaN });
         }
       } else {
-        return { TC, T2: NaN, PR: NaN, converged: false,
-                 error: 'Inner loop failed: ' + inner.error };
+        return createFailure(TC, 'Inner loop failed: ' + inner.error, { T2: NaN, PR: NaN, RPM: NaN });
       }
     } else {
       totalInner += inner.iterations;
@@ -532,7 +557,7 @@ export function solveThermalSystem(config, TE_override = null) {
 
     const F3 = QCout.QCout - QCin_W;
 
-    if (debug) console.log(
+    if (debug) logger.log(
       `  T2=${inner.T2.toFixed(3)} PR=${inner.PR.toFixed(4)} F3=${F3.toFixed(3)}`
     );
 
@@ -619,7 +644,7 @@ export function solveThermalSystem(config, TE_override = null) {
         const deltaTC = TC - prevTC;
         const safeDeltaTC = Math.abs(deltaTC) < 1e-6 ? 1e-6 * Math.sign(deltaTC || 1) : deltaTC;
         dF3dTC = (F3 - prevF3) / safeDeltaTC;
-        if (Math.abs(dF3dTC) < 1e-6) dF3dTC = 1e-6;
+        if (Math.abs(dF3dTC) < 1e-6) dF3dTC = 1e-6 * Math.sign(dF3dTC || 1);
         const step = F3 / dF3dTC;
         TC -= Math.max(-5, Math.min(5, step));
       } else {
@@ -634,14 +659,15 @@ export function solveThermalSystem(config, TE_override = null) {
     prevTC = TC;
 
     if (Math.abs(dF3dTC) < 1e-9) {
-      return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative in outer loop' };
+      return createFailure(TC, 'Zero derivative in outer loop', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
+      //return { TC, T2: NaN, PR: NaN, converged: false, error: 'Zero derivative in outer loop' };
     }
 
     const step = F3 / dF3dTC;
     TC -= Math.max(-5, Math.min(5, step));
   }
-
-  return { TC, T2: NaN, PR: NaN, converged: false, error: 'Outer loop max iterations reached' };
+  return createFailure(TC, 'Outer loop max iterations reached', { T2: inner.T2, PR: inner.PR, RPM: inner.RPM });
+  //return { TC, T2: NaN, PR: NaN, converged: false, error: 'Outer loop max iterations reached' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,7 +793,7 @@ export function runThermalAnalysisDynamic(config) {
 
 export function EnergyConsumption(result) {
   if (result.converged === false) {
-    console.log('EnergyConsumption: converged === false, returning NaN');
+    logger.log('EnergyConsumption: converged === false, returning NaN');
     return NaN;
   }
 
@@ -777,7 +803,7 @@ export function EnergyConsumption(result) {
   const electrical = result.electrical || {};
 
   const pwbOn_W  = electrical.pwbOn_W  ?? 0;
-  const pwbOff_W = electrical.pwboff_W ?? 0;
+  const pwbOff_W = electrical.pwbOff_W ?? 0;
   const defrostOn_W    = electrical.defrostOn_W    ?? electrical.defrostHeater_W ?? 0;
   const defrostOn_min  = electrical.defrostOn_min  ?? 0;
   const timerPeriod_h  = electrical.timerPeriod_h ?? 10.5;
@@ -790,7 +816,7 @@ export function EnergyConsumption(result) {
     defrostOn_min * defrostOn_W * (24 / (timerPeriod_h / PR)) / 60 / 1000;
 
   return {
-    EnergyConsumption_W: energy_W,
+    EnergyConsumption_kWhDay: energy_W,
     EnergyConsumption_kWhMonth: energy_W * 30
   };
 }

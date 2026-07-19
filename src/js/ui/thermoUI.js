@@ -1167,7 +1167,7 @@ function displayResults(res, energy, isInverter = false) {
   const pComp = comp.inputPower       !== undefined ? fmt(comp.inputPower) : '—';
   const COP   = comp.COP !== undefined ? fmt(comp.COP, 2) : '—';
   const mFlow = comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
-  const eW   = energy ? fmt(energy.EnergyConsumption_W, 3) : '—';
+  const eW   = energy ? fmt(energy.EnergyConsumption_kWhDay, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
   // --- Volumetric efficiency ---
   let etaV = '—';

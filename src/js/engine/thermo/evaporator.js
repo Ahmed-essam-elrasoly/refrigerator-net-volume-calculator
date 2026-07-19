@@ -45,10 +45,22 @@ export function evaporatorAlpha(v_ms) {
 export function lmtd(T1, T2, TE) {
   const dT1 = T1 - TE;
   const dT2 = T2 - TE;
-  if (Math.abs(dT1 - dT2) < 1e-6) return dT1;
-  return (dT1 - dT2) / Math.log(dT1 / dT2);
-}
 
+  // Physical check: if TE is not lower than both inlet/outlet, heat transfer is impossible.
+  if (dT1 <= 0 || dT2 <= 0) {
+    // Return arithmetic mean as a best-effort fallback, and log a warning.
+    console.warn('LMTD: Invalid delta-T (TE >= T1 or TE >= T2). Returning arithmetic mean.');
+    return (dT1 + dT2) / 2;
+  }
+
+  const ratio = dT1 / dT2;
+  // If the temperatures are practically equal, LMTD = dT1 = dT2
+  if (Math.abs(ratio - 1.0) < 1e-6) {
+    return dT1;
+  }
+
+  return (dT1 - dT2) / Math.log(ratio);
+}
 /**
  * Evaporator capacity (kcal/h) – Excel MAIN E23
  * Qevap = α * area * LMTD
