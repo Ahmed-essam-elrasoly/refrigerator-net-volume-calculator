@@ -17,13 +17,16 @@ const RATIO_TOL     = 0.001;
 
 /**
  * Runs all Pass 1 structural checks on the root node.
- * @param {import('./types').Node} rootNode
- * @returns {import('./types').ValidationError[]}
+ * Validates the tree structure, counts leaf nodes against constraints,
+ * and recursively traverses to verify component shapes.
+ * 
+ * @param {import('./types').Node} rootNode - The root of the layout tree to validate.
+ * @returns {import('./types').ValidationError[]} List of structural errors found.
  */
 export function validateStructure(rootNode) {
   const errors = [];
 
-  // Global: leaf count
+  // Global: leaf count check
   const leafCount = countLeaves(rootNode);
   if (leafCount > MAX_LEAVES) {
     errors.push({
@@ -43,9 +46,9 @@ export function validateStructure(rootNode) {
 // ---------------------------------------------------------------------------
 
 /**
- * Counts all leaf nodes in the tree recursively.
- * @param {import('./types').Node} node
- * @returns {number}
+ * Recursively counts all 'leaf' nodes in the layout tree.
+ * @param {import('./types').Node} node - Current node in the tree.
+ * @returns {number} The total count of leaf compartments.
  */
 export function countLeaves(node) {
   if (node.nodeType === 'leaf') return 1;
@@ -64,8 +67,10 @@ export function countLeaves(node) {
 
 /**
  * Walks the tree and collects structural errors into the errors array.
- * @param {import('./types').Node} node
- * @param {import('./types').ValidationError[]} errors
+ * This is the primary dispatcher for node-specific validation logic.
+ * 
+ * @param {import('./types').Node} node - Current node being inspected.
+ * @param {import('./types').ValidationError[]} errors - Array to collect errors.
  */
 function walkStructure(node, errors) {
   if (!node || typeof node !== 'object') {
@@ -101,6 +106,7 @@ function walkStructure(node, errors) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Orchestrates checks for a single LeafNode.
  * @param {import('./types').LeafNode} node
  * @param {import('./types').ValidationError[]} errors
  */
@@ -110,7 +116,7 @@ function checkLeafStructure(node, errors) {
 }
 
 /**
- * Validates type enum and required fields on a leaf.
+ * Validates that the compartment type is allowed and required fittings exist.
  * @param {import('./types').LeafNode} node
  * @param {import('./types').ValidationError[]} errors
  */
@@ -134,7 +140,7 @@ export function checkEnums(node, errors) {
 }
 
 /**
- * Checks that all numeric dimension/volume values in fittings are > 0.
+ * Ensures all numeric dimension values for fittings (drawers, shelves, etc.) are > 0.
  * @param {import('./types').LeafNode} node
  * @param {import('./types').ValidationError[]} errors
  */
@@ -142,7 +148,6 @@ function checkPositiveFittingValues(node, errors) {
   if (!node.fittings) return;
   const f = node.fittings;
 
-  // NEW: optional simple count
   if (f.shelfCount != null) {
     if (!Number.isInteger(f.shelfCount) || f.shelfCount <= 0) {
       errors.push({
@@ -178,6 +183,7 @@ function checkPositiveFittingValues(node, errors) {
 }
 
 /**
+ * Validates the horizontal split configuration including divider count and height modes.
  * @param {import('./types').HorizontalSplitNode} node
  * @param {import('./types').ValidationError[]} errors
  */
@@ -260,6 +266,7 @@ export function checkHeightRatios(node, errors) {
 }
 
 /**
+ * Validates the vertical split configuration, specifically width ratios and divider thickness.
  * @param {import('./types').VerticalSplitNode} node
  * @param {import('./types').ValidationError[]} errors
  */
@@ -288,10 +295,11 @@ export function checkVerticalShape(node, errors) {
 // ---------------------------------------------------------------------------
 
 /**
- * @param {Object} obj
- * @param {string[]} fields
- * @param {import('./types').ValidationError[]} errors
- * @param {string} nodeId
+ * Generic helper to check that an object's fields contain positive values.
+ * @param {Object} obj - The object containing numeric properties to check.
+ * @param {string[]} fields - List of property names to validate.
+ * @param {import('./types').ValidationError[]} errors - Accumulator for errors.
+ * @param {string} nodeId - Node identifier for error reporting.
  */
 function checkPositive(obj, fields, errors, nodeId) {
   for (const field of fields) {

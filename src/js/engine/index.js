@@ -1,21 +1,33 @@
 /**
  * @file index.js
  * Main engine entry point.
- * Orchestrates Pass 1 → cabinet-level pre-checks → Pass 2 → post-calc hierarchy check.
+ * Orchestrates the full lifecycle:
+ * 1. Pass 1: Structural validation (tree hierarchy).
+ * 2. Configuration Upgrade (Schema v1.0 -> v2.0).
+ * 3. Cabinet-level geometry validation (wall thickness ratios).
+ * 4. Pass 2: Volume Traversal (precise leaf volume computation).
  *
  * Public API:
- *   runCalculation(config) → CalcResult
+ *   runCalculation(config) -> CalcResult
  */
 
 import { deriveRootSpace, walkBoundaries } from './calc.js';
 import { validateStructure }                from './validationPass1.js';
-import { traverseAndCompute }               from './traversal.js';
+import { traverseAndComputePrecise }        from './traversal.js';
 import { upgradeConfig, toVolumeFormat }    from './geometry.js';
 
 // ---------------------------------------------------------------------------
-// Cabinet-level pre-checks (unchanged)
+// Cabinet-level pre-checks
 // ---------------------------------------------------------------------------
 
+/**
+ * Validates cabinet-level dimensions and wall thickness sanity.
+ * Checks for physical impossibilities like wall thickness exceeding external dimensions
+ * or resulting in zero internal volume.
+ * 
+ * @param {Object} cabinet - Cabinet geometry object including external dimensions and layout.
+ * @returns {import('./types').ValidationError[]} List of cabinet-level errors.
+ */
 function validateCabinet(cabinet) {
   const errors = [];
   const { external, wallThicknessesByType, layout, airGap } = cabinet;
@@ -31,13 +43,15 @@ function validateCabinet(cabinet) {
   const boundaryTypes = { top: new Set(), bottom: new Set(), left: new Set(), right: new Set() };
   walkBoundaries(layout, boundaryTypes, true, true, true, true);
   const effective = {};
-  const allTypes = ['fresh','freezer'];
+  const allTypes = ['fresh','freezer']; // Supported wall keys
+
   for (const face of ['top','bottom','left','right']) {
     let max = 0;
     for (const t of boundaryTypes[face]) {
       const val = wallThicknessesByType[t]?.[face] ?? 0;
       if (val > max) max = val;
     }
+    // Fallback: If no type matches, check against all types
     if (boundaryTypes[face].size === 0) {
       for (const t of allTypes) max = Math.max(max, wallThicknessesByType[t]?.[face] ?? 0);
     }
@@ -46,7 +60,7 @@ function validateCabinet(cabinet) {
   effective.rear = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.rear ?? 0));
   effective.door = Math.max(...allTypes.map(t => wallThicknessesByType[t]?.door ?? 0));
 
-  // Wall ratio checks
+  // Wall ratio checks: Insulation shouldn't consume > 50% of external space
   const pairs = [
     ['top',    external.height, 'height'],
     ['bottom', external.height, 'height'],
@@ -65,7 +79,7 @@ function validateCabinet(cabinet) {
     }
   }
 
-  // Internal dimensions positive
+  // Check if internal dimensions result in positive space
   if (errors.length === 0) {
     const rootSpace = deriveRootSpace({ external, wallThicknessesByType, airGap }, layout);
     for (const [dim, val] of Object.entries(rootSpace)) {
@@ -85,25 +99,39 @@ function validateCabinet(cabinet) {
 // Main entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Main orchestration entry point.
+ * Performs a comprehensive validation and calculation pipeline:
+ * 1. Validates input layout structure.
+ * 2. Upgrades legacy v1.0 configs to v2.0.
+ * 3. Validates cabinet dimensions.
+ * 4. Traverses geometry to compute precise volumes.
+ * 
+ * @param {import('./types').CabinetConfig} config - The raw user configuration.
+ * @returns {import('./types').CalcResult} The simulation results.
+ */
 export function runCalculation(config) {
   const result = { leaves: null, totals: null, validationErrors: [], calcErrors: [], warnings: [] };
 
+  // Pass 1: Structural validation
   const structErrors = validateStructure(config.cabinet.layout);
   if (structErrors.length) { result.validationErrors = structErrors; return result; }
 
+  // Schema Upgrade
   if (config.schemaVersion === '1.0' || (!config.cabinet.geometry && config.cabinet.external)) {
     config = upgradeConfig(config);
   }
 
   const { geometry, layout } = config.cabinet;
   const volumeGeom = toVolumeFormat(geometry);
+  
+  // Cabinet Validation
   const cabinetErrors = validateCabinet({ ...volumeGeom, layout });
   if (cabinetErrors.length) { result.validationErrors = cabinetErrors; return result; }
 
-  const rootSpace = deriveRootSpace(volumeGeom, layout);
-
-  // Pass 2 – only returns gross volumes
-  const { leaves, errors: dimErrors, warnings } = traverseAndCompute(layout, rootSpace);
+  // Pass 2: Precise volume computation
+  const { leaves, errors: dimErrors, warnings } = traverseAndComputePrecise(layout, geometry);
+  
   result.validationErrors = dimErrors;
   result.warnings = warnings;
   result.leaves = leaves.map(l => ({ leafId: l.leafId, gross: l.gross }));
@@ -116,6 +144,7 @@ export function runCalculation(config) {
   return result;
 }
 
+// Re-export core modules for external consumption
 export { deriveRootSpace }    from './calc.js';
 export { validateStructure } from './validationPass1.js';
-export { traverseAndCompute } from './traversal.js';
+export { traverseAndComputePrecise } from './traversal.js';
