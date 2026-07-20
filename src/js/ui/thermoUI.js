@@ -1,11 +1,11 @@
-// ──────────────────────────────────────────────────────────────────────────────
-// thermoUI.js — Thermal analysis panel
-//   • Fan airflow is now calculated from fan geometry & RPM, not user‑entered.
-//   • Modal is built once; values are refreshed each time it opens.
-//   • Accepts an options object for cleaner injection of the geometry provider.
-//   • Fan airflow is displayed in the results report.
-//   • Full compressor management (add/edit/delete) via 3×3 matrix.
-// ──────────────────────────────────────────────────────────────────────────────
+/**
+ * @file thermoUI.js
+ * Thermal analysis UI orchestrator.
+ * Binds the DOM elements for the Constant-Speed and Inverter analysis tabs.
+ * Scrapes user inputs, manages the advanced thermal settings modal, handles
+ * custom compressor Excel data ingestion, invokes the thermodynamic solver, 
+ * and renders the resulting performance metrics to HTML tables.
+ */
 
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
 import { toThermalFormat } from '../engine/geometry.js';
@@ -16,7 +16,7 @@ import {
   getCurrentCompressor,
   setSelectedCompressor,
   addCompressor,
-  saveCompressors,   // <-- add this line
+  saveCompressors,
   deleteCompressor
 } from '../compressorManager.js';
 import { fitInverterCoefficients } from '../engine/thermo/CompressorPerformance.js';
@@ -27,11 +27,14 @@ import { getRefrigerantProperties } from '../engine/thermo/CompressorPerformance
 import { INVERTER_EXAMPLE_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
 
-// ---------------------------------------------------------------------------
-// Helper: compute fan airflow from diameter (mm) and RPM (rev/min)
-//   Returns m³/h. Uses a simplified axial‑flow fan model.
-//   Adjust the axialVelocityFactor (0.15) based on empirical data if needed.
-// ---------------------------------------------------------------------------
+
+/**
+ * Computes volumetric fan airflow from physical diameter and RPM.
+ * Uses a simplified axial-flow fan model.
+ * 
+ * @param {Object} fanParam - Contains fanDiam (mm) and fanRPM.
+ * @returns {number} The calculated airflow in m³/h.
+ */
 function computeFanAirflow(fanParam) {
   const { fanDiam, fanRPM } = fanParam;
   if (!fanParam || !Number.isFinite(fanDiam) || fanDiam <= 0 ||
@@ -41,15 +44,15 @@ function computeFanAirflow(fanParam) {
       'Please enter them in Advanced Settings.'
     );
   }
-  const D = fanDiam / 1000;
+  const D = fanDiam / 1000; // convert to meters
   const tipSpeed = (Math.PI * D * fanRPM) / 60;
-  const axialVelocity = tipSpeed * 0.15;   // typical axial‑to‑tip ratio
+  const axialVelocity = tipSpeed * 0.15;   // typical axial-to-tip velocity ratio
   const area = (Math.PI * D * D) / 4;
   const flow_m3s = axialVelocity * area;
-  return flow_m3s * 3600;
+  return flow_m3s * 3600; // convert m³/s to m³/h
 }
 
-// Module-level state
+// Module-level state for advanced parameters
 let thermalAdvanced = {
   subcool: SJ54H_COMPONENTS.subcool_K,
   dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
@@ -58,18 +61,19 @@ let thermalAdvanced = {
   defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
 };
 
-let getGeometryFn = () => null;               // geometry provider
+let getGeometryFn = () => null; // geometry provider function
 
 // Persistent modal elements
 let thermalModal = null;
 let thermalModalInputs = {};
 
-// ────────────────────────────────────────────────────────────────
-// Public init
-// ────────────────────────────────────────────────────────────────
-// ────────────────────────────────────────────────────────────────
-// Public init – now builds BOTH constant‑speed and inverter panels
-// ────────────────────────────────────────────────────────────────
+
+/**
+ * Public initialization entry point. 
+ * Builds BOTH constant-speed and inverter panels, and restores saved state.
+ * 
+ * @param {Object|Function} options - Options object or geometry provider function.
+ */
 export function initThermoUI(options) {
   // Resolve geometry provider (backward compatible)
   if (typeof options === 'function') {
@@ -78,7 +82,7 @@ export function initThermoUI(options) {
     getGeometryFn = options.getGeometry;
   }
 
-  // ─── Constant‑speed compressor panel (existing) ───────────────
+  // ─── Constant-speed compressor panel ───────────────
   const panelThermal = document.getElementById('panelThermal');
   if (panelThermal) {
     panelThermal.innerHTML = `
@@ -98,65 +102,66 @@ export function initThermoUI(options) {
         <button id="thermoAdvancedBtn" type="button">⚙️ Advanced</button>
       </fieldset>
     `;
-    // Event bindings
     document.getElementById('thermoRunBtn').addEventListener('click', handleRun);
     document.getElementById('thermoAdvancedBtn').addEventListener('click', openThermalSettings);
   }
 
-  // ─── Inverter compressor panel (new) ──────────────────────────
-const panelInverter = document.getElementById('panelInverter');
-if (panelInverter) {
-  panelInverter.innerHTML = `
-    <button id="inverterRunBtn">Run Inverter Analysis</button>
-    <div id="inverterErrors"></div>
-    <fieldset>
-      <legend>Inverter Compressor</legend>
-      <p style="margin:0; font-size:0.9em; color:#555;">
-        ⚙️ Uses the compressor selected in <strong>Advanced Settings</strong>.
-        <br>Ensure it is an inverter type.
-      </p>
-      <p id="currentInverterName" style="margin:4px 0 0; font-weight:bold;">—</p>
+  // ─── Inverter compressor panel ──────────────────────────
+  const panelInverter = document.getElementById('panelInverter');
+  if (panelInverter) {
+    panelInverter.innerHTML = `
+      <button id="inverterRunBtn">Run Inverter Analysis</button>
+      <div id="inverterErrors"></div>
+      <fieldset>
+        <legend>Inverter Compressor</legend>
+        <p style="margin:0; font-size:0.9em; color:#555;">
+          ⚙️ Uses the compressor selected in <strong>Advanced Settings</strong>.
+          <br>Ensure it is an inverter type.
+        </p>
+        <p id="currentInverterName" style="margin:4px 0 0; font-weight:bold;">—</p>
 
-      <label>Running Ratio PR:
-        <input type="number" id="inverterPR" value="0.85" step="0.01" min="0.01" max="1">
-      </label>
-      <label>Ambient T0 (°C):
-        <input type="number" id="inverterT0" value="30" step="any">
-      </label>
-      <label>Freezer TF (°C):
-        <input type="number" id="inverterTF" value="-18" step="any">
-      </label>
-      <label>Refrigerator TR (°C):
-        <input type="number" id="inverterTR" value="3" step="any">
-      </label>
-      <label>Refrigerant:
-        <select id="inverterRefrigerant">
-          <option value="R-600a">R-600a</option>
-          <option value="R-134a">R-134a</option>
-        </select>
-      </label>
-      <button id="inverterAdvancedBtn" type="button">⚙️ Advanced</button>
-    </fieldset>
-  `;
-  document.getElementById('inverterRunBtn').addEventListener('click', handleInverterRun);
-  document.getElementById('inverterAdvancedBtn').addEventListener('click', openThermalSettings);
-}
-  refreshInverterCompressorSelect()
+        <label>Running Ratio PR:
+          <input type="number" id="inverterPR" value="0.85" step="0.01" min="0.01" max="1">
+        </label>
+        <label>Ambient T0 (°C):
+          <input type="number" id="inverterT0" value="30" step="any">
+        </label>
+        <label>Freezer TF (°C):
+          <input type="number" id="inverterTF" value="-18" step="any">
+        </label>
+        <label>Refrigerator TR (°C):
+          <input type="number" id="inverterTR" value="3" step="any">
+        </label>
+        <label>Refrigerant:
+          <select id="inverterRefrigerant">
+            <option value="R-600a">R-600a</option>
+            <option value="R-134a">R-134a</option>
+          </select>
+        </label>
+        <button id="inverterAdvancedBtn" type="button">⚙️ Advanced</button>
+      </fieldset>
+    `;
+    document.getElementById('inverterRunBtn').addEventListener('click', handleInverterRun);
+    document.getElementById('inverterAdvancedBtn').addEventListener('click', openThermalSettings);
+  }
+  
+  refreshInverterCompressorSelect();
+  
   // Load saved advanced values (subcool, discharge, defrost, etc.)
   const saved = localStorage.getItem('thermoAdvanced');
   if (saved) thermalAdvanced = { ...thermalAdvanced, ...JSON.parse(saved) };
 
-  // Build the advanced settings modal once (condenser, evaporator, fan, compressor)
+  // Build the advanced settings modal once
   buildThermalModalOnce();
-  updateInverterCompressorDisplay()
-  // Make sure constant‑speed panel is visible, inverter hidden (tabs control later)
+  updateInverterCompressorDisplay();
 }
 
-// ────────────────────────────────────────────────────────────────
-// Modal construction (runs only once)
-// ────────────────────────────────────────────────────────────────
+
+/**
+ * Builds the comprehensive thermal settings modal HTML. 
+ * Executed only once during initialization to prevent DOM bloat.
+ */
 function buildThermalModalOnce() {
-  // Create the modal container if it doesn't already exist
   thermalModal = document.getElementById('thermalSettingsModal');
   if (!thermalModal) {
     thermalModal = document.createElement('div');
@@ -172,12 +177,8 @@ function buildThermalModalOnce() {
 
       <fieldset>
         <legend>Condenser</legend>
-        <label>Side pipe pitch (mm):
-          <input type="number" id="thermoCondSidePitch" step="any">
-        </label>
-        <label>Back pipe pitch (mm):
-          <input type="number" id="thermoCondBackPitch" step="any">
-        </label>
+        <label>Side pipe pitch (mm): <input type="number" id="thermoCondSidePitch" step="any"></label>
+        <label>Back pipe pitch (mm): <input type="number" id="thermoCondBackPitch" step="any"></label>
       </fieldset>
 
       <fieldset>
@@ -198,16 +199,12 @@ function buildThermalModalOnce() {
         <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
         <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
-        <label>Input power (W):
-          <input type="number" id="thermoFanInputPower" step="any" min="0">
-        </label>
+        <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
       </fieldset>
 
       <fieldset>
         <legend>Compressor</legend>
-        <label>Current Compressor:
-          <select id="thermoCompressorSelect"></select>
-        </label>
+        <label>Current Compressor: <select id="thermoCompressorSelect"></select></label>
         <button id="thermoAddCompressorBtn" type="button">Add Compressor</button>
         <button id="thermoEditCompressorBtn" type="button">Edit Selected</button>
         <button id="thermoDeleteCompressorBtn" type="button">Delete Selected</button>
@@ -215,22 +212,14 @@ function buildThermalModalOnce() {
 
       <fieldset>
         <legend>Subcool &amp; Discharge</legend>
-        <label>Subcool (K):
-          <input type="number" id="thermoSubcool" step="any">
-        </label>
-        <label>Discharge temp (°C):
-          <input type="number" id="thermoDiscTemp" step="any">
-        </label>
+        <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+        <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
       </fieldset>
 
       <fieldset>
         <legend>Defrost</legend>
-        <label>Heater (W):
-          <input type="number" id="thermoDefHeater" step="any">
-        </label>
-        <label>On time (min/24h):
-          <input type="number" id="thermoDefOn" step="any">
-        </label>
+        <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+        <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
       </fieldset>
 
       <div class="settings-actions">
@@ -239,7 +228,7 @@ function buildThermalModalOnce() {
     </div>
   `;
 
-  // Cache all input references
+  // Cache all input references for quick access
   thermalModalInputs = {
     condSidePitch: document.getElementById('thermoCondSidePitch'),
     condBackPitch: document.getElementById('thermoCondBackPitch'),
@@ -285,22 +274,21 @@ function buildThermalModalOnce() {
   };
 }
 
-// ────────────────────────────────────────────────────────────────
-// Refresh modal fields and show it
-// ────────────────────────────────────────────────────────────────
+
+/**
+ * Hydrates the modal input fields from global state and unhides the modal.
+ */
 function openThermalSettings() {
   loadCompressors();   // ensure latest compressor list
 
-  // Condenser
   const cond = settings.condenser || { sidePipePitch_mm: 50, backPipePitch_mm: 50 };
   thermalModalInputs.condSidePitch.value = cond.sidePipePitch_mm;
   thermalModalInputs.condBackPitch.value = cond.backPipePitch_mm;
 
-  // Evaporator
   const evap = settings.evaporator || {};
   thermalModalInputs.evapWidth.value       = evap.width_mm ?? 460;
   thermalModalInputs.evapHeight.value      = evap.height_mm ?? 150;
-  thermalModalInputs.thermoEvapDepth.value       = evap.depth_mm ?? 60;
+  thermalModalInputs.thermoEvapDepth.value = evap.depth_mm ?? 60;
   thermalModalInputs.evapRows.value        = evap.rows ?? 2;
   thermalModalInputs.evapTubeOD.value      = evap.tubeOD_mm ?? 8;
   thermalModalInputs.evapFinHeight.value   = evap.finHeight_mm ?? 150;
@@ -308,25 +296,25 @@ function openThermalSettings() {
   thermalModalInputs.evapNumFins.value     = evap.numFins ?? 32;
   thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
 
-  // Fan parameters
   const fanP = settings.fanParam || {};
   thermalModalInputs.fanDiam.value  = fanP.fanDiam ?? 100;
   thermalModalInputs.fanRPM.value   = fanP.fanRPM ?? 2200;
   thermalModalInputs.fanThick.value = fanP.fanThick ?? 25;
   thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
-  // Advanced thermal values
   thermalModalInputs.subcool.value       = thermalAdvanced.subcool;
   thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
   thermalModalInputs.defHeater.value     = thermalAdvanced.defHeater;
   thermalModalInputs.defOn.value         = thermalAdvanced.defOnMin;
 
-  // Compressor dropdown
   refreshCompressorSelect();
-  updateInverterCompressorDisplay()
+  updateInverterCompressorDisplay();
   thermalModal.classList.remove('hidden');
 }
 
+/**
+ * Synchronizes the compressor dropdown list with the local storage catalog.
+ */
 function refreshCompressorSelect() {
   const select = thermalModalInputs.compressorSelect;
   select.innerHTML = '';
@@ -341,38 +329,35 @@ function refreshCompressorSelect() {
   });
 }
 
-// ────────────────────────────────────────────────────────────────
-// Save settings from the modal
-// ────────────────────────────────────────────────────────────────
+/**
+ * Scrapes values from the thermal modal and persists them into settings.
+ */
 function saveThermalSettings() {
-  // Condenser
-  const sidePitch = parseFloat(thermalModalInputs.condSidePitch.value) ;
-  const backPitch = parseFloat(thermalModalInputs.condBackPitch.value) ;
-  settings.condenser = { sidePipePitch_mm: sidePitch, backPipePitch_mm: backPitch };
-
-  // Evaporator
-  settings.evaporator = {
-    width_mm:       parseFloat(thermalModalInputs.evapWidth.value) ,
-    height_mm:      parseFloat(thermalModalInputs.evapHeight.value) ,
-    depth_mm:       parseFloat(thermalModalInputs.thermoEvapDepth.value) ,
-    rows:           parseInt(thermalModalInputs.evapRows.value) ,
-    tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value) ,
-    finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value) ,
-    finLength_mm:   parseFloat(thermalModalInputs.evapFinLength.value) ,
-    numFins:        parseInt(thermalModalInputs.evapNumFins.value),
-    sidePlateNo:    parseInt(thermalModalInputs.evapSidePlateNo.value) ,
+  settings.condenser = { 
+    sidePipePitch_mm: parseFloat(thermalModalInputs.condSidePitch.value), 
+    backPipePitch_mm: parseFloat(thermalModalInputs.condBackPitch.value) 
   };
 
-  // Fan
+  settings.evaporator = {
+    width_mm:       parseFloat(thermalModalInputs.evapWidth.value),
+    height_mm:      parseFloat(thermalModalInputs.evapHeight.value),
+    depth_mm:       parseFloat(thermalModalInputs.thermoEvapDepth.value),
+    rows:           parseInt(thermalModalInputs.evapRows.value),
+    tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value),
+    finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value),
+    finLength_mm:   parseFloat(thermalModalInputs.evapFinLength.value),
+    numFins:        parseInt(thermalModalInputs.evapNumFins.value),
+    sidePlateNo:    parseInt(thermalModalInputs.evapSidePlateNo.value),
+  };
+
   settings.fanParam = {
-    fanDiam:  parseFloat(thermalModalInputs.fanDiam.value) ,
-    fanRPM:   parseFloat(thermalModalInputs.fanRPM.value) ,
-    fanThick: parseFloat(thermalModalInputs.fanThick.value) ,
+    fanDiam:  parseFloat(thermalModalInputs.fanDiam.value),
+    fanRPM:   parseFloat(thermalModalInputs.fanRPM.value),
+    fanThick: parseFloat(thermalModalInputs.fanThick.value),
   };
 
   updateSettings(settings);
 
-  // Advanced thermal values
   thermalAdvanced.subcool       = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
   thermalAdvanced.dischargeTemp = parseFloat(thermalModalInputs.dischargeTemp.value) || SJ54H_COMPONENTS.dischargeTemp_C;
   thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
@@ -380,12 +365,21 @@ function saveThermalSettings() {
   thermalAdvanced.defOnMin      = parseFloat(thermalModalInputs.defOn.value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
   localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
 
-  // Compressor
   const compSelect = thermalModalInputs.compressorSelect;
   if (compSelect) setSelectedCompressor(compSelect.value);
-  updateInverterCompressorDisplay()
+  updateInverterCompressorDisplay();
   thermalModal.classList.add('hidden');
 }
+
+
+/**
+ * Parses user-uploaded Excel/CSV files containing compressor performance data points.
+ * Handles both Constant-Speed (TE, TC, W, Q) and Inverter (RPM, TE, TC, W, Q) formats.
+ * 
+ * @param {File} file - The file to parse.
+ * @param {boolean} wantsInverter - Whether to enforce strict RPM column checking.
+ * @returns {Promise<Array<Object>>} Extracted performance data points.
+ */
 export function parseCompressorDataFile(file, wantsInverter = false) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -396,7 +390,6 @@ export function parseCompressorDataFile(file, wantsInverter = false) {
         const rows = XLSX.utils.sheet_to_json(sheet);
         const headers = Object.keys(rows[0] || {});
         
-        // Corrected column finder: header string must contain the candidate substring
         const findCol = (candidates) =>
           headers.find(h => candidates.some(c => h.toLowerCase().includes(c)));
         
@@ -424,7 +417,6 @@ export function parseCompressorDataFile(file, wantsInverter = false) {
           if (data.length < 5) return reject(new Error(`Only ${data.length} valid points.`));
           resolve(data);
         } else {
-          // constant‑speed parsing (unchanged)
           const data = rows.map(r => ({
             TE: parseFloat(r[teCol]),
             TC: parseFloat(r[tcCol]),
@@ -444,7 +436,6 @@ export function parseCompressorDataFile(file, wantsInverter = false) {
   });
 }
 
-// Build a table of data points inside the modal
 function buildDataTable(dataPoints, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -457,9 +448,12 @@ function buildDataTable(dataPoints, containerId) {
   container.innerHTML = html;
 }
 
-// --- Add Compressor Modal ---
+
+/**
+ * Spawns the "Add Custom Compressor" interface, enabling users to upload
+ * performance data files and fit thermodynamic polynomials.
+ */
 function openAddCompressorModal() {
-  // Ensure the modal container exists
   let modal = document.getElementById('addCompressorModal');
   if (!modal) {
     modal = document.createElement('div');
@@ -467,7 +461,6 @@ function openAddCompressorModal() {
     modal.className = 'modal hidden';
     document.body.appendChild(modal);
   }
-  // Ensure the content div exists
   let contentDiv = document.getElementById('addCompressorContent');
   if (!contentDiv) {
     contentDiv = document.createElement('div');
@@ -478,15 +471,10 @@ function openAddCompressorModal() {
   contentDiv.innerHTML = `
     <fieldset>
       <legend>Compressor Type</legend>
-      <label>
-        <input type="radio" name="compType" value="constant" checked> Constant‑Speed
-      </label>
-      <label>
-        <input type="radio" name="compType" value="inverter"> Inverter
-      </label>
+      <label><input type="radio" name="compType" value="constant" checked> Constant‑Speed</label>
+      <label><input type="radio" name="compType" value="inverter"> Inverter</label>
     </fieldset>
 
-    <!-- Common fields (always visible) -->
     <fieldset>
       <legend>Basic Information</legend>
       <label>Name: <input id="acName" type="text" value=""></label>
@@ -498,7 +486,6 @@ function openAddCompressorModal() {
       </label>
     </fieldset>
 
-    <!-- Constant‑Speed fields -->
     <div id="constantFields">
       <fieldset>
         <legend>Constant‑Speed Data</legend>
@@ -513,7 +500,6 @@ function openAddCompressorModal() {
       </fieldset>
     </div>
 
-    <!-- Inverter fields: only name / refrigerant / displacement + file -->
     <div id="inverterFields" style="display:none;">
       <fieldset>
         <legend>Basic Information</legend>
@@ -543,7 +529,6 @@ function openAddCompressorModal() {
 
   modal.classList.remove('hidden');
 
-  // Toggle visibility when type changes
   document.querySelectorAll('input[name="compType"]').forEach(radio => {
     radio.addEventListener('change', (e) => {
       const isInverter = e.target.value === 'inverter';
@@ -552,18 +537,12 @@ function openAddCompressorModal() {
     });
   });
 
-  // Store loaded data points
   let loadedDataPoints = null;
   let loadedInverterPoints = null;
 
-  // Constant‑speed file load
   document.getElementById('acLoadBtn').onclick = async () => {
-    const fileInput = document.getElementById('acFileInput');
-    const file = fileInput.files[0];
-    if (!file) {
-      document.getElementById('acError').textContent = 'Please select a file.';
-      return;
-    }
+    const file = document.getElementById('acFileInput').files[0];
+    if (!file) { document.getElementById('acError').textContent = 'Please select a file.'; return; }
     try {
       const points = await parseCompressorDataFile(file);
       loadedDataPoints = points;
@@ -575,14 +554,9 @@ function openAddCompressorModal() {
     }
   };
 
-  // Inverter file load
   document.getElementById('acInvLoadBtn').onclick = async () => {
-    const fileInput = document.getElementById('acInvFileInput');
-    const file = fileInput.files[0];
-    if (!file) {
-      document.getElementById('acError').textContent = 'Please select a file.';
-      return;
-    }
+    const file = document.getElementById('acInvFileInput').files[0];
+    if (!file) { document.getElementById('acError').textContent = 'Please select a file.'; return; }
     try {
       const points = await parseCompressorDataFile(file, true);
       loadedInverterPoints = points;
@@ -600,16 +574,12 @@ function openAddCompressorModal() {
     }
   };
 
-  // Cancel
-  document.getElementById('cancelAddCompressor').onclick = () => {
-    modal.classList.add('hidden');
-  };
+  document.getElementById('cancelAddCompressor').onclick = () => modal.classList.add('hidden');
 
-  // Fit & Add
+  // Triggering the polynomial solver upon creation
   document.getElementById('fitCompressorBtn').onclick = () => {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
-
     const compType = document.querySelector('input[name="compType"]:checked').value;
     const name = document.getElementById('acName').value.trim();
     const refIdx = parseInt(document.getElementById('acRef').value);
@@ -628,71 +598,48 @@ function openAddCompressorModal() {
 
       try {
         const { etaCoeffs, wCoeffs } = computeCompressorCoefficients({
-          cylinderVolumeCm3: cyl,
-          speedRpm: rpm,
-          refrigerantIndex: refIdx,
-          dataPoints: loadedDataPoints,
+          cylinderVolumeCm3: cyl, speedRpm: rpm, refrigerantIndex: refIdx, dataPoints: loadedDataPoints,
         });
         addCompressor({
-          id: name.replace(/\s/g, ''),
-          name, model: name, voltage: 100, frequency: 50,
-          cylinderVolumeCm3: cyl, speedRpm: rpm,
-          refrigerantIndex: refIdx,
-          wCoeffs, etaCoeffs,
-          dataPoints: loadedDataPoints,
+          id: name.replace(/\s/g, ''), name, model: name, voltage: 100, frequency: 50,
+          cylinderVolumeCm3: cyl, speedRpm: rpm, refrigerantIndex: refIdx, wCoeffs, etaCoeffs, dataPoints: loadedDataPoints,
         });
       } catch (err) { errorDiv.textContent = err.message; return; }
     } else {
-      // Inverter branch
       const invCyl = parseFloat(document.getElementById('acInvCyl')?.value) || 0;
       if (!loadedInverterPoints || loadedInverterPoints.length < 5) {
         errorDiv.textContent = 'Load inverter data file (needs RPM, TE, TC, W, Q). At least 5 points required.';
         return;
       }
       try {
-      // New code – after fixing parameters:
-      const normalizeRPM = Math.max(...loadedInverterPoints.map(d => d.RPM));
-      // Use the center values from the compressor definition or defaults
+        const normalizeRPM = Math.max(...loadedInverterPoints.map(d => d.RPM));
         const centerTE = loadedInverterPoints.reduce((s, d) => s + d.TE, 0) / loadedInverterPoints.length;
         const centerTC = loadedInverterPoints.reduce((s, d) => s + d.TC, 0) / loadedInverterPoints.length;      
         const compressorModel = fitInverterCoefficients(
-        loadedInverterPoints,
-        normalizeRPM,
-        centerTE,
-        centerTC,
-        3.0    // target RMSE
-      );
-      addCompressor({
-        id: name.replace(/\s/g, ''),
-        name,
-        model: name,
-        voltage: 220,
-        frequency: 50,
-        isInverter: true,
-        cylinderVolumeCm3: invCyl,
-        refrigerantIndex: refIdx,
-        compressorModel,
-        dataPoints: loadedInverterPoints,
-      });
+          loadedInverterPoints, normalizeRPM, centerTE, centerTC, 3.0
+        );
+        addCompressor({
+          id: name.replace(/\s/g, ''), name, model: name, voltage: 220, frequency: 50, isInverter: true,
+          cylinderVolumeCm3: invCyl, refrigerantIndex: refIdx, compressorModel, dataPoints: loadedInverterPoints,
+        });
       } catch (e) {
         errorDiv.textContent = 'Fitting failed: ' + e.message;
         return;
       }
     }
-
     modal.classList.add('hidden');
-    openThermalSettings();   // refresh compressor lists
+    openThermalSettings(); 
   };
 
-  // Close when clicking outside modal
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.classList.add('hidden');
-  };
+  modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
 }
 
-// --- Edit Compressor Modal ---
+
+/**
+ * Modifies an existing compressor in the catalog, allowing the user to 
+ * swap out performance tables and recalculate regression models.
+ */
 function openEditCompressorModal() {
-  // Ensure modal exists
   let modal = document.getElementById('addCompressorModal');
   if (!modal) {
     modal = document.createElement('div');
@@ -706,17 +653,13 @@ function openEditCompressorModal() {
     contentDiv.id = 'addCompressorContent';
     modal.appendChild(contentDiv);
   }
-    loadCompressors();
+  loadCompressors();
   const comp = getCurrentCompressor();
-  if (!comp) {
-    alert('No compressor selected.');
-    return;
-  }
+  if (!comp) { alert('No compressor selected.'); return; }
 
   const isInverter = comp.isInverter === true;
   const existingPoints = comp.dataPoints || [];
 
-  // Build data table HTML depending on compressor type
   const buildDataTableHTML = (points) => {
     if (!points || points.length === 0) return '<p>No data points stored.</p>';
     if (isInverter) {
@@ -727,7 +670,6 @@ function openEditCompressorModal() {
       html += `</tbody></table><p>${points.length} points.</p>`;
       return html;
     }
-    // constant‑speed table
     let html = `<table class="data-table"><thead><tr><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
     points.forEach(dp => {
       html += `<tr><td>${dp.TE?.toFixed(2) ?? '—'}</td><td>${dp.TC?.toFixed(2) ?? '—'}</td><td>${dp.W?.toFixed(2) ?? '—'}</td><td>${dp.Q?.toFixed(2) ?? '—'}</td></tr>`;
@@ -736,7 +678,6 @@ function openEditCompressorModal() {
     return html;
   };
 
-  // Set up modal HTML
   document.getElementById('addCompressorContent').innerHTML = `
     <h2>Edit Compressor</h2>
     <fieldset>
@@ -756,21 +697,16 @@ function openEditCompressorModal() {
         <label>Cyl. Volume (cm³) (for reference): <input id="acCyl" type="number" step="any" value="${comp.cylinderVolumeCm3 || ''}"></label>
       ` : ''}
     </fieldset>
-
     <fieldset>
       <legend>Current Data Points (${existingPoints.length} points)</legend>
-      <div id="acDataContainer">
-        ${buildDataTableHTML(existingPoints)}
-      </div>
+      <div id="acDataContainer">${buildDataTableHTML(existingPoints)}</div>
     </fieldset>
-
     <fieldset>
       <legend>Replace with New Excel File</legend>
       <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
       <button id="acLoadBtn" type="button">Load & Replace</button>
       <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
     </fieldset>
-
     <div class="settings-actions">
       <button id="fitAndSaveBtn">Fit & Save</button>
       <button id="cancelEditCompressor">Cancel</button>
@@ -781,16 +717,10 @@ function openEditCompressorModal() {
 
   let loadedDataPoints = existingPoints.length ? existingPoints : null;
 
-  // Handle file loading
   document.getElementById('acLoadBtn').onclick = async () => {
-    const fileInput = document.getElementById('acFileInput');
-    const file = fileInput.files[0];
-    if (!file) {
-      document.getElementById('acError').textContent = 'Please select a file.';
-      return;
-    }
+    const file = document.getElementById('acFileInput').files[0];
+    if (!file) { document.getElementById('acError').textContent = 'Please select a file.'; return; }
     try {
-      // For inverter, parse with RPM column
       const points = await parseCompressorDataFile(file, isInverter);
       loadedDataPoints = points;
       document.getElementById('acDataContainer').innerHTML = buildDataTableHTML(points);
@@ -801,16 +731,11 @@ function openEditCompressorModal() {
     }
   };
 
-  // Cancel
-  document.getElementById('cancelEditCompressor').onclick = () => {
-    modal.classList.add('hidden');
-  };
+  document.getElementById('cancelEditCompressor').onclick = () => modal.classList.add('hidden');
 
-  // Fit & Save
   document.getElementById('fitAndSaveBtn').onclick = () => {
     const errorDiv = document.getElementById('acError');
     errorDiv.textContent = '';
-
     if (!loadedDataPoints || loadedDataPoints.length < 5) {
       errorDiv.textContent = 'At least 5 data points required. Load a file or keep existing points.';
       return;
@@ -818,117 +743,62 @@ function openEditCompressorModal() {
 
     const newName = document.getElementById('acName').value.trim();
     const newRefIdx = parseInt(document.getElementById('acRef').value);
-
     if (!newName) { errorDiv.textContent = 'Name is required.'; return; }
 
     if (isInverter) {
-      // Inverter fitting
       try {
-        const normalizeRPM = Math.max(...loadedInverterPoints.map(d => d.RPM));
-        const centerTE = loadedInverterPoints.reduce((s, d) => s + d.TE, 0) / loadedInverterPoints.length;
-        const centerTC = loadedInverterPoints.reduce((s, d) => s + d.TC, 0) / loadedInverterPoints.length;
+        const normalizeRPM = Math.max(...loadedDataPoints.map(d => d.RPM));
+        const centerTE = loadedDataPoints.reduce((s, d) => s + d.TE, 0) / loadedDataPoints.length;
+        const centerTC = loadedDataPoints.reduce((s, d) => s + d.TC, 0) / loadedDataPoints.length;
         const compressorModel = fitInverterCoefficients(
-          loadedInverterPoints,
-          normalizeRPM,
-          centerTE,
-          centerTC,
-          3.0   // target RMSE; can be adjusted
+          loadedDataPoints, normalizeRPM, centerTE, centerTC, 3.0
         );
         const updated = {
-          ...comp,
-          id: comp.id,   // keep original id
-          name: newName,
-          model: newName,
-          refrigerantIndex: newRefIdx,
+          ...comp, id: comp.id, name: newName, model: newName, refrigerantIndex: newRefIdx,
           cylinderVolumeCm3: parseFloat(document.getElementById('acCyl')?.value) || comp.cylinderVolumeCm3 || 0,
-          isInverter: true,
-          normalizeRPM,       // store for info
-          centerTE,
-          centerTC,
-          compressorModel,    // the full model object (Q & W predictors)
-          dataPoints: loadedInverterPoints,
+          isInverter: true, normalizeRPM, centerTE, centerTC, compressorModel, dataPoints: loadedDataPoints,
         };
-        // Replace compressor
-        deleteCompressor(comp.id);
-        addCompressor(updated);
-        setSelectedCompressor(comp.id);
-      } catch (err) {
-        errorDiv.textContent = 'Fitting failed: ' + err.message;
-        return;
-      }
+        deleteCompressor(comp.id); addCompressor(updated); setSelectedCompressor(comp.id);
+      } catch (err) { errorDiv.textContent = 'Fitting failed: ' + err.message; return; }
     } else {
-      // Constant‑speed fitting
       const newCyl = parseFloat(document.getElementById('acCyl').value);
       const newRpm = parseFloat(document.getElementById('acRpm').value);
       if (isNaN(newCyl) || newCyl <= 0) { errorDiv.textContent = 'Invalid cylinder volume.'; return; }
       if (isNaN(newRpm) || newRpm <= 0) { errorDiv.textContent = 'Invalid speed.'; return; }
 
-      const needRefit = (loadedDataPoints !== existingPoints) ||
-                        (newCyl !== comp.cylinderVolumeCm3) ||
-                        (newRpm !== comp.speedRpm) ||
-                        (newRefIdx !== comp.refrigerantIndex);
+      const needRefit = (loadedDataPoints !== existingPoints) || (newCyl !== comp.cylinderVolumeCm3) ||
+                        (newRpm !== comp.speedRpm) || (newRefIdx !== comp.refrigerantIndex);
 
       let wCoeffs, etaCoeffs;
       if (needRefit) {
         try {
           const coeffs = computeCompressorCoefficients({
-            cylinderVolumeCm3: newCyl,
-            speedRpm: newRpm,
-            refrigerantIndex: newRefIdx,
-            dataPoints: loadedDataPoints,
+            cylinderVolumeCm3: newCyl, speedRpm: newRpm, refrigerantIndex: newRefIdx, dataPoints: loadedDataPoints,
           });
-          wCoeffs = coeffs.wCoeffs;
-          etaCoeffs = coeffs.etaCoeffs;
-        } catch (err) {
-          errorDiv.textContent = 'Fitting failed: ' + err.message;
-          return;
-        }
+          wCoeffs = coeffs.wCoeffs; etaCoeffs = coeffs.etaCoeffs;
+        } catch (err) { errorDiv.textContent = 'Fitting failed: ' + err.message; return; }
       } else {
-        wCoeffs = comp.wCoeffs;
-        etaCoeffs = comp.etaCoeffs;
+        wCoeffs = comp.wCoeffs; etaCoeffs = comp.etaCoeffs;
       }
 
       const updated = {
-        id: comp.id,
-        name: newName,
-        model: newName,
-        voltage: comp.voltage || 100,
-        frequency: comp.frequency || 50,
-        cylinderVolumeCm3: newCyl,
-        speedRpm: newRpm,
-        refrigerantIndex: newRefIdx,
-        wCoeffs,
-        etaCoeffs,
-        dataPoints: loadedDataPoints,
+        id: comp.id, name: newName, model: newName, voltage: comp.voltage || 100, frequency: comp.frequency || 50,
+        cylinderVolumeCm3: newCyl, speedRpm: newRpm, refrigerantIndex: newRefIdx, wCoeffs, etaCoeffs, dataPoints: loadedDataPoints,
       };
-      deleteCompressor(comp.id);
-      addCompressor(updated);
-      setSelectedCompressor(comp.id);
+      deleteCompressor(comp.id); addCompressor(updated); setSelectedCompressor(comp.id);
     }
-
     modal.classList.add('hidden');
-    openThermalSettings(); // refresh compressor lists
+    openThermalSettings();
   };
 
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.classList.add('hidden');
-  };
+  modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
 }
 
-// Helper to build data table HTML from array
-function buildDataTableHTML(dataPoints) {
-  if (!dataPoints || dataPoints.length === 0) return '<p>No data points.</p>';
-  let html = `<table class="data-table"><thead><tr><th>TE (°C)</th><th>TC (°C)</th><th>W (W)</th><th>Q (W)</th></tr></thead><tbody>`;
-  dataPoints.forEach(dp => {
-    html += `<tr><td>${dp.TE.toFixed(2)}</td><td>${dp.TC.toFixed(2)}</td><td>${dp.W.toFixed(2)}</td><td>${dp.Q.toFixed(2)}</td></tr>`;
-  });
-  html += `</tbody></table><p>${dataPoints.length} data points.</p>`;
-  return html;
-}
 
-// ────────────────────────────────────────────────────────────────
-// Run thermal analysis
-// ────────────────────────────────────────────────────────────────
+/**
+ * Triggers the Constant-Speed thermal simulation.
+ * Constructs the configuration payload and delegates to the engine solver.
+ */
 function handleRun() {
   clearMessages();
   if (!getGeometryFn) { showError('Geometry source not available.'); return; }
@@ -944,61 +814,49 @@ function handleRun() {
 
   const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
 
-  // Fan airflow calculated from fan parameters stored in settings
-const fanParam = settings.fanParam || {};
-let fanFlow;
-try {
-  fanFlow = computeFanAirflow(fanParam);
-} catch (e) {
-  showError(e.message, 'inverterErrors');
-  return;
-}
-if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
-  showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors');
-  return;
-}
+  const fanParam = settings.fanParam || {};
+  let fanFlow;
+  try {
+    fanFlow = computeFanAirflow(fanParam);
+  } catch (e) {
+    showError(e.message, 'inverterErrors');
+    return;
+  }
+  if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
+    showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors');
+    return;
+  }
 
-  // Determine freezer position correctly for any configuration
   const comps = cabinetGeom._compartments;
   const nComps = comps?.length || 0;
   const hasFreezer = comps && comps[0].type === 'freezer';
-  const freezerPosition =
-      nComps === 1 ? 'top' :                // single compartment always 'top'
-      hasFreezer ? 'top' : 'bottom';
+  const freezerPosition = nComps === 1 ? 'top' : hasFreezer ? 'top' : 'bottom';
+  
   const config = buildDefaultConfig({
-    geom,
-    freezerPosition,
-    refrigerant,
-    subcool: thermalAdvanced.subcool,
-    dischargeTemp: thermalAdvanced.dischargeTemp,
-    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    geom, freezerPosition, refrigerant, subcool: thermalAdvanced.subcool,
+    dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
   });
   if (settings.condenser) {
-  config.condenserConfig = {
-    ...config.condenserConfig,                         // keep K‑values, efficiency, etc.
-    sidePipePitch_mm: settings.condenser.sidePipePitch_mm,
-    backPipePitch_mm: settings.condenser.backPipePitch_mm,
-  };
-}
-
-  console.log(geom);
+    config.condenserConfig = {
+      ...config.condenserConfig,
+      sidePipePitch_mm: settings.condenser.sidePipePitch_mm,
+      backPipePitch_mm: settings.condenser.backPipePitch_mm,
+    };
+  }
 
   config.evapGeom = settings.evaporator || {};
   config.fanParam = fanParam;
 
-  // Compressor coefficients
   const defaultCompParams = config.compParams;
   loadCompressors();
   const compressor = getCurrentCompressor();
-  let compressorWarning = null;   // <-- new: store fallback warning
+  let compressorWarning = null;
   if (compressor) {
     const toArray = (coeffs, keys) => {
       if (Array.isArray(coeffs)) return coeffs;
-      if (coeffs && typeof coeffs === 'object') {
-        return keys.map(k => coeffs[k]).filter(v => v !== undefined);
-      }
+      if (coeffs && typeof coeffs === 'object') return keys.map(k => coeffs[k]).filter(v => v !== undefined);
       return null;
     };
     const wArr = toArray(compressor.wCoeffs, ['AW','BW','CW','DW','EW']);
@@ -1013,7 +871,6 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
         etaCoeffs: etaArr,
       };
     } else {
-      // Fallback – log warning and store message
       compressorWarning = `Compressor “${compressor.name}” is missing valid coefficients. Using default compressor (EGX80CLC) instead.`;
       console.warn(compressorWarning);
     }
@@ -1024,30 +881,22 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
 
   const result = runThermoAnalysis(config);
   if (result.results && result.results.compressor) {
-  // Attach coefficients for display
-  if (config.compParams) {
-    result.results.compressor.wCoeffs = config.compParams.wCoeffs;
-    result.results.compressor.etaCoeffs = config.compParams.etaCoeffs;
+    if (config.compParams) {
+      result.results.compressor.wCoeffs = config.compParams.wCoeffs;
+      result.results.compressor.etaCoeffs = config.compParams.etaCoeffs;
+    }
   }
-}
-  if (!result.success) {
-    showError(result.errors.join('; '));
-    return;
-  }
-  // ── Add compressor fallback warning to result ──────────
+  if (!result.success) { showError(result.errors.join('; ')); return; }
   if (compressorWarning) {
     result.warnings = result.warnings || [];
-    result.warnings.unshift(compressorWarning);   // show it first
+    result.warnings.unshift(compressorWarning);
   }
 
-  // Energy consumption
   let energy = null;
   if (result.results && (result.results.converged !== false)) {
-    try { energy = EnergyConsumption(result.results); }
-    catch (e) { console.warn('EnergyConsumption failed:', e); }
+    try { energy = EnergyConsumption(result.results); } catch (e) { console.warn('EnergyConsumption failed:', e); }
   }
 
-  // Evaporator performance
   let evapDetails = null;
   const evap = settings.evaporator;
   const fanP = settings.fanParam;
@@ -1056,12 +905,12 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
       const area = computeEvaporatorArea(evap);
       const v = airSpeed(fanP, evap);
       const alpha = evaporatorAlpha(v);
-      const TF = parseFloat(document.getElementById('thermoTF')?.value) ;
-      const TR = parseFloat(document.getElementById('thermoTR')?.value) ;
-      const MR = result.results.MR ;
-      const MF = result.results.MF ;
+      const TF_ = parseFloat(document.getElementById('thermoTF')?.value);
+      const TR_ = parseFloat(document.getElementById('thermoTR')?.value);
+      const MR = result.results.MR;
+      const MF = result.results.MF;
       const totalFlow = MR + MF;
-      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T1 = totalFlow > 0 ? (MF * TF_ + MR * TR_) / totalFlow : TF_;
       const T2 = result.results.T2;
       const TE = result.results.TE;
       const LMTD = lmtd(T1, T2, TE);
@@ -1070,11 +919,8 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
     } catch (e) { console.warn('Evaporator calculation failed:', e); }
   }
   if (evapDetails) result.results.evapDetails = evapDetails;
-
-  // Attach fan airflow to results for display
   result.results.fanAirflow = fanFlow;
 
-  // Switch to Thermal tab and display results
   document.getElementById('tabThermal').click();
   const thermoRight = document.getElementById('thermoRightPanel');
   if (thermoRight) thermoRight.innerHTML = '';
@@ -1085,13 +931,108 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
   if (result.warnings.length) showWarnings(result.warnings);
 }
 
+/**
+ * Triggers the Inverter thermal simulation.
+ * Calculates variable RPM requirements given a user-fixed running ratio (PR).
+ */
+function handleInverterRun() {
+  clearMessages('inverterErrors');
+  if (!getGeometryFn) { showError('Geometry source not available.', 'inverterErrors'); return; }
+  const cabinetGeom = getGeometryFn();
+  const geom = toThermalFormat(cabinetGeom);
+
+  const PR = parseFloat(document.getElementById('inverterPR')?.value);
+  if (isNaN(PR) || PR <= 0 || PR > 1) { showError('Please enter a valid Running Ratio (0.01–1).', 'inverterErrors'); return; }
+
+  const T0 = parseFloat(document.getElementById('inverterT0')?.value);
+  const TF = parseFloat(document.getElementById('inverterTF')?.value);
+  const TR = parseFloat(document.getElementById('inverterTR')?.value);
+  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) { showError('Please fill all temperatures.', 'inverterErrors'); return; }
+  const refrigerant = document.getElementById('inverterRefrigerant')?.value || 'R-600a';
+
+  const fanParam = settings.fanParam || {};
+  let fanFlow;
+  try { fanFlow = computeFanAirflow(fanParam); } catch (e) { showError(e.message, 'inverterErrors'); return; }
+  if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
+    showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors'); return;
+  }
+  const compartments = cabinetGeom._compartments;
+  const freezerPos = (compartments?.length === 1) ? 'top' : (compartments && compartments[0].type === 'freezer' ? 'top' : 'bottom');
+
+  const config = buildDefaultConfig({
+    geom, freezerPosition: freezerPos, refrigerant, subcool: thermalAdvanced.subcool,
+    dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
+    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    condenserConfig: {
+      sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
+      backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
+      backCondenserEfficiency: 0.7, backCondenser: 'Yes',
+    },
+  });
+
+  loadCompressors();
+  let comp = getCurrentCompressor();
+  if (!comp || !comp.isInverter) { showError('Selected compressor is not an inverter type.', 'inverterErrors'); return; }
+
+  const pts = comp.dataPoints?.length >= 5 ? comp.dataPoints : INVERTER_EXAMPLE_COMPONENTS?.compressor?.dataPoints;
+  if (!pts) { showError('No performance data available for inverter compressor.', 'inverterErrors'); return; }
+
+  comp.compressorModel = fitInverterCoefficients(
+    pts, comp.normalizeRPM || Math.max(...pts.map(d => d.RPM)),
+    comp.centerTE || pts.reduce((s,d) => s + d.TE, 0) / pts.length,
+    comp.centerTC || pts.reduce((s,d) => s + d.TC, 0) / pts.length, 3.0
+  );
+  if (!comp.compressorModel) { showError('Failed to fit inverter model.', 'inverterErrors'); return; }
+  saveCompressors();
+
+  config.compParams = {
+    name: comp.name, isInverter: true, compressorModel: comp.compressorModel,
+    centerTE: comp.centerTE || -25, centerTC: comp.centerTC || 45,
+    rpmMin: comp.rpmMin || 1600, rpmMax: comp.rpmMax || 4500,
+  };
+  config.inverterPR = PR;
+
+  const result = runThermoAnalysis(config);
+  if (!result.success) { showError(result.errors.join('; '), 'inverterErrors'); return; }
+  if (result.warnings.length) showWarnings(result.warnings, 'inverterErrors');
+  if (result.success && result.results) {
+      result.results.refrigerantIndex = comp.refrigerantIndex;
+      result.results.cylinderVolumeCm3 = comp.cylinderVolumeCm3;
+      result.results.compressorModel = comp.compressorModel;
+  }
+
+  let energy = null;
+  if (result.results && (result.results.converged !== false)) energy = EnergyConsumption(result.results);
+  result.results.fanAirflow = fanFlow;
+
+  let evapDetails = null;
+  const evap = settings.evaporator;
+  const fanP = settings.fanParam;
+  if (evap && fanP && result.results && result.results.converged !== false) {
+    try {
+      const area = computeEvaporatorArea(evap);
+      const v = airSpeed(fanP, evap);
+      const alpha = evaporatorAlpha(v);
+      const MR = result.results.MR;
+      const MF = result.results.MF;
+      const totalFlow = MR + MF;
+      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
+      const T2 = result.results.T2;
+      const TE = result.results.TE;
+      const LMTD = lmtd(T1, T2, TE);
+      const Qevap = evaporatorCapacity(alpha, area, LMTD);
+      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
+    } catch (e) { console.warn('Evaporator calculation failed:', e); }
+  }
+  if (evapDetails) result.results.evapDetails = evapDetails;
+  result.results.configLabel = (freezerPos === 'top' ? 'Top Freezer' : 'Bottom Freezer') + ' (Inverter)';
+  displayResults(result.results, energy, true);
+}
 
 
 /**
- * Build a human-readable equation string from an inverter model.
- * @param {object} model - The model object (Q or W)
- * @param {string} varName - "Q" or "W"
- * @returns {string} e.g. "Q = 10.5 + 2.1·n + ..."
+ * Transforms an Inverter polynomial configuration back into a readable math string.
  */
 function buildInverterEquation(model, varName) {
     if (!model || model.type !== 'global' || !model.coeffs) {
@@ -1110,40 +1051,25 @@ function buildInverterEquation(model, varName) {
     };
 
     if (form === 'n_lin') {
-        addTerm(c[1], 'n');
-        addTerm(c[2], 'n·te');
-        addTerm(c[3], 'n·tc');
-        addTerm(c[4], 'n·tc·te');
-        addTerm(c[5], 'n·te²');
+        addTerm(c[1], 'n'); addTerm(c[2], 'n·te'); addTerm(c[3], 'n·tc'); addTerm(c[4], 'n·tc·te'); addTerm(c[5], 'n·te²');
     } else if (form === 'n_quad') {
-        addTerm(c[1], 'n');
-        addTerm(c[2], 'n²');
-        addTerm(c[3], 'n·te');
-        addTerm(c[4], 'n·tc');
-        addTerm(c[5], 'n·tc·te');
-        addTerm(c[6], 'n·te²');
+        addTerm(c[1], 'n'); addTerm(c[2], 'n²'); addTerm(c[3], 'n·te'); addTerm(c[4], 'n·tc'); addTerm(c[5], 'n·tc·te'); addTerm(c[6], 'n·te²');
     } else if (form === 'ln_n_lin') {
-        addTerm(c[1], 'ln(n)');
-        addTerm(c[2], 'ln(n)·te');
-        addTerm(c[3], 'ln(n)·tc');
-        addTerm(c[4], 'ln(n)·tc·te');
-        addTerm(c[5], 'ln(n)·te²');
+        addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)·te'); addTerm(c[3], 'ln(n)·tc'); addTerm(c[4], 'ln(n)·tc·te'); addTerm(c[5], 'ln(n)·te²');
     } else if (form === 'ln_n_quad') {
-        addTerm(c[1], 'ln(n)');
-        addTerm(c[2], 'ln(n)²');
-        addTerm(c[3], 'ln(n)·te');
-        addTerm(c[4], 'ln(n)·tc');
-        addTerm(c[5], 'ln(n)·tc·te');
-        addTerm(c[6], 'ln(n)·te²');
+        addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)²'); addTerm(c[3], 'ln(n)·te'); addTerm(c[4], 'ln(n)·tc'); addTerm(c[5], 'ln(n)·tc·te'); addTerm(c[6], 'ln(n)·te²');
     }
     if (log) eq = `ln(${varName}) = ${eq.substring(eq.indexOf('=') + 1)}`;
     return eq;
 }
 
-
-// ────────────────────────────────────────────────────────────────
-// Display helpers (now includes fan airflow section)
-// ────────────────────────────────────────────────────────────────
+/**
+ * Injects the numerical results from the solver into the HTML tables on the right panel.
+ * 
+ * @param {Object} res - The solver results.
+ * @param {Object} energy - The calculated daily/monthly energy estimations.
+ * @param {boolean} isInverter - Formatting flag.
+ */
 function displayResults(res, energy, isInverter = false) {
   if (!res) return;
 
@@ -1169,16 +1095,16 @@ function displayResults(res, energy, isInverter = false) {
   const mFlow = comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
   const eW   = energy ? fmt(energy.EnergyConsumption_kWhDay, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
-  // --- Volumetric efficiency ---
+  
   let etaV = '—';
   if (isInverter && res.RPM !== undefined && res.refrigerantIndex !== undefined && res.cylinderVolumeCm3 && comp.massFlow) {
       try {
           const prop = getRefrigerantProperties(res.refrigerantIndex);
-          const suctionTempK = 32.2 + 273.16; // fixed suction T
-          const Pe = comp.Pe;  // or res.Pe
+          const suctionTempK = 32.2 + 273.16;
+          const Pe = comp.Pe; 
           const vGas = prop.specificVolume(suctionTempK, Pe);
           const displacement_m3h = (res.cylinderVolumeCm3 * res.RPM * 60) / 1e6;
-          const theoMassFlow = displacement_m3h / vGas; // kg/h
+          const theoMassFlow = displacement_m3h / vGas;
           const actualMassFlow = comp.massFlow;
           etaV = (actualMassFlow / theoMassFlow * 100).toFixed(1) + ' %';
       } catch (e) {
@@ -1189,13 +1115,11 @@ function displayResults(res, energy, isInverter = false) {
       etaV = comp.etaV != null ? fmtP(comp.etaV) : '—';
   }
 
-  // --- Build coefficient strings (equations for inverter) ---
   let etaStr = '—', wStr = '—';
   if (isInverter && res.compressorModel) {
       etaStr = buildInverterEquation(res.compressorModel.Q, 'Q');
       wStr   = buildInverterEquation(res.compressorModel.W, 'W');
   } else {
-      // constant‑speed polynomials
       if (comp.etaCoeffs && comp.etaCoeffs.length === 3) {
           etaStr = `ηv = A + B·Pc/Pe + C·Pc  (A=${comp.etaCoeffs[0].toFixed(5)}, B=${comp.etaCoeffs[1].toFixed(5)}, C=${comp.etaCoeffs[2].toFixed(5)})`;
       }
@@ -1298,10 +1222,10 @@ function showWarnings(warnings, errorDivId = 'thermoErrors') {
 
 export function getThermalState() {
   return {
-    T0: parseFloat(document.getElementById('thermoT0')?.value) ,
+    T0: parseFloat(document.getElementById('thermoT0')?.value),
     TF: parseFloat(document.getElementById('thermoTF')?.value),
-    TR: parseFloat(document.getElementById('thermoTR')?.value) ,
-    refrigerant: document.getElementById('thermoRefrigerant')?.value ,
+    TR: parseFloat(document.getElementById('thermoTR')?.value),
+    refrigerant: document.getElementById('thermoRefrigerant')?.value,
     advanced: thermalAdvanced,
     evaporator: settings.evaporator,
     condenser: settings.condenser,
@@ -1328,166 +1252,21 @@ export function setThermalState(data) {
   if (data.condenser) settings.condenser = data.condenser;
   if (data.fanParam) settings.fanParam = data.fanParam;
 
-if (data.compressor) {
-  const list = getCompressorList();
-  const existingIdx = list.findIndex(c => c.id === data.compressor.id);
-  
-  if (existingIdx === -1) {
-    addCompressor(data.compressor);
-  } else {
-    // Overwrite the existing local compressor with the imported one
-    list[existingIdx] = data.compressor;
-    localStorage.setItem('compressorList', JSON.stringify(list));
+  if (data.compressor) {
+    const list = getCompressorList();
+    const existingIdx = list.findIndex(c => c.id === data.compressor.id);
+    
+    if (existingIdx === -1) {
+      addCompressor(data.compressor);
+    } else {
+      list[existingIdx] = data.compressor;
+      localStorage.setItem('compressorList', JSON.stringify(list));
+    }
+    setSelectedCompressor(data.compressor.id);
   }
-  setSelectedCompressor(data.compressor.id);
-}
   updateSettings(settings);
 }
-function handleInverterRun() {
-  clearMessages('inverterErrors');   // new error div id
-  if (!getGeometryFn) { showError('Geometry source not available.', 'inverterErrors'); return; }
-  const cabinetGeom = getGeometryFn();
-  const geom = toThermalFormat(cabinetGeom);
 
-  const PR = parseFloat(document.getElementById('inverterPR')?.value);
-  if (isNaN(PR) || PR <= 0 || PR > 1) {
-    showError('Please enter a valid Running Ratio (0.01–1).', 'inverterErrors');
-    return;
-  }
-
-  const T0 = parseFloat(document.getElementById('inverterT0')?.value);
-  const TF = parseFloat(document.getElementById('inverterTF')?.value);
-  const TR = parseFloat(document.getElementById('inverterTR')?.value);
-  if (isNaN(T0) || isNaN(TF) || isNaN(TR)) {
-    showError('Please fill all temperatures.', 'inverterErrors');
-    return;
-  }
-  const refrigerant = document.getElementById('inverterRefrigerant')?.value || 'R-600a';
-
-// Validate fan parameters
-const fanParam = settings.fanParam || {};
-let fanFlow;
-try {
-  fanFlow = computeFanAirflow(fanParam);
-} catch (e) {
-  showError(e.message, 'inverterErrors');
-  return;
-}
-if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
-  showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors');
-  return;
-}
- const compartments = cabinetGeom._compartments;
-  const freezerPos = (compartments?.length === 1)
-    ? 'top'
-    : (compartments && compartments[0].type === 'freezer' ? 'top' : 'bottom');
-
-  // Build config
-  const config = buildDefaultConfig({
-    geom,
-    freezerPosition: freezerPos,
-    refrigerant,
-    subcool: thermalAdvanced.subcool,
-    dischargeTemp: thermalAdvanced.dischargeTemp,
-    fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
-    condenserConfig: {
-      sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
-      backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
-      backCondenserEfficiency: 0.7,
-      backCondenser: 'Yes',
-    },
-  });
-
-  // Override compressor with the currently selected inverter compressor
-loadCompressors();
-let comp = getCurrentCompressor();
-if (!comp || !comp.isInverter) {
-  showError('Selected compressor is not an inverter type.', 'inverterErrors');
-  return;
-}
-
-// Always refit from stored dataPoints (or default data)
-const pts = comp.dataPoints?.length >= 5 ? comp.dataPoints : INVERTER_EXAMPLE_COMPONENTS?.compressor?.dataPoints;
-if (!pts) {
-  showError('No performance data available for inverter compressor.', 'inverterErrors');
-  return;
-}
-
-comp.compressorModel = fitInverterCoefficients(
-  pts,
-  comp.normalizeRPM || Math.max(...pts.map(d => d.RPM)),
-  comp.centerTE || pts.reduce((s,d) => s + d.TE, 0) / pts.length,
-  comp.centerTC || pts.reduce((s,d) => s + d.TC, 0) / pts.length,
-  3.0
-);
-if (!comp.compressorModel) {
-  showError('Failed to fit inverter model.', 'inverterErrors');
-  return;
-}
-saveCompressors();
-
-// Build compParams explicitly
-config.compParams = {
-  name: comp.name,
-  isInverter: true,
-  compressorModel: comp.compressorModel,
-  centerTE: comp.centerTE || -25,
-  centerTC: comp.centerTC || 45,
-  rpmMin: comp.rpmMin || 1600,
-  rpmMax: comp.rpmMax || 4500,
-};
-config.inverterPR = PR;
-
-// DEBUG: verify before calling solver
-console.log('Running inverter with config:', { compParams: config.compParams, inverterPR: config.inverterPR });
-const result = runThermoAnalysis(config);
-  if (!result.success) {
-    showError(result.errors.join('; '), 'inverterErrors');
-    return;
-  }
-  if (result.warnings.length) showWarnings(result.warnings, 'inverterErrors');
-  if (result.success && result.results) {
-      result.results.refrigerantIndex = comp.refrigerantIndex;
-      result.results.cylinderVolumeCm3 = comp.cylinderVolumeCm3;
-      result.results.compressorModel = comp.compressorModel;
-  }
-
-  // Energy consumption (same as before, but ensure PR is the fixed one)
-  let energy = null;
-  if (result.results && (result.results.converged !== false)) {
-    energy = EnergyConsumption(result.results);
-  }
-  result.results.fanAirflow = fanFlow;
-
-  let evapDetails = null;
-  const evap = settings.evaporator;
-  const fanP = settings.fanParam;
-  if (evap && fanP && result.results && result.results.converged !== false) {
-    try {
-      const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap);
-      const alpha = evaporatorAlpha(v);
-      // TF and TR are already defined at the top of handleInverterRun()
-      const MR = result.results.MR;
-      const MF = result.results.MF;
-      const totalFlow = MR + MF;
-      const T1 = totalFlow > 0 ? (MF * TF + MR * TR) / totalFlow : TF;
-      const T2 = result.results.T2;
-      const TE = result.results.TE;
-      const LMTD = lmtd(T1, T2, TE);
-      const Qevap = evaporatorCapacity(alpha, area, LMTD);
-      evapDetails = { area, v, alpha, LMTD, Qevap, T1 };
-    } catch (e) { 
-      console.warn('Evaporator calculation failed:', e); 
-    }
-  }
-  if (evapDetails) result.results.evapDetails = evapDetails;
-  // Display results: reuse the same display function but adapt to show RPM
-  result.results.configLabel = (freezerPos === 'top' ? 'Top Freezer' : 'Bottom Freezer') + ' (Inverter)';
-  displayResults(result.results, energy, true);  // true = inverter mode
-}
 function refreshInverterCompressorSelect() {
   loadCompressors();
   const select = document.getElementById('inverterCompressorSelect');
@@ -1500,11 +1279,11 @@ function refreshInverterCompressorSelect() {
     opt.textContent = c.name;
     select.appendChild(opt);
   });
-  // Optionally select the first one by default
   if (select.options.length > 0 && !select.value) {
     select.value = inverters[0].id;
   }
 }
+
 function populateInverterCompressorSelect() {
   loadCompressors();
   const select = document.getElementById('inverterCompressorSelect');
@@ -1516,10 +1295,10 @@ function populateInverterCompressorSelect() {
     opt.textContent = c.name;
     select.appendChild(opt);
   });
-  // auto-select the first if none selected
   if (select.options.length && !select.value)
     select.value = select.options[0].value;
 }
+
 function updateInverterCompressorDisplay() {
   const comp = getCurrentCompressor();
   const nameEl = document.getElementById('currentInverterName');
@@ -1535,7 +1314,7 @@ function updateInverterCompressorDisplay() {
 
 export function ensureInverterModel(comp) {
   if (!comp || !comp.isInverter) return comp;
-  if (comp.compressorModel) return comp;   // already fitted
+  if (comp.compressorModel) return comp;
 
   const pts = comp.dataPoints;
   if (!pts || pts.length < 5) {
@@ -1543,7 +1322,7 @@ export function ensureInverterModel(comp) {
       `Inverter compressor “${comp.name}” has insufficient data points ` +
       `(${pts ? pts.length : 0} provided). The model will NOT be fitted.`
     );
-    return comp;   // leave model as null, caller will show error
+    return comp;
   }
 
   const normalizeRPM = Math.max(...pts.map(d => d.RPM));
@@ -1551,6 +1330,6 @@ export function ensureInverterModel(comp) {
   const centerTC = pts.reduce((s, d) => s + d.TC, 0) / pts.length;
   comp.compressorModel = fitInverterCoefficients(pts, normalizeRPM, centerTE, centerTC);
 
-  saveCompressors();   // persist the model immediately
+  saveCompressors();
   return comp;
 }

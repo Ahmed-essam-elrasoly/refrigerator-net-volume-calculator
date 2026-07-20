@@ -1,4 +1,9 @@
-// js/ui/settingsModal.js
+/**
+ * @file settingsModal.js
+ * Manages the global application settings interface.
+ * Handles the synchronization of UI inputs with the persistent `settings.js` state,
+ * as well as the import, export, and resetting of the user's compressor catalog.
+ */
 
 import { settings, updateSettings, resetSettings } from '../settings.js';
 import {
@@ -10,6 +15,11 @@ import {
   deleteCompressor
 } from '../compressorManager.js';
 
+
+/**
+ * Initializes the settings modal by binding event listeners to the DOM elements.
+ * Called once during application startup.
+ */
 export function initSettingsModal() {
   const modal    = document.getElementById('settingsModal');
   const closeBtn = document.getElementById('closeSettings');
@@ -48,6 +58,10 @@ export function initSettingsModal() {
 // Tab rendering (General tab only)
 // ---------------------------------------------------------------------------
 
+/**
+ * Dynamically injects the HTML for the general settings tab, populating inputs
+ * with the current values from the global `settings` object.
+ */
 function renderSettingsTabs() {
   document.getElementById('stabGeneral').innerHTML = `
     <label>
@@ -71,6 +85,10 @@ function renderSettingsTabs() {
 // Collect values
 // ---------------------------------------------------------------------------
 
+/**
+ * Scrapes values from the active settings DOM inputs and writes them
+ * directly into the mutable `settings` object.
+ */
 function collectSettingsFromTabs() {
   settings.autoCalculate       = document.getElementById('autoCalculate').checked;
   settings.showDirtyOverlay    = document.getElementById('showDirtyOverlay').checked;
@@ -86,6 +104,11 @@ function collectSettingsFromTabs() {
 // Export / Import / Reset – full implementations
 // ---------------------------------------------------------------------------
 
+
+/**
+ * Serializes the current global settings and the full compressor catalog into a JSON file,
+ * triggering a browser download.
+ */
 function exportSettings() {
   loadCompressors();
   const exportData = {
@@ -103,6 +126,10 @@ function exportSettings() {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Opens a file dialog to read a previously exported settings JSON file.
+ * Restores global parameters and overwrites the local compressor catalog.
+ */
 function importSettings() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -134,6 +161,10 @@ function importSettings() {
   input.click();
 }
 
+/**
+ * Wipes user preferences and the compressor catalog from localStorage,
+ * restoring the application to its factory state.
+ */
 function resetAllSettings() {
   resetSettings();                         // engine settings to defaults
   localStorage.removeItem('compressorList');
