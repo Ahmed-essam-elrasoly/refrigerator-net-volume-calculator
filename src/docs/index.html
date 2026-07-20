@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Home</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Home</h1>
+
+    
+
+
+
+    
+
+
+    <h3> </h3>
+
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    <section>
+        <article><h1>Refrigerator Volume &amp; Thermal Cycle Calculator</h1>
+<h2>Overview</h2>
+<p>An offline-first, client-side web application for the conceptual design of refrigerator cabinets. It performs precise volumetric analysis based on abstract geometric inputs and conducts thermodynamic cycle simulations to balance heat loads against compressor performance models (both constant-speed and inverter types).</p>
+<h2>Core Capabilities</h2>
+<h3>1. Geometric &amp; Volumetric Engine</h3>
+<p>Calculates true usable space by evaluating the cabinet's exterior boundaries and systematically subtracting internal elements.</p>
+<ul>
+<li><strong>Inputs:</strong> Overall dimensions (H, W, D), wall thicknesses, divider thicknesses, door gaps, and specific obstacle geometries (evaporator depth, control box dimensions, R-Shower dimensions, shelf rails, and door dikes).</li>
+<li><strong>Outputs:</strong> Gross Volume (L / cu.ft), Total Usable Volume, Per-compartment breakdowns, and Polyurethane (PU) volume/weight estimations for the cabinet and doors.</li>
+<li><strong>Visuals:</strong> Auto-generates scaled 2D Front and Side schematic views.</li>
+</ul>
+<h3>2. Thermodynamic Solver</h3>
+<p>Resolves the refrigeration cycle by balancing the calculated thermal loads of the physical geometry against imported compressor performance data.</p>
+<ul>
+<li><strong>Inputs:</strong> Target compartment temperatures ($T_F$, $T_R$), ambient temperature ($T_0$), refrigerant type, defrost heater wattage, fan parameters (RPM, diameter), and Excel-imported compressor data (TE, TC, W, Q, and RPM).</li>
+<li><strong>Outputs:</strong> System condensing/evaporating temperatures ($T_C$, $T_E$), required compressor RPM (for inverters), volumetric efficiency ($\eta_v$), cooling capacity, COP, mass flow rate, and estimated daily/monthly energy consumption (kWh).</li>
+</ul>
+<h2>System Architecture</h2>
+<p>The codebase enforces a strict separation of concerns between the user interface and the underlying calculation engines:</p>
+<ul>
+<li><code>/js/ui/</code>: Presentation layer containing interface controllers (<code>thermoUI.js</code>, <code>settingsModal.js</code>) and Canvas 2D rendering (<code>schematic.js</code>).</li>
+<li><code>/js/engine/</code>: The geometric core (<code>calc.js</code>, <code>geometry.js</code>, <code>traversal.js</code>) responsible for calculating spatial constraints and structural volumes.</li>
+<li><code>/js/engine/thermo/</code>: The physics engine. Solves for heat loads, maps compressor performance using polynomial coefficients, and executes iterative numerical balancing (<code>solver.js</code>).</li>
+<li><code>/js/io/</code>: Manages state serialization (<code>io.js</code>), allowing users to save/load JSON configurations and export CSV results.</li>
+</ul></article>
+    </section>
+
+
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/compressorManager.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>compressorManager.js
+Manages the catalog of available compressors (both constant-speed and inverter).
+Handles loading standard defaults, saving custom user-added compressors to localStorage,
+and migrating legacy data structures (objects -&gt; arrays).</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="compressorManager.js.html">compressorManager.js</a>, <a href="compressorManager.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/index.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>index.js
+Main engine entry point.
+Orchestrates the full lifecycle:</p>
+<ol>
+<li>Pass 1: Structural validation (tree hierarchy).</li>
+<li>Configuration Upgrade (Schema v1.0 -&gt; v2.0).</li>
+<li>Cabinet-level geometry validation (wall thickness ratios).</li>
+<li>Pass 2: Volume Traversal (precise leaf volume computation).</li>
+</ol>
+<p>Public API:
+runCalculation(config) -&gt; CalcResult</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_index.js.html">engine/index.js</a>, <a href="engine_index.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/CompressorPerformance.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Translates abstract test points (Excel Data) into fitted mathematical models
+representing compressor behavior across varying temperatures and RPMs.
+Uses Ordinary Least Squares (OLS) for constant speed and Ridge Regression for Inverters.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_CompressorPerformance.js.html">engine/thermo/CompressorPerformance.js</a>, <a href="engine_thermo_CompressorPerformance.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/condenser.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Evaluates the heat rejection capacity of the system's condenser.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_condenser.js.html">engine/thermo/condenser.js</a>, <a href="engine_thermo_condenser.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/constants.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Truly universal constants – physical properties, conversion
+factors, and standard heat‑transfer coefficients.
+These parameters are empirical and do NOT depend on the refrigerator model.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_constants.js.html">engine/thermo/constants.js</a>, <a href="engine_thermo_constants.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/defaultComponents.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Stores pre-configured baseline components and parameters.
+Used for fallback calculations and initial application bootstrapping.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_defaultComponents.js.html">engine/thermo/defaultComponents.js</a>, <a href="engine_thermo_defaultComponents.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/evaporator.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Exact physical model for calculating evaporator performance.
+Converts physical dimensions into heat transfer surface area and calculates
+the Log Mean Temperature Difference (LMTD) necessary for cooling.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_evaporator.js.html">engine/thermo/evaporator.js</a>, <a href="engine_thermo_evaporator.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/heatLoad.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Universal top/bottom-freezer heat load model.
+Calculates total system heat ingress through conduction (walls) and parasitic
+loads (defrost, fan, partition heating).</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_heatLoad.js.html">engine/thermo/heatLoad.js</a>, <a href="engine_thermo_heatLoad.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/index.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Thermo analysis entry point – orchestrates the nested Newton‑Raphson solver
+and formats the result object into a clean payload for the UI.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_index.js.html">engine/thermo/index.js</a>, <a href="engine_thermo_index.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/solver.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>The core numerical physics solver.
+Utilizes a nested combination of Secant (Outer), Newton-Raphson (Inner),
+and Brent's Method (Deep Inner) algorithms to find the thermodynamic
+balance point of the refrigeration cycle.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_solver.js.html">engine/thermo/solver.js</a>, <a href="engine_thermo_solver.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/thermo/validateHeatLoad.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>Provides sanity checks for thermodynamic inputs and generated heat loads
+to prevent the solver from running physically impossible scenarios.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_thermo_validateHeatLoad.js.html">engine/thermo/validateHeatLoad.js</a>, <a href="engine_thermo_validateHeatLoad.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/types.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>types.js
+JSDoc type definitions shared across the calculation and validation engines.
+No runtime code — import this file for IDE type hints only.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_types.js.html">engine/types.js</a>, <a href="engine_types.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/engine/validationPass1.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>validationPass1.js
+Pass 1 — structural validation.
+Operates on the raw node tree with no space/dimension context.
+Catches all errors that can be detected from tree shape and metadata alone.
+Returns ValidationError[]. Non-empty result blocks Pass 2 entirely.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="engine_validationPass1.js.html">engine/validationPass1.js</a>, <a href="engine_validationPass1.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/io/io.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>js/io/io.js
+I/O layer — JSON config save/load and CSV export.
+No DOM dependencies for core parsing. Works in browser (File API) and Node.js.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="io_io.js.html">io/io.js</a>, <a href="io_io.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/main.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>main.js
+Primary UI Orchestrator for the Refrigerator Volume Calculator.</p>
+<p>Binds the DOM, manages dynamic user inputs, constructs the geometric
+model required by the calculation engine, and renders outputs (both HTML
+textual results and 2D Canvas schematics).</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="main.js.html">main.js</a>, <a href="main.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/settings.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>settings.js
+Global application settings manager.
+Handles the persistence of UI preferences and default thermal parameters
+to the browser's localStorage. Acts as a central state store.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="settings.js.html">settings.js</a>, <a href="settings.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/ui/schematic.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>schematic.js
+Renders the 2D CAD-like representations of the refrigerator configuration.
+Maps abstract geometric boundaries and user inputs directly onto an HTML5 Canvas.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="ui_schematic.js.html">ui/schematic.js</a>, <a href="ui_schematic.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/ui/settingsModal.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>settingsModal.js
+Manages the global application settings interface.
+Handles the synchronization of UI inputs with the persistent <code>settings.js</code> state,
+as well as the import, export, and resetting of the user's compressor catalog.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="ui_settingsModal.js.html">ui/settingsModal.js</a>, <a href="ui_settingsModal.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+
+
+
+<section>
+
+<header>
+    
+        <h2>js/ui/thermoUI.js</h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description"><p>thermoUI.js
+Thermal analysis UI orchestrator.
+Binds the DOM elements for the Constant-Speed and Inverter analysis tabs.
+Scrapes user inputs, manages the advanced thermal settings modal, handles
+custom compressor Excel data ingestion, invokes the thermodynamic solver,
+and renders the resulting performance metrics to HTML tables.</p></div>
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="ui_thermoUI.js.html">ui/thermoUI.js</a>, <a href="ui_thermoUI.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Global</h3><ul><li><a href="global.html#DEFAULT_CABINET">DEFAULT_CABINET</a></li><li><a href="global.html#EnergyConsumption">EnergyConsumption</a></li><li><a href="global.html#SJ54H_COMPONENTS">SJ54H_COMPONENTS</a></li><li><a href="global.html#SJ_PV73K_COMPONENTS">SJ_PV73K_COMPONENTS</a></li><li><a href="global.html#addCompressor">addCompressor</a></li><li><a href="global.html#airSpeed">airSpeed</a></li><li><a href="global.html#buildComparisonTable">buildComparisonTable</a></li><li><a href="global.html#buildCompartmentUI">buildCompartmentUI</a></li><li><a href="global.html#buildDefaultConfig">buildDefaultConfig</a></li><li><a href="global.html#buildInverterEquation">buildInverterEquation</a></li><li><a href="global.html#buildThermalModalOnce">buildThermalModalOnce</a></li><li><a href="global.html#calcHeatLoads">calcHeatLoads</a></li><li><a href="global.html#calcLeafGross">calcLeafGross</a></li><li><a href="global.html#calcLeafGrossPrecise">calcLeafGrossPrecise</a></li><li><a href="global.html#calcQCout">calcQCout</a></li><li><a href="global.html#checkEnums">checkEnums</a></li><li><a href="global.html#checkHeightRatios">checkHeightRatios</a></li><li><a href="global.html#checkHorizontalShape">checkHorizontalShape</a></li><li><a href="global.html#checkLeafStructure">checkLeafStructure</a></li><li><a href="global.html#checkPositive">checkPositive</a></li><li><a href="global.html#checkPositiveFittingValues">checkPositiveFittingValues</a></li><li><a href="global.html#checkVerticalShape">checkVerticalShape</a></li><li><a href="global.html#clampAllShelfCounts">clampAllShelfCounts</a></li><li><a href="global.html#collectSettingsFromTabs">collectSettingsFromTabs</a></li><li><a href="global.html#compressorPower">compressorPower</a></li><li><a href="global.html#computeCompressorCoefficients">computeCompressorCoefficients</a></li><li><a href="global.html#computeEvaporatorArea">computeEvaporatorArea</a></li><li><a href="global.html#computeFanAirflow">computeFanAirflow</a></li><li><a href="global.html#computeObstacleVolumes">computeObstacleVolumes</a></li><li><a href="global.html#configFromJSON">configFromJSON</a></li><li><a href="global.html#configToJSON">configToJSON</a></li><li><a href="global.html#countLeaves">countLeaves</a></li><li><a href="global.html#deepMerge">deepMerge</a></li><li><a href="global.html#deleteCompressor">deleteCompressor</a></li><li><a href="global.html#deriveRootSpace">deriveRootSpace</a></li><li><a href="global.html#displayPreciseResults">displayPreciseResults</a></li><li><a href="global.html#displayResults">displayResults</a></li><li><a href="global.html#downloadConfigJSON">downloadConfigJSON</a></li><li><a href="global.html#downloadResultsCSV">downloadResultsCSV</a></li><li><a href="global.html#drawDim">drawDim</a></li><li><a href="global.html#drawFrontView">drawFrontView</a></li><li><a href="global.html#drawSchematics">drawSchematics</a></li><li><a href="global.html#drawSideView">drawSideView</a></li><li><a href="global.html#enableCoordinateTooltip">enableCoordinateTooltip</a></li><li><a href="global.html#ensureArrays">ensureArrays</a></li><li><a href="global.html#evaluateCompressorSafely">evaluateCompressorSafely</a></li><li><a href="global.html#evaporatorAlpha">evaporatorAlpha</a></li><li><a href="global.html#evaporatorCapacity">evaporatorCapacity</a></li><li><a href="global.html#exportSettings">exportSettings</a></li><li><a href="global.html#fitInverterCoefficients">fitInverterCoefficients</a></li><li><a href="global.html#gaussJordanSolve">gaussJordanSolve</a></li><li><a href="global.html#getCompTopWorldY">getCompTopWorldY</a></li><li><a href="global.html#getCompressorList">getCompressorList</a></li><li><a href="global.html#getCurrentCompressor">getCurrentCompressor</a></li><li><a href="global.html#getMaxShelvesForCompartment">getMaxShelvesForCompartment</a></li><li><a href="global.html#getRefrigerantProperties">getRefrigerantProperties</a></li><li><a href="global.html#getSettings">getSettings</a></li><li><a href="global.html#getUsableHeightForCompartment">getUsableHeightForCompartment</a></li><li><a href="global.html#handleInverterRun">handleInverterRun</a></li><li><a href="global.html#handleRun">handleRun</a></li><li><a href="global.html#importSettings">importSettings</a></li><li><a href="global.html#initCompartments">initCompartments</a></li><li><a href="global.html#initSettingsModal">initSettingsModal</a></li><li><a href="global.html#initThermoUI">initThermoUI</a></li><li><a href="global.html#inverterCompressorPerformance">inverterCompressorPerformance</a></li><li><a href="global.html#kExterior">kExterior</a></li><li><a href="global.html#kInterior">kInterior</a></li><li><a href="global.html#lambdaUrethane">lambdaUrethane</a></li><li><a href="global.html#lmtd">lmtd</a></li><li><a href="global.html#loadCompressors">loadCompressors</a></li><li><a href="global.html#loadConfigFromFile">loadConfigFromFile</a></li><li><a href="global.html#loadSettings">loadSettings</a></li><li><a href="global.html#newton2">newton2</a></li><li><a href="global.html#onCompFieldChange">onCompFieldChange</a></li><li><a href="global.html#openAddCompressorModal">openAddCompressorModal</a></li><li><a href="global.html#openEditCompressorModal">openEditCompressorModal</a></li><li><a href="global.html#openThermalSettings">openThermalSettings</a></li><li><a href="global.html#parseCompressorDataFile">parseCompressorDataFile</a></li><li><a href="global.html#polygonArea">polygonArea</a></li><li><a href="global.html#readGeometryFromPanel">readGeometryFromPanel</a></li><li><a href="global.html#refreshCompressorSelect">refreshCompressorSelect</a></li><li><a href="global.html#renderSettingsTabs">renderSettingsTabs</a></li><li><a href="global.html#resetAllSettings">resetAllSettings</a></li><li><a href="global.html#resetSettings">resetSettings</a></li><li><a href="global.html#resultToCSV">resultToCSV</a></li><li><a href="global.html#roundForDisplay">roundForDisplay</a></li><li><a href="global.html#runCalculation">runCalculation</a></li><li><a href="global.html#runThermalAnalysisDynamic">runThermalAnalysisDynamic</a></li><li><a href="global.html#runThermoAnalysis">runThermoAnalysis</a></li><li><a href="global.html#saveCompressors">saveCompressors</a></li><li><a href="global.html#saveThermalSettings">saveThermalSettings</a></li><li><a href="global.html#saveToStorage">saveToStorage</a></li><li><a href="global.html#setSelectedCompressor">setSelectedCompressor</a></li><li><a href="global.html#solveInner">solveInner</a></li><li><a href="global.html#solveTE_Brent">solveTE_Brent</a></li><li><a href="global.html#solveThermalSystem">solveThermalSystem</a></li><li><a href="global.html#syncConstraints">syncConstraints</a></li><li><a href="global.html#syncDisplay">syncDisplay</a></li><li><a href="global.html#toCuft">toCuft</a></li><li><a href="global.html#toThermalFormat">toThermalFormat</a></li><li><a href="global.html#toVolumeFormat">toVolumeFormat</a></li><li><a href="global.html#traverseAndComputePrecise">traverseAndComputePrecise</a></li><li><a href="global.html#updateRShowerVisibility">updateRShowerVisibility</a></li><li><a href="global.html#updateSettings">updateSettings</a></li><li><a href="global.html#upgradeConfig">upgradeConfig</a></li><li><a href="global.html#validateCabinet">validateCabinet</a></li><li><a href="global.html#validateHeatLoad">validateHeatLoad</a></li><li><a href="global.html#validateStructure">validateStructure</a></li><li><a href="global.html#walkBoundaries">walkBoundaries</a></li><li><a href="global.html#walkStructure">walkStructure</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.5</a> on Mon Jul 20 2026 09:24:41 GMT+0300 (توقيت شرق أوروبا الصيفي)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
