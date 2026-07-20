@@ -1,0 +1,13 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.refrigerator.calculator
+productName: Refrigerator Calculator
+files:
+  - filter:
+      - dist//*
+      - main.cjs
+      - package.json
+win:
+  target: portable
+electronVersion: 29.4.6

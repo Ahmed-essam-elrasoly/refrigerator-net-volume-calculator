@@ -10,6 +10,7 @@ import { calcHeatLoads } from './heatLoad.js';
 import { calcQCout } from './condenser.js';
 import { PHYSICAL_CONSTANTS } from './constants.js';
 import { compressorPower, getRefrigerantProperties, inverterCompressorPerformance } from './CompressorPerformance.js';
+import { lmtd } from './evaporator.js';
 
 const RHO_AIR       = PHYSICAL_CONSTANTS.air.density;   // kg/m³
 const CP_AIR        = PHYSICAL_CONSTANTS.air.cp;        // kJ/(kg·K)

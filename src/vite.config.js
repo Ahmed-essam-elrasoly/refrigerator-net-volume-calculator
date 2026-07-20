@@ -3,6 +3,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   // Serve files from the current root directory
   root: '.', 
+  // CRITICAL: This ensures asset paths are relative so they work in an offline .exe
+  base: './', 
   
   server: {
     port: 3000,
