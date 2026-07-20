@@ -1,26 +1,42 @@
-// evaporator.js – exact Excel evaporator model
+/**
+ * @file evaporator.js
+ * @description Exact physical model for calculating evaporator performance.
+ * Converts physical dimensions into heat transfer surface area and calculates
+ * the Log Mean Temperature Difference (LMTD) necessary for cooling.
+ */
+
 import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
 /**
- * Compute evaporator total surface area (m²)
- * Excel SIZE B29-B33: Fin area + Tube area + Side plate area
+ * Computes the total effective heat transfer surface area of the evaporator (m²).
+ * Accounts for fin area, exposed tube area, and side plate area.
+ * 
+ * @param {Object} evap - Evaporator geometric parameters.
+ * @returns {number} Total area in m².
  */
 export function computeEvaporatorArea(evap) {
   const { width_mm, height_mm, depth_mm, rows, tubeOD_mm,  finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
-  // Fin area (both sides) – Excel: (28*60 - π*(4^2))*2 / 1e6 per fin
+  
+  // Fin area (both sides)
   const tubeCrossArea = Math.PI * (tubeOD_mm/2)**2;
   const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6; // m²
   const totalFinArea = finAreaPerFin * numFins;
-  // Tube outer area – Excel: (π * tubeOD * width) * rows * 2 / 1e6
+  
+  // Tube outer area
   const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * 2 / 1e6;
-  // Side plate area (Excel B32) – usually zero
+  
+  // Side plate area
   const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows *2 ) * 2 / 1e6;
+  
   return totalFinArea + tubeArea + sidePlateArea;
 }
 
 /**
- * Air speed over evaporator (m/s) – Excel MAIN E19
- * v = fanAirflow_m3h / (width_m * depth_m) / 3600
+ * Calculates the superficial air velocity (m/s) passing over the evaporator face.
+ * 
+ * @param {Object} fanParam - Fan physical parameters (diameter, RPM, thickness).
+ * @param {Object} evap - Evaporator geometric parameters (width, depth).
+ * @returns {number} Air speed in m/s.
  */
 export function airSpeed(fanParam, evap) {
   const {fanDiam, fanRPM, fanThick} = fanParam
@@ -31,16 +47,23 @@ export function airSpeed(fanParam, evap) {
 }
 
 /**
- * Evaporator heat transfer coefficient (W/m²·°C) – Excel MAIN E21
- * α = 12.93 * v^0.415
+ * Calculates the empirical convective heat transfer coefficient (α) for the evaporator.
+ * 
+ * @param {number} v_ms - Air speed in m/s.
+ * @returns {number} Heat transfer coefficient in W/(m²·°C).
  */
 export function evaporatorAlpha(v_ms) {
   return 12.93 * Math.pow(v_ms, 0.415) * 1.16279; // convert to W/m²·°C
 }
 
 /**
- * Log mean temperature difference – Excel MAIN E20
- * LMTD = (T1 - T2) / ln((T1 - TE) / (T2 - TE))
+ * Calculates the Log Mean Temperature Difference (LMTD) across the evaporator.
+ * Used to determine the driving thermal force given inlet/outlet temperatures.
+ * 
+ * @param {number} T1 - Mixed air inlet temperature (°C).
+ * @param {number} T2 - Cold air supply/outlet temperature (°C).
+ * @param {number} TE - Refrigerant evaporating temperature (°C).
+ * @returns {number} LMTD in °C.
  */
 export function lmtd(T1, T2, TE) {
   const dT1 = T1 - TE;
@@ -48,22 +71,26 @@ export function lmtd(T1, T2, TE) {
 
   // Physical check: if TE is not lower than both inlet/outlet, heat transfer is impossible.
   if (dT1 <= 0 || dT2 <= 0) {
-    // Return arithmetic mean as a best-effort fallback, and log a warning.
     console.warn('LMTD: Invalid delta-T (TE >= T1 or TE >= T2). Returning arithmetic mean.');
     return (dT1 + dT2) / 2;
   }
 
   const ratio = dT1 / dT2;
-  // If the temperatures are practically equal, LMTD = dT1 = dT2
+  // If the temperatures are practically equal, avoid log(1) undefined behavior.
   if (Math.abs(ratio - 1.0) < 1e-6) {
     return dT1;
   }
 
   return (dT1 - dT2) / Math.log(ratio);
 }
+
 /**
- * Evaporator capacity (kcal/h) – Excel MAIN E23
- * Qevap = α * area * LMTD
+ * Calculates the final thermal cooling capacity of the evaporator.
+ * 
+ * @param {number} alpha - Heat transfer coefficient.
+ * @param {number} area - Total surface area.
+ * @param {number} LMTD - Log Mean Temperature Difference.
+ * @returns {number} Capacity in Watts.
  */
 export function evaporatorCapacity(alpha, area, LMTD) {
   return alpha * area * LMTD;

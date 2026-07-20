@@ -1,4 +1,9 @@
-// js/compressorManager.js
+/**
+ * @file compressorManager.js
+ * Manages the catalog of available compressors (both constant-speed and inverter).
+ * Handles loading standard defaults, saving custom user-added compressors to localStorage,
+ * and migrating legacy data structures (objects -> arrays).
+ */
 
 import { SJ54H_COMPONENTS } from './engine/thermo/defaultComponents.js';
 
@@ -92,7 +97,14 @@ const DEFAULT_COMPRESSORS = [
 let compressorList = [];
 let selectedCompressorId = 'EGX80CLC';
 
-/** Helper: ensures coefficient fields are flat arrays (handles legacy objects) */
+/** 
+ * Helper: ensures coefficient fields are flat arrays.
+ * Upgrades legacy data structures where coefficients were stored as keyed objects
+ * (e.g. { AW, BW... }) into the ordered arrays expected by the new solver matrix.
+ * 
+ * @param {Object} comp - Raw compressor definition.
+ * @returns {Object} Cleaned compressor definition.
+ */
 function ensureArrays(comp) {
   const toArray = (val, keys) => {
     if (Array.isArray(val)) return val;
@@ -106,6 +118,10 @@ function ensureArrays(comp) {
   };
 }
 
+/**
+ * Hydrates the internal state from localStorage. 
+ * Re-injects defaults if local storage is empty or applies the schema upgrade (`ensureArrays`).
+ */
 export function loadCompressors() {
   const saved = localStorage.getItem('compressorList');
   if (saved) {
@@ -131,30 +147,51 @@ export function loadCompressors() {
   selectedCompressorId = localStorage.getItem('selectedCompressorId') || 'EGX80CLC';
 }
 
+/**
+ * Persists the current catalog and user selection to localStorage.
+ */
 export function saveCompressors() {
   localStorage.setItem('compressorList', JSON.stringify(compressorList));
   localStorage.setItem('selectedCompressorId', selectedCompressorId);
 }
 
+/**
+ * @returns {Array<Object>} The full list of registered compressors.
+ */
 export function getCompressorList() {
   return compressorList;
 }
 
+/**
+ * @returns {Object} The currently selected compressor for thermodynamic calculations.
+ */
 export function getCurrentCompressor() {
   return compressorList.find(c => c.id === selectedCompressorId) || compressorList[0];
 }
 
+/**
+ * Selects an active compressor by ID and saves the preference.
+ * @param {string} id - The ID of the compressor to activate.
+ */
 export function setSelectedCompressor(id) {
   selectedCompressorId = id;
   saveCompressors();
 }
 
+/**
+ * Adds a new custom compressor to the catalog and saves state.
+ * @param {Object} comp - The new compressor definition (including performance data).
+ */
 export function addCompressor(comp) {
   // Always store coefficients as arrays
   compressorList.push(ensureArrays(comp));
   saveCompressors();
 }
 
+/**
+ * Deletes a compressor from the catalog. Auto-selects the fallback if the active one is deleted.
+ * @param {string} id - The ID to remove.
+ */
 export function deleteCompressor(id) {
   compressorList = compressorList.filter(c => c.id !== id);
   if (selectedCompressorId === id) selectedCompressorId = compressorList[0]?.id || '';

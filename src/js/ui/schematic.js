@@ -1,6 +1,22 @@
 /**
+ * @file schematic.js
+ * Renders the 2D CAD-like representations of the refrigerator configuration.
+ * Maps abstract geometric boundaries and user inputs directly onto an HTML5 Canvas.
+ */
+
+
+/**
  * Draw a dimension line with extension lines, arrows, and label.
- * Styled to standard CAD drafting representation.
+ * Styled to mimic standard CAD drafting representations.
+ * 
+ * @param {CanvasRenderingContext2D} ctx - The active canvas context.
+ * @param {number} x1 - Start X coordinate in pixels.
+ * @param {number} y1 - Start Y coordinate in pixels.
+ * @param {number} x2 - End X coordinate in pixels.
+ * @param {number} y2 - End Y coordinate in pixels.
+ * @param {number} offset - Pixel offset perpendicular to the line to draw the dimension.
+ * @param {string} label - The text label (e.g., '150mm').
+ * @param {Object} options - Aesthetic overrides.
  */
 export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   color = DRAW_THEME.color,
@@ -64,13 +80,14 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.fill();
   }
 
-  // Label
+  // Label text with opaque background interruption
   if (label) {
     const midX = (p1x + p2x) / 2 + textOffsetX;
     const midY = (p1y + p2y) / 2 + textOffsetY;
 
     ctx.translate(midX, midY);
 
+    // Keep text upright
     let textAngle = angle;
     if (textAngle > Math.PI / 2 + 0.01) textAngle -= Math.PI;
     else if (textAngle < -Math.PI / 2 + 0.01) textAngle += Math.PI;
@@ -84,7 +101,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     const padX = 4;
     const padY = 2;
 
-    // Draw opaque background to cleanly break the dimension line
     ctx.fillStyle = bgColor;
     ctx.beginPath();
     if (ctx.roundRect) {
@@ -94,7 +110,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     }
     ctx.fill();
 
-    // Draw text perfectly centered
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -103,9 +118,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   ctx.restore();
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Drawing theme
-// ──────────────────────────────────────────────────────────────────
 export const DRAW_THEME = {
   color: '#446688',
   lineWidth: 1,
@@ -115,9 +127,18 @@ export const DRAW_THEME = {
   textGap: 0,
 };
 
-// ──────────────────────────────────────────────────────────────────
-// Front view
-// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Renders the 2D front-facing elevation of the refrigerator.
+ * Displays compartment heights, widths, dividers, and fixed obstacles.
+ * 
+ * @param {HTMLCanvasElement} canvas - Target rendering canvas.
+ * @param {Object} geometry - The full cabinet geometry configuration.
+ * @param {Object} effectiveWalls - Computed thickest boundary constraints.
+ * @param {Object} layout - Node layout for compartment traversal.
+ * @param {Array} leaves - Calculated compartment node data.
+ * @param {Object} options - Visualization and obstacle metadata.
+ */
 export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, W, Hb = 0, walls = {} } = geometry;
@@ -250,7 +271,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
   }
-  // Fallback: detailed shelves
   else if (fittings && leaves) {
     const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
     let yOffset = effectiveWalls.top;
@@ -297,7 +317,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ─── Control Box & R‑Shower (bottom‑aligned, control box on divider) ───
+  // ─── Control Box & R‑Shower ───
   let freshIdx = -1;
   if (numCompartments === 1) {
     freshIdx = 0;
@@ -320,9 +340,8 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   if (freshIdx >= 0) {
     const compartmentHeight = freshHeight;
     const freshCompTop = freshTopY;
-    const freshCompBottom = freshTopY + compartmentHeight; // divider is at this Y
+    const freshCompBottom = freshTopY + compartmentHeight;
 
-    // Helper to draw a box with centred label
     function drawBox(x, y, w, h, label, fillColor, strokeColor) {
       ctx.fillStyle = fillColor;
       ctx.fillRect(x, y, w, h);
@@ -344,7 +363,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     const totalH_px = ctrlBoxH_px + rshowerH_px;
 
     if (both && totalH_px <= compartmentHeight * scale) {
-      // Control box at bottom (touches divider), R‑shower above it
       const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
       const rshowerY = ctrlBoxY - rshowerH_px;
 
@@ -357,14 +375,12 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
               'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
 
     } else if (ctrlBoxH > 0 && ctrlBoxW > 0) {
-      // Only control box – stick to divider
       const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
       const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
       drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
               'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
 
     } else if (rshowerH > 0 && rshowerW > 0) {
-      // Only R‑shower – keep at bottom (consistent behaviour)
       const rshowerY = (freshCompBottom * scale) - rshowerH_px;
       const rshowerX = (W / 2 - rshowerW / 2) * scale;
       drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
@@ -372,12 +388,12 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ── Outer cabinet stroke ──
+  // Outer cabinet stroke
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, W * scale, H * scale);
 
-  // Dashed Hb line
+  // Dashed Hb line for compressor step reference
   const hbY = (H - Hb - tRbottom1) * scale;
   let yAcc = intTop;
   let compIdx = -1;
@@ -421,9 +437,16 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   ctx.restore();
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Side view
-// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Renders the 2D side-profile elevation of the refrigerator.
+ * Recreates the compressor step geometry (Hb, Db1, Db2) and cross-sectional volumes.
+ * 
+ * @param {HTMLCanvasElement} canvas - Target rendering canvas.
+ * @param {Object} geometry - The full cabinet geometry configuration.
+ * @param {Object} effectiveWalls - Computed thickest boundary constraints.
+ * @param {Object} options - Visualization and obstacle metadata.
+ */
 export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, D, Hb, Db1, Db2, walls } = geometry;
@@ -476,6 +499,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
 
+  // Compressor step coordinates (outer)
   const xTopCB = Db1;
   const yTopCB = H - Hb;
   const xBottomCB = Db2;
@@ -508,7 +532,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // Insulation bands and cavities
+  // Insulation bands and internal cavities
   if (compHeights.length === 1) {
     ctx.fillStyle = '#f0f0f0';
     ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
@@ -594,7 +618,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // ----- Divider & doors -----
+  // Divider & doors
   let drawnDoors = [];
   if (compHeights.length === 2 && dividerThickness > 0) {
     const dividerY = innerTop + compHeights[0];
@@ -635,7 +659,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
   }
 
-  // Dimension labels for doors
   for (const door of drawnDoors) {
     const compIdx = door.compIndex;
     const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
@@ -694,10 +717,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Obstruction data ──
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
 
-  // Find the fresh compartment index and its world‑space boundaries
   let freshCompIdx = -1, freshTopWorld = 0, freshBottomWorld = 0;
   if (compHeights.length === 1) {
     freshCompIdx = 0;
@@ -717,8 +738,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // Place control box and R‑shower inside the fresh compartment,
-  // with control box at the bottom (touching divider) and R‑shower above.
+  // Obstructions (Control box, R-shower)
   if (freshCompIdx >= 0) {
     const rearX = compRear[freshCompIdx];
     const freshHeight = freshBottomWorld - freshTopWorld;
@@ -730,9 +750,8 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const totalH_needed = (drawCtrl ? ctrlBoxH_eff : 0) + (drawRshower ? rshowerH_eff : 0);
 
     if (totalH_needed <= freshHeight) {
-      let yCursor = freshBottomWorld;  // bottom of fresh compartment = divider
+      let yCursor = freshBottomWorld;
 
-      // Control box (bottommost)
       if (drawCtrl) {
         const boxTop = yCursor - ctrlBoxH_eff;
         const boxH = ctrlBoxH_eff * scale;
@@ -749,13 +768,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
         ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
 
         ctrlBoxFrontX = rearX + ctrlBoxL;
-        ctrlBoxTop = boxTop;        // world coords
+        ctrlBoxTop = boxTop;
         ctrlBoxBottom = yCursor;
-
-        yCursor = boxTop;           // move up for next element
+        yCursor = boxTop;
       }
 
-      // R‑Shower (above control box)
       if (drawRshower) {
         const boxTop = yCursor - rshowerH_eff;
         const boxH = rshowerH_eff * scale;
@@ -776,8 +793,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
         rshowerBottom = yCursor;
       }
     } else {
-      // Not enough space – fall back to drawing only the control box
-      // (or only the R‑shower if control box absent)
       if (drawCtrl) {
         const boxTop = freshBottomWorld - ctrlBoxH_eff;
         const boxH = ctrlBoxH_eff * scale;
@@ -818,7 +833,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Evaporator drawing (unchanged) ──
+  // Evaporator dashed boundary
   if (numCompartments === 1 && evapDepth > 0) {
     const rearX = compRear[0];
     const evapX = (rearX + evapDepth) * scale;
@@ -866,7 +881,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Shelves and rails ──
+  // Shelves and rails
   if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
     let yOffset = innerTop;
     for (let i = 0; i < compHeights.length; i++) {
@@ -926,12 +941,12 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Outer cabinet stroke ──
+  // Outer cabinet stroke
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
 
-  // ── Cascaded Dimension lines ──
+  // Cascaded Dimension lines
   drawDim(ctx, 0, H * scale, 0, 0, -60, `H: ${H.toFixed(0)}`);
   drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -35, `Hb: ${Hb.toFixed(0)}`);
   drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -15, `Db1: ${Db1.toFixed(0)}`);
@@ -969,7 +984,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     })
   );
 
-  // Compartment height dimensions - pushed further right to bypass door heights
   const compHeightDimX = (D + maxActualDoor) * scale + 40; 
   if (compHeights.length === 2) {
     let yPos = innerTop;
@@ -985,9 +999,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Click‑to‑show‑coordinate feature
-// ──────────────────────────────────────────────────────────────────
+/**
+ * Binds mouse events to the canvases to display real-world coordinates on hover/click.
+ * Maps canvas pixel space back to real-world millimeters.
+ * 
+ * @param {HTMLCanvasElement} frontCanvas - The front view canvas element.
+ * @param {HTMLCanvasElement} sideCanvas - The side view canvas element.
+ * @param {Function} getGeometryFn - Function returning current cabinet geometry.
+ */
 export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
   const tooltip = document.getElementById('schematicTooltip');
 
@@ -1005,14 +1024,14 @@ export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) 
 
       let worldX, worldY;
       if (isFront) {
-        const PAD = { left: 50, top: 40, right: 40, bottom: 40 }; // Matched drawing PAD
+        const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
         const drawW = canvas.width - PAD.left - PAD.right;
         const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
         worldX = (pixelX - PAD.left) / scale;
         worldY = (pixelY - PAD.top) / scale;
       } else {
-        const PAD = { left: 60, top: 40, right: 60, bottom: 40 }; // Matched drawing PAD
+        const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
         const drawW = canvas.width - PAD.left - PAD.right;
         const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.D, drawH / geometry.H);

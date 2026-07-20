@@ -1,5 +1,17 @@
-// src/js/engine/thermo/validateHeatLoad.js
+/**
+ * @file validateHeatLoad.js
+ * @description Provides sanity checks for thermodynamic inputs and generated heat loads
+ * to prevent the solver from running physically impossible scenarios.
+ */
 
+/**
+ * Validates temperature bounds, insulation viability, and final heat loads.
+ * 
+ * @param {Object} geom - Flat thermal geometry.
+ * @param {Object} temps - Abstract target temperatures.
+ * @param {Object} calculatedLoads - Calculated QF, QR, QEV.
+ * @returns {{isValid: boolean, errors: string[], warnings: string[]}}
+ */
 export function validateHeatLoad(geom, temps, calculatedLoads) {
     const errors = [];
     const warnings = [];
@@ -48,6 +60,7 @@ export function validateHeatLoad(geom, temps, calculatedLoads) {
     } else {
         errors.push("No calculated loads provided for validation.");
     }
+
     if (temps.TE !== undefined && temps.TF !== undefined && temps.TE >= temps.TF) {
         errors.push(`Evaporator temperature (TE: ${temps.TE}°C) must be lower than Freezer temperature (TF: ${temps.TF}°C) for heat extraction.`);
     }

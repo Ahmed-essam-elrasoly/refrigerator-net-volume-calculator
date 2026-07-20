@@ -1,3 +1,12 @@
+/**
+ * @file main.js
+ * Primary UI Orchestrator for the Refrigerator Volume Calculator.
+ * 
+ * Binds the DOM, manages dynamic user inputs, constructs the geometric 
+ * model required by the calculation engine, and renders outputs (both HTML 
+ * textual results and 2D Canvas schematics).
+ */
+
 import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
@@ -41,16 +50,22 @@ const comparisonContent   = document.getElementById('comparisonContent');
 const splitter            = document.getElementById('splitter');
 const leftPanel           = document.querySelector('.left-panel');
 
+// ---- Application State ------------------------------------------------
 let configSlotA = null;
 let configSlotB = null;
 let currentConfig = null;
 let dirtySchematic = false;
 let isResizing = false;
 let startX, startWidth;
+
+/**
+ * Toggles visibility of the R-Shower input group depending on if a 'fresh' compartment exists.
+ */
 function updateRShowerVisibility() {
   const hasFresh = compartmentsData.some(c => c.type === 'fresh');
   rshowerGroup.style.display = hasFresh ? '' : 'none';
 }
+
 document.getElementById('geom-Hb').addEventListener('input', () => {
   clampAllShelfCounts();
   syncDisplay();
@@ -62,6 +77,7 @@ document.getElementById('geom-bottom1').addEventListener('input', () => {
   syncDisplay();
   markDirty();
 });
+
 // Splitter logic (unchanged)
 splitter.addEventListener('mousedown', (e) => {
   isResizing = true;
@@ -107,6 +123,10 @@ divHorizInput.addEventListener('input', () => {
 
 initCompartments();
 
+/**
+ * Initializes the compartment array based on the requested count (1 or 2).
+ * Establishes default thickness values and structural ratios.
+ */
 function initCompartments() {
   const count = parseInt(numCompartmentsInput.value) || 1;
   compartmentsData = [];
@@ -125,6 +145,10 @@ function initCompartments() {
   updateRShowerVisibility();
 }
 
+/**
+ * Rebalances internal heights and ratios to ensure compartments perfectly fill
+ * the available internal space (External H - Top Insulation - Bottom Insulation - Dividers).
+ */
 function syncConstraints() {
   const count = compartmentsData.length;
   const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
@@ -175,6 +199,14 @@ function syncConstraints() {
   clampAllShelfCounts();
 }
 
+/**
+ * Handles live input changes for compartment fields (Type, Ratio, Height).
+ * Enforces min/max ratios and mutually exclusive types (Freezer/Fresh).
+ * 
+ * @param {number} compIdx - The array index of the compartment.
+ * @param {string} field - The property being modified.
+ * @param {any} value - The new input value.
+ */
 function onCompFieldChange(compIdx, field, value) {
   if (field === 'type') {
     compartmentsData[compIdx].type = value;
@@ -233,6 +265,9 @@ function onCompFieldChange(compIdx, field, value) {
   if (settings.autoCalculate) calculateBtn.click();
 }
 
+/**
+ * Renders state back to the corresponding DOM input fields.
+ */
 function syncDisplay() {
   const count = compartmentsData.length;
   for (let i = 0; i < count; i++) {
@@ -254,6 +289,9 @@ function syncDisplay() {
   }
 }
 
+/**
+ * Dynamically builds the HTML elements for the compartment configuration sections.
+ */
 function buildCompartmentUI() {
   const builder = document.getElementById('compartmentBuilder');
   builder.innerHTML = '';
@@ -352,6 +390,9 @@ function getCompTopWorldY(i) {
 
 /**
  * Usable shelf height for compartment i (mm), considering the compressor step.
+ * 
+ * @param {number} i - Compartment index
+ * @returns {number} Available height in mm.
  */
 function getUsableHeightForCompartment(i) {
   const H = parseFloat(document.getElementById('geom-H')?.value) || 0;
@@ -417,6 +458,13 @@ function fillGeometryDefaults() {
   set('geom-doorDikeTopWidth', 15);
 }
 
+/**
+ * Scrapes all UI inputs to build the final unified geometric definition.
+ * Applies logic to distribute wall/divider thicknesses specifically for the 
+ * top/bottom configurations.
+ * 
+ * @returns {Object} The complete `geometry` object mapped to the engine schema.
+ */
 function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
   const comps = compartmentsData;
@@ -594,9 +642,11 @@ function buildLayoutNodeForPrecise() {
 }
 
 /**
- * Compute obstacle volumes (evaporator, control box, R‑shower, rails, dikes)
- * All values in litres.
- * Returns both individual and total (rails + dikes + others).
+ * Computes volumetric deductions for obstacles (evaporator, control box, R‑shower, rails, dikes).
+ * Used to translate purely gross geometry into the 'Total Usable' volume.
+ * 
+ * @param {Object} geometry - The unified geometry object containing obstacle properties.
+ * @returns {Object} Individual volumes in Litres, and totals for rails/dikes vs all obstacles.
  */
 function computeObstacleVolumes(geometry) {
   const comps = geometry._compartments || compartmentsData;
@@ -672,9 +722,11 @@ function computeObstacleVolumes(geometry) {
 }
 
 /**
- * Display volume results using precise per‑compartment gross volumes.
- * Subtracts rails & dikes from gross to get the displayed Gross Volume.
- * Then subtracts remaining fixed elements for Total Volume.
+ * Submits computed volumes to the UI table.
+ * Applies obstacle subtractions to transform precise gross into display gross and total volumes.
+ * 
+ * @param {Array<Object>} leaves - Raw gross calculation results per compartment.
+ * @param {Object} geometry - The full geometry used for the obstacle calculation.
  */
 function displayPreciseResults(leaves, geometry) {
   // 1. Compute adjusted gross per leaf (subtract rails+dikes)
@@ -781,6 +833,12 @@ function displayPreciseResults(leaves, geometry) {
   document.getElementById('rdoorpuweight').textContent = roundForDisplay(rdoorPUVolL * 32 / 1000, 'kg');
 }
 
+/**
+ * Triggers the canvas rendering tools based on the current calculation state.
+ * 
+ * @param {Object} config - The active configuration to render.
+ * @param {Array<Object>} leaves - Evaluated compartment nodes.
+ */
 function drawSchematics(config, leaves) {
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1160,6 +1218,12 @@ compareSlotsBtn.addEventListener('click', () => {
 closeComparison.addEventListener('click', () => { comparisonModal.classList.add('hidden'); });
 window.addEventListener('click', (e) => { if (e.target === comparisonModal) comparisonModal.classList.add('hidden'); });
 
+/**
+ * Builds and renders the HTML table for side-by-side slot comparison.
+ * 
+ * @param {Object} resultA - Volume calculations from Slot A.
+ * @param {Object} resultB - Volume calculations from Slot B.
+ */
 function buildComparisonTable(resultA, resultB) {
   if (!resultA && !resultB) { comparisonContent.innerHTML = '<p>No configurations stored.</p>'; return; }
   const obstaclesA = resultA ? computeObstacleVolumes(configSlotA.cabinet.geometry) : { total: 0 };
