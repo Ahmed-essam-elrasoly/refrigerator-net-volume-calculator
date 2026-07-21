@@ -49,14 +49,24 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
 function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
   const logger = { log: (...args) => debug && console.log(...args), table: (data) => debug && console.table(data) };
   let x = [...x0], f, normF;
-
+  
+  logger.log(`\n--- Starting Newton2 --- Initial Guess: [${x[0].toFixed(3)}, ${x[1].toFixed(3)}]`);
+  
   try {
     f = F(x);
+    if (f.error) return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: f.error };
     normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
-  } catch (e) { return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` }; }
+  } catch (e) { 
+    logger.log(`Initial F(x) failed: ${e.message}`);
+    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` }; 
+  }
 
   for (let i = 0; i < maxIter; i++) {
-    if (normF <= tol) return { x, f, normF, converged: true, iterations: i + 1 };
+    logger.log(`[Iter ${i}] x=[${x[0].toFixed(3)}, ${x[1].toFixed(3)}], f=[${f[0].toFixed(2)}, ${f[1].toFixed(2)}], norm=${normF.toFixed(4)}`);
+    if (normF <= tol) {
+      logger.log(`-> Converged in ${i+1} iterations.`);
+      return { x, f, normF, converged: true, iterations: i + 1 };
+    }
 
     const J = [[0, 0], [0, 0]];
     try {
@@ -64,18 +74,22 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
         const h = Math.max(1e-7, Math.abs(x[j]) * 1e-6);
         const xp = [...x]; xp[j] += h;
         const fp = F(xp);
+        if (fp.error) throw new Error(fp.error);
         J[0][j] = (fp[0] - f[0]) / h; J[1][j] = (fp[1] - f[1]) / h;
       }
-    } catch (e) { return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian failed: ${e.message}` }; }
+    } catch (e) { 
+      logger.log(`Jacobian failed: ${e.message}`);
+      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian failed: ${e.message}` }; 
+    }
 
     const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
     let direction;
-    
+         
     if (Math.abs(det) > 1e-12) {
       const invDet = 1.0 / det;
       direction = [ -invDet * (J[1][1] * f[0] - J[0][1] * f[1]), -invDet * (-J[1][0] * f[0] + J[0][0] * f[1]) ];
     } else {
-      // Fallback to gradient descent if matrix is singular
+      logger.log(`[Iter ${i}] Warning: Matrix singular or saddle point (det=${det}). Using gradient descent.`);
       direction = [ -(J[0][0] * f[0] + J[1][0] * f[1]), -(J[0][1] * f[0] + J[1][1] * f[1]) ];
       if (Math.sqrt(direction[0]**2 + direction[1]**2) < 1e-12) return { x, f, normF, converged: false, iterations: i+1, error: 'Saddle point.' };
     }
@@ -86,20 +100,29 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
         Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
         Math.max(bounds[1][0], Math.min(bounds[1][1], x[1] + alpha * direction[1]))
       ];
-      try { newF = F(newX); newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]); } 
-      catch (e) { alpha *= 0.5; continue; }
-
+      try { 
+        newF = F(newX); 
+        if (newF.error) throw new Error(newF.error);
+        newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]); 
+      } catch (e) { 
+        alpha *= 0.5; 
+        continue; 
+      }
+      
       if (newNorm < normF - 1e-4 * alpha * normF) { accept = true; break; }
       alpha *= 0.5;
     }
 
     if (!accept) {
+      logger.log(`[Iter ${i}] Line search failed! Alpha hit bottom.`);
       if (Math.abs(x[1] - bounds[1][0]) < 1e-4 && direction[1] < 0) return { x, f, normF, converged: true, iterations: i+1, warning: 'Compressor oversized limit.' };
       if (Math.abs(x[1] - bounds[1][1]) < 1e-4 && direction[1] > 0) return { x, f, normF, converged: true, iterations: i+1, warning: 'Compressor undersized limit.' };
       return { x, f, normF, converged: false, iterations: i+1, error: 'Line search failed.' };
     }
     x = newX; f = newF; normF = newNorm;
   }
+  
+  logger.log(`Max iterations reached without convergence.`);
   return { x, f, normF, converged: false, iterations: maxIter, error: 'Max iterations reached' };
 }
 
@@ -123,36 +146,48 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     initialGuess = [innerOpts.initialT2 ?? -21.25, innerOpts.forcePR ?? innerOpts.initialPR ?? 0.59];
   }
 
-  const F = (vars) => {
+const F = (vars) => {
     const T2 = vars[0], secondVar = vars[1];
     const PR = isInverterMode ? fixedPR : secondVar, RPM = isInverterMode ? secondVar : undefined;
     
     const loads = calcHeatLoads(geom, { ...fixedTemps, T2, TC, PR, TE: -25 }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W ?? 2.1, freezerPos, condenserConfig.backCondenser);
     
-    // Evaluate LMTD target vs physics
-    const LMTD_req = ((loads.QF + loads.QR + loads.QEV) / PR) / ((12.93 * Math.pow(fan.totalAirflow / ((evapGeom?.evapWidth_mm ?? 460)/1000 * (evapGeom?.evapDepth_mm ?? 60)/1000) / 3600, 0.415) * 1.16279) * (evapGeom?.evapArea_m2 ?? 1.754));
+    const LMTD_req = ((loads.QF + loads.QR + loads.QEV) / PR) / ((12.93 * Math.pow(fan.fanAirflow_m3h / ((evapGeom?.evapWidth_mm ?? 460)/1000 * (evapGeom?.evapDepth_mm ?? 60)/1000) / 3600, 0.415) * 1.16279) * (evapGeom?.evapArea_m2 ?? 1.754));
     
-    const T3 = T2 + loads.QEV / (fan.totalAirflow * CV * PR);
+    const T3 = T2 + loads.QEV / (fan.fanAirflow_m3h * CV * PR);
     const denomR = CV * Math.max(0.01, fixedTemps.TR - T3) * PR;
-    const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0;
-    const MF = fan.totalAirflow - MR;
-    const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.totalAirflow;
+    const MR = denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0;
+    const MF = fan.fanAirflow_m3h - MR;
+    const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.fanAirflow_m3h;
+    const maxPossibleLMTD = (T1 - T2); // actually max possible is T1 - T2 (if TE = T2)
+    if (LMTD_req > maxPossibleLMTD * 0.95) {
+      // The required LMTD exceeds physical limit; force a large error
+      return { error: 'LMTD_req too large' };
+    }
 
     const calculated_TE = solveTE_Brent(T1, T2, LMTD_req);
-    if (!isFinite(calculated_TE)) return { error: 'TE search failed: LMTD impossible' };
-
+    
+    if (!isFinite(calculated_TE)) {
+      if (innerOpts.debug) console.warn(`[Physics Error] TE search failed. LMTD_req: ${LMTD_req.toFixed(2)}, T1: ${T1.toFixed(2)}, T2: ${T2.toFixed(2)}`);
+      return { error: 'TE search failed: LMTD impossible' };
+    }
+    
     const comp = evaluateCompressorSafely(calculated_TE, TC, refIndex, compParams, RPM);
-    return [
-      loads.QF - MF * CV * (fixedTemps.TF - T3) * PR,
-      (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR
-    ];
-  };
+    
+    const f1 = loads.QF - MF * CV * (fixedTemps.TF - T3) * PR;
+    const f2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
 
-  let res = newton2(F, initialGuess, [dx, dx], tol, maxIter, bounds, false);
+    if (innerOpts.debug) {
+      console.log(`[Physics] T2:${T2.toFixed(2)}, PR/RPM:${secondVar.toFixed(2)} | Loads(QF/QR/QEV): ${loads.QF.toFixed(1)}/${loads.QR.toFixed(1)}/${loads.QEV.toFixed(1)} | TE: ${calculated_TE.toFixed(2)} | Qcomp: ${(comp.QCompressor * PR).toFixed(1)} | Res: [${f1.toFixed(2)}, ${f2.toFixed(2)}]`);
+    }
+
+    return [f1, f2];
+  };
+  let res = newton2(F, initialGuess, [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
   if (!res.converged) {
     if (!res.error || (!res.error.includes('undersized') && !res.error.includes('oversized'))) {
       for (const [t2, pr] of [[initialGuess[0], 0.4], [initialGuess[0]-2, 0.5], [-21, 0.3]]) {
-        res = newton2(F, [t2, pr], [dx, dx], tol, maxIter, bounds, false);
+        res = newton2(F, [t2, pr], [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
         if (res.converged) break;
       }
     }
@@ -168,8 +203,8 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     T2: fT2, PR: fPR, RPM: fRPM, TE, converged: true, iterations: res.iterations, warning: res.warning,
     heatLoads: loads,
     compressor: { etaV: comp.VolumetricEfficiency, coolingCapacity: comp.QCompressor, inputPower: comp.CompPower, COP: comp.QCompressor / comp.CompPower, massFlow: comp.massFlow, Pe: comp.Pe, Pc: comp.Pc },
-    MR: (denomR => denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.totalAirflow * CV * fPR))) * fPR),
-    MF: fan.totalAirflow - (denomR => denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.totalAirflow * CV * fPR))) * fPR)
+    MR: (denomR => denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.fanAirflow_m3h * CV * fPR))) * fPR),
+    MF: fan.fanAirflow_m3h - (denomR => denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.fanAirflow_m3h * CV * fPR))) * fPR)
   };
 }
 
@@ -185,7 +220,7 @@ function solveTE_Brent(T1, T2, LMTD_req, tol = 1e-4) {
   };
 
   let a = -80.0, b = T2 - 0.01;
-  while (f(a) * f(b) > 0 && a > -280) a -= 10;
+  while (f(a) * f(b) > 0 && a > -320) a -= 20;
   if (f(a) * f(b) > 0) return NaN;
 
   let fa = f(a), fb = f(b);
@@ -210,11 +245,11 @@ function solveTE_Brent(T1, T2, LMTD_req, tol = 1e-4) {
 
 function calculateNewTE(result, fan, evapGeom, TF, TR) {
   const { MR, MF, T2 } = result;
-  const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
+  const T1 = (MF * TF + MR * TR) / fan.fanAirflow_m3h;
   const faceArea = ((evapGeom?.evapWidth_mm ?? 460)/1000) * ((evapGeom?.evapDepth_mm ?? 60)/1000);
-  const alpha = 12.93 * 1.16279 * Math.pow(fan.totalAirflow / faceArea / 3600, 0.415);
+  const alpha = 12.93 * 1.16279 * Math.pow(fan.fanAirflow_m3h / faceArea / 3600, 0.415);
   
-  const NTU = (alpha * (evapGeom?.evapArea_m2 ?? 1.754)) / ((fan.totalAirflow / 3600) * RHO_AIR * CP_AIR * 1000);
+  const NTU = (alpha * (evapGeom?.evapArea_m2 ?? 1.754)) / ((fan.fanAirflow_m3h / 3600) * RHO_AIR * CP_AIR * 1000);
   const effectiveness = 1 - Math.exp(-NTU);
   
   return effectiveness < 1e-6 ? T1 : T1 - (T1 - T2) / effectiveness;
@@ -303,7 +338,7 @@ function evaluateSafetyCheckpoints(result, config, TE_conv) {
 
   const peakResult = solveThermalSystem(peakConfig, TE_conv);
   if (!peakResult.converged) result.warnings.push("Peak heat load evaluation flagged: System cannot physically balance at 43 °C.");
-  else if (((12.93 * Math.pow(config.fan.totalAirflow / (((config.evapGeom?.evapWidth_mm ?? 460)/1000) * ((config.evapGeom?.evapDepth_mm ?? 60)/1000)) / 3600, 0.415) * 1.16279) * (config.evapGeom?.evapArea_m2 ?? 1.754) * lmtd((result.MF * config.fixedTemps.TF + result.MR * config.fixedTemps.TR) / config.fan.totalAirflow, result.T2, result.T2 - 2)) < 1.15 * (peakResult.heatLoads.QF + peakResult.heatLoads.QR + peakResult.heatLoads.QEV)) {
+  else if (((12.93 * Math.pow(config.fan.fanAirflow_m3h / (((config.evapGeom?.evapWidth_mm ?? 460)/1000) * ((config.evapGeom?.evapDepth_mm ?? 60)/1000)) / 3600, 0.415) * 1.16279) * (config.evapGeom?.evapArea_m2 ?? 1.754) * lmtd((result.MF * config.fixedTemps.TF + result.MR * config.fixedTemps.TR) / config.fan.fanAirflow_m3h, result.T2, result.T2 - 2)) < 1.15 * (peakResult.heatLoads.QF + peakResult.heatLoads.QR + peakResult.heatLoads.QEV)) {
     result.warnings.push(`Evaporator lacks 15% physical safety margin at 43°C ambient.`);
   }
   return result;

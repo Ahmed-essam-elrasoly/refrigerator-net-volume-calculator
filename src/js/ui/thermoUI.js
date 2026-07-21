@@ -28,29 +28,6 @@ import { INVERTER_EXAMPLE_COMPONENTS } from '../engine/thermo/defaultComponents.
 import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
 
 
-/**
- * Computes volumetric fan airflow from physical diameter and RPM.
- * Uses a simplified axial-flow fan model.
- * 
- * @param {Object} fanParam - Contains fanDiam (mm) and fanRPM.
- * @returns {number} The calculated airflow in m³/h.
- */
-function computeFanAirflow(fanParam) {
-  const { fanDiam, fanRPM } = fanParam;
-  if (!fanParam || !Number.isFinite(fanDiam) || fanDiam <= 0 ||
-      !Number.isFinite(fanRPM)  || fanRPM  <= 0) {
-    throw new Error(
-      'Fan diameter (mm) and RPM must be positive numbers. ' +
-      'Please enter them in Advanced Settings.'
-    );
-  }
-  const D = fanDiam / 1000; // convert to meters
-  const tipSpeed = (Math.PI * D * fanRPM) / 60;
-  const axialVelocity = tipSpeed * 0.15;   // typical axial-to-tip velocity ratio
-  const area = (Math.PI * D * D) / 4;
-  const flow_m3s = axialVelocity * area;
-  return flow_m3s * 3600; // convert m³/s to m³/h
-}
 
 // Module-level state for advanced parameters
 let thermalAdvanced = {
@@ -187,6 +164,7 @@ function buildThermalModalOnce() {
         <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
         <label>Depth (mm): <input id="thermoEvapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
+        <label>Layers: <input id="evapLayers" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
         <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
@@ -196,9 +174,10 @@ function buildThermalModalOnce() {
 
       <fieldset>
         <legend>Fan Parameters</legend>
-        <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
+        <label>Tip Diameter (mm): <input id="tipDiam_mm" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
-        <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
+        <label>Hub Diameter (mm): <input id="hubDiam_mm" type="number" step="any"></label>
+        <label>Pitch Angle (°): <input id="PitchAngle_degree" type="number" step="any"></label>
         <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
       </fieldset>
 
@@ -236,14 +215,16 @@ function buildThermalModalOnce() {
     evapHeight: document.getElementById('evapHeight'),
     thermoEvapDepth: document.getElementById('thermoEvapDepth'),
     evapRows: document.getElementById('evapRows'),
+    evapLayers: document.getElementById('evapLayers'),
     evapTubeOD: document.getElementById('evapTubeOD'),
     evapFinHeight: document.getElementById('evapFinHeight'),
     evapFinLength: document.getElementById('evapFinLength'),
     evapNumFins: document.getElementById('evapNumFins'),
     evapSidePlateNo: document.getElementById('evapSidePlateNo'),
-    fanDiam: document.getElementById('fanDiam'),
+    tipDiam_mm: document.getElementById('tipDiam_mm'),
     fanRPM: document.getElementById('fanRPM'),
-    fanThick: document.getElementById('fanThick'),
+    hubDiam_mm: document.getElementById('hubDiam_mm'),
+    PitchAngle_degree: document.getElementById('PitchAngle_degree'),
     fanInputPower: document.getElementById('thermoFanInputPower'),
     compressorSelect: document.getElementById('thermoCompressorSelect'),
     subcool: document.getElementById('thermoSubcool'),
@@ -289,7 +270,8 @@ function openThermalSettings() {
   thermalModalInputs.evapWidth.value       = evap.width_mm ?? 460;
   thermalModalInputs.evapHeight.value      = evap.height_mm ?? 150;
   thermalModalInputs.thermoEvapDepth.value = evap.depth_mm ?? 60;
-  thermalModalInputs.evapRows.value        = evap.rows ?? 2;
+  thermalModalInputs.evapRows.value        = evap.rows ?? 7;
+  thermalModalInputs.evapLayers.value      = evap.layers ?? 2;
   thermalModalInputs.evapTubeOD.value      = evap.tubeOD_mm ?? 8;
   thermalModalInputs.evapFinHeight.value   = evap.finHeight_mm ?? 150;
   thermalModalInputs.evapFinLength.value   = evap.finLength_mm ?? 460;
@@ -297,9 +279,10 @@ function openThermalSettings() {
   thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
 
   const fanP = settings.fanParam || {};
-  thermalModalInputs.fanDiam.value  = fanP.fanDiam ?? 100;
+  thermalModalInputs.tipDiam_mm.value  = fanP.tipDiam_mm ?? 220;
   thermalModalInputs.fanRPM.value   = fanP.fanRPM ?? 2200;
-  thermalModalInputs.fanThick.value = fanP.fanThick ?? 25;
+  thermalModalInputs.hubDiam_mm.value = fanP.hubDiam_mm ?? 236;
+  thermalModalInputs.PitchAngle_degree.value = fanP.PitchAngle_degree ?? 30;
   thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
   thermalModalInputs.subcool.value       = thermalAdvanced.subcool;
@@ -343,6 +326,7 @@ function saveThermalSettings() {
     height_mm:      parseFloat(thermalModalInputs.evapHeight.value),
     depth_mm:       parseFloat(thermalModalInputs.thermoEvapDepth.value),
     rows:           parseInt(thermalModalInputs.evapRows.value),
+    layers:         parseInt(thermalModalInputs.evapLayers.value),
     tubeOD_mm:      parseFloat(thermalModalInputs.evapTubeOD.value),
     finHeight_mm:   parseFloat(thermalModalInputs.evapFinHeight.value),
     finLength_mm:   parseFloat(thermalModalInputs.evapFinLength.value),
@@ -351,9 +335,10 @@ function saveThermalSettings() {
   };
 
   settings.fanParam = {
-    fanDiam:  parseFloat(thermalModalInputs.fanDiam.value),
+    tipDiam_mm:  parseFloat(thermalModalInputs.tipDiam_mm.value),
     fanRPM:   parseFloat(thermalModalInputs.fanRPM.value),
-    fanThick: parseFloat(thermalModalInputs.fanThick.value),
+    hubDiam_mm: parseFloat(thermalModalInputs.hubDiam_mm.value),
+    PitchAngle_degree: parseFloat(thermalModalInputs.PitchAngle_degree.value),
   };
 
   updateSettings(settings);
@@ -815,9 +800,11 @@ function handleRun() {
   const refrigerant = document.getElementById('thermoRefrigerant')?.value || 'R-600a';
 
   const fanParam = settings.fanParam || {};
+  const evapParam = settings.evaporator || {}; // Grab the evaporator settings
   let fanFlow;
   try {
-    fanFlow = computeFanAirflow(fanParam);
+    // Pass evapParam as the 2nd argument and use the correct return property
+    fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h; 
   } catch (e) {
     showError(e.message, 'inverterErrors');
     return;
@@ -835,7 +822,7 @@ function handleRun() {
   const config = buildDefaultConfig({
     geom, freezerPosition, refrigerant, subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
   });
   if (settings.condenser) {
@@ -952,7 +939,8 @@ function handleInverterRun() {
 
   const fanParam = settings.fanParam || {};
   let fanFlow;
-  try { fanFlow = computeFanAirflow(fanParam); } catch (e) { showError(e.message, 'inverterErrors'); return; }
+  const evapParam = settings.evaporator || {};
+  try { fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h; } catch (e) { showError(e.message, 'inverterErrors'); return; }
   if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
     showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors'); return;
   }
@@ -962,7 +950,7 @@ function handleInverterRun() {
   const config = buildDefaultConfig({
     geom, freezerPosition: freezerPos, refrigerant, subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-    fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+    fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
     condenserConfig: {
       sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
@@ -992,7 +980,10 @@ function handleInverterRun() {
     rpmMin: comp.rpmMin || 1600, rpmMax: comp.rpmMax || 4500,
   };
   config.inverterPR = PR;
-
+  if (!settings.evaporator || settings.evaporator.evapArea_m2 <= 0) {
+    showError('Evaporator area is not set. Please configure in Advanced Settings.');
+    return;
+  }
   const result = runThermoAnalysis(config);
   if (!result.success) { showError(result.errors.join('; '), 'inverterErrors'); return; }
   if (result.warnings.length) showWarnings(result.warnings, 'inverterErrors');

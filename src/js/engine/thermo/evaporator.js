@@ -15,18 +15,18 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
  * @returns {number} Total area in m².
  */
 export function computeEvaporatorArea(evap) {
-  const { width_mm, height_mm, depth_mm, rows, tubeOD_mm,  finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
+  const { width_mm, height_mm, depth_mm, rows, layers, tubeOD_mm,  finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
   
   // Fin area (both sides)
   const tubeCrossArea = Math.PI * (tubeOD_mm/2)**2;
-  const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6; // m²
+  const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * layers / 1e6; // m²
   const totalFinArea = finAreaPerFin * numFins;
   
   // Tube outer area
-  const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * 2 / 1e6;
+  const tubeArea = (Math.PI * tubeOD_mm * width_mm) * rows * layers / 1e6;
   
   // Side plate area
-  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows *2 ) * 2 / 1e6;
+  const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows *layers ) * 2 / 1e6;
   
   return totalFinArea + tubeArea + sidePlateArea;
 }
@@ -39,11 +39,30 @@ export function computeEvaporatorArea(evap) {
  * @returns {number} Air speed in m/s.
  */
 export function airSpeed(fanParam, evap) {
-  const {fanDiam, fanRPM, fanThick} = fanParam
-  const fanAirflow_CFM = (Math.PI * (fanDiam/2)**2 * fanThick) * fanRPM / 28_316_846.6; // CFM
-  const fanAirflow_m3h = fanAirflow_CFM * 1.699; // convert CFM to m³/h
+  const {tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree} = fanParam
+  if (!fanParam || typeof fanParam !== 'object') {
+    throw new Error('fanParam is missing or invalid');
+  }
+  if ([tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree].some(v => v == null || isNaN(v))) {
+    throw new Error('fanParam missing required fields: tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree');
+  }
+
+  const tipDiam_m = tipDiam_mm / 1000;
+  const hubDiam_m = hubDiam_mm / 1000;
+  const R = tipDiam_m / 2;
+  const r = hubDiam_m / 2;
+
+  // Axial fan flow rate: Q [m³/s] = π² · n [rev/s] · (R² − r²) · (R + r) · tan(θ)
+  const Q_m3s = Math.PI ** 2 * (fanRPM / 60) * (R ** 2 - r ** 2) * (R + r) * Math.tan(PitchAngle_degree * Math.PI / 180);
+  const fanAirflow_m3h = Q_m3s * 3600;   // convert to m³/h (used by the rest of the engine)
+
   const frontArea_m2 = (evap.width_mm * evap.depth_mm) / 1e6;
-  return fanAirflow_m3h / frontArea_m2 / 3600; // m/s
+  if (frontArea_m2 <= 0) throw new Error('Evaporator face area is zero or negative');
+
+  const v_ms = fanAirflow_m3h / frontArea_m2 / 3600;   // m/s
+  const fanAirflow_cfm = fanAirflow_m3h * 0.588578;    // m³/h → CFM
+
+  return { v_ms, fanAirflow_m3h, fanAirflow_cfm };
 }
 
 /**

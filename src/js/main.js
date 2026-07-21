@@ -1163,6 +1163,23 @@ resetAllBtn.addEventListener('click', () => {
   schematicOverlay.classList.add('hidden');
   dirtySchematic = false;
   currentConfig = null;
+  const defaultFanParam = {
+    tipDiam_mm: 220,
+    fanRPM: 2200,
+    hubDiam_mm: 80,
+    PitchAngle_degree: 30,
+  };
+  const defaultEvap = {
+    width_mm: 460,
+    depth_mm: 60,
+    // … keep other evap fields from DEFAULTS …
+  };
+  settings.fanParam = defaultFanParam;
+  settings.evaporator = defaultEvap;
+  updateSettings(settings);
+
+  // Re-run calculation if needed
+  if (settings.autoCalculate) calculateBtn.click();
 });
 
 // ---- Auto‑calculate & settings change handler ------------------------

@@ -44,7 +44,7 @@ export function runThermoAnalysis(config) {
   }
 
   if (config.fan) {
-    if (!config.fan.totalAirflow) errors.push('fan.totalAirflow is required.');
+    if (!config.fan.fanAirflow_m3h) errors.push('fan.fanAirflow_m3h is required.');
     config.fan.density = config.fan.density ?? PHYSICAL_CONSTANTS.air.density;
     config.fan.cp = config.fan.cp ?? PHYSICAL_CONSTANTS.air.cp;
   }
@@ -163,7 +163,8 @@ export function buildDefaultConfig(overrides = {}) {
       TR: 3,
       TE: -23.3,
     },
-    fan: {
+fan: {
+      fanAirflow_m3h: fan.totalAirflow_m3h,
       totalAirflow: fan.totalAirflow_m3h,
       inputPower_W: fan.inputPower_W,
     },

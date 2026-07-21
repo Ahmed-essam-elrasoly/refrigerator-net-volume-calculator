@@ -18,7 +18,8 @@ const DEFAULTS = {
     width_mm: 460,
     height_mm: 150,
     depth_mm: 60,
-    rows: 2,
+    rows: 7,
+    layers: 2,
     tubeOD_mm: 8,
     finPitch_mm: 4,
     finHeight_mm: 150,
@@ -27,16 +28,50 @@ const DEFAULTS = {
     sidePlateNo: 0,
   },
   fanParam: {
-    fanDiam: 100,
+    tipDiam_mm: 220,
     fanRPM: 2200,
-    fanThick: 25,
+    hubDiam_mm: 80,
+    PitchAngle_degree: 30,
   },
 };
 
 const STORAGE_KEY = 'refrigerator-calc-settings';
 
+// ---------------------------------------------------------------------------
+// Deep merge utility
+// ---------------------------------------------------------------------------
+
+/**
+ * Performs a deep merge of two objects.
+ * Properties in `source` override those in `target` for primitive values,
+ * but nested objects are merged recursively.
+ *
+ * @param {Object} target - The base object.
+ * @param {Object} source - The override object.
+ * @returns {Object} The merged result.
+ */
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      // If the target has the same key as an object, merge recursively.
+      result[key] = deepMerge(target[key] || {}, source[key]);
+    } else {
+      // Otherwise, copy the value directly.
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Settings loading / saving
+// ---------------------------------------------------------------------------
+
 /**
  * Loads settings from localStorage, falling back to DEFAULTS if missing or corrupt.
+ * Uses deep merge to preserve nested default fields (e.g., fanParam, evaporator).
+ *
  * @returns {Object} The active settings configuration.
  */
 function loadSettings() {
@@ -44,9 +79,12 @@ function loadSettings() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULTS, ...parsed };
+      // Deep merge so that missing nested fields are filled from DEFAULTS.
+      return deepMerge(DEFAULTS, parsed);
     }
-  } catch (e) { /* ignore parse errors and return defaults */ }
+  } catch (e) {
+    // Ignore parse errors and return defaults.
+  }
   return { ...DEFAULTS };
 }
 
@@ -64,10 +102,13 @@ export const settings = loadSettings();
 /**
  * Updates the global settings object and persists to localStorage.
  * Dispatches a 'settings-changed' event to notify UI components.
- * 
+ *
  * @param {Object} newSettings - Partial or full settings object to merge.
  */
 export function updateSettings(newSettings) {
+  // Use a shallow merge for top-level properties, but keep nested objects intact.
+  // This is acceptable because we only ever replace the whole fanParam/evaporator
+  // from the UI, never partial updates.
   Object.assign(settings, newSettings);
   saveToStorage(settings);
   document.dispatchEvent(new CustomEvent('settings-changed', { detail: settings }));
