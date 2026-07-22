@@ -46,7 +46,9 @@ export function airSpeed(fanParam, evap) {
   if ([tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree].some(v => v == null || isNaN(v))) {
     throw new Error('fanParam missing required fields: tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree');
   }
-
+  if (hubDiam_mm >= tipDiam_mm) {
+    throw new Error(`Fan hub diameter (${hubDiam_mm}mm) must be smaller than tip diameter (${tipDiam_mm}mm).`);
+  }
   const tipDiam_m = tipDiam_mm / 1000;
   const hubDiam_m = hubDiam_mm / 1000;
   const R = tipDiam_m / 2;
@@ -61,6 +63,7 @@ export function airSpeed(fanParam, evap) {
 
   const v_ms = fanAirflow_m3h / frontArea_m2 / 3600;   // m/s
   const fanAirflow_cfm = fanAirflow_m3h * 0.588578;    // m³/h → CFM
+  console.log(`[Fan param] tipDiam_mm=${tipDiam_mm} fanRPM=${fanRPM} hubDiam_mm=${hubDiam_mm} PitchAngle_degree=${PitchAngle_degree} | Q_m3s=${Q_m3s.toFixed(4)} m³/s, fanAirflow_m3h=${fanAirflow_m3h.toFixed(2)} m³/h, v_ms=${v_ms.toFixed(2)} m/s, fanAirflow_cfm=${fanAirflow_cfm.toFixed(2)} CFM`);
 
   return { v_ms, fanAirflow_m3h, fanAirflow_cfm };
 }

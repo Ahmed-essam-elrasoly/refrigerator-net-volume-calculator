@@ -28,9 +28,9 @@ const DEFAULTS = {
     sidePlateNo: 0,
   },
   fanParam: {
-    tipDiam_mm: 220,
+    tipDiam_mm: 110,
     fanRPM: 2200,
-    hubDiam_mm: 80,
+    hubDiam_mm: 45.6,
     PitchAngle_degree: 30,
   },
 };

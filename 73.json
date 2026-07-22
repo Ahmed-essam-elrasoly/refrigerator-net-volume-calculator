@@ -3,7 +3,7 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-21T20:07:32.185Z"
+    "updatedAt": "2026-07-22T06:52:14.052Z"
   },
   "cabinet": {
     "geometry": {
@@ -168,15 +168,15 @@
       "backPipePitch_mm": 0
     },
     "fanParam": {
-      "tipDiam_mm": 220,
+      "tipDiam_mm": 110,
       "fanRPM": 2200,
-      "hubDiam_mm": 236,
+      "hubDiam_mm": 45.6,
       "PitchAngle_degree": 30
     },
     "compressor": {
-      "id": "rrrrr",
-      "name": "rrrrr",
-      "model": "rrrrr",
+      "id": "123",
+      "name": "123",
+      "model": "123",
       "voltage": 220,
       "frequency": 50,
       "isInverter": true,

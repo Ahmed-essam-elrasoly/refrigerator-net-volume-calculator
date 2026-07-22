@@ -302,7 +302,7 @@ export function inverterCompressorPerformance(TE, TC, RPM, refrigerantIndex, com
 
   const prop = getRefrigerantProperties(refrigerantIndex);
   const Pe = prop.satPressure(TE + KELVIN_OFFSET);
-  
+  console.log(`[INV-PERF] RPM=${RPM} TE=${TE} TC=${TC} | Q.type=${Q.type} W.type=${W.type} | QCompressor=${QCompressor} CompPower=${CompPower} Pe=${Pe}`);
   return {
     QCompressor, CompPower,
     massFlow: QCompressor * 3.6 / (prop.gasEnthalpy(SUCTION_TEMP_C + KELVIN_OFFSET, Pe) - prop.liquidEnthalpy(SUCTION_TEMP_C)),

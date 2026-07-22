@@ -47,7 +47,10 @@ function evaluateCompressorSafely(TE, TC, refIndex, compParams, RPM) {
  * Solves the F1 (Freezer Mass Balance) and F2 (System Capacity Balance) functions.
  */
 function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
-  const logger = { log: (...args) => debug && console.log(...args), table: (data) => debug && console.table(data) };
+  const logger = { 
+    log: (...args) => debug && console.log(...args),
+    table: (data) => debug && console.table(data)
+  };
   let x = [...x0], f, normF;
   
   logger.log(`\n--- Starting Newton2 --- Initial Guess: [${x[0].toFixed(3)}, ${x[1].toFixed(3)}]`);
@@ -58,7 +61,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
   } catch (e) { 
     logger.log(`Initial F(x) failed: ${e.message}`);
-    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` }; 
+    return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
   }
 
   for (let i = 0; i < maxIter; i++) {
@@ -72,14 +75,28 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     try {
       for (let j = 0; j < 2; j++) {
         const h = Math.max(1e-7, Math.abs(x[j]) * 1e-6);
-        const xp = [...x]; xp[j] += h;
-        const fp = F(xp);
-        if (fp.error) throw new Error(fp.error);
-        J[0][j] = (fp[0] - f[0]) / h; J[1][j] = (fp[1] - f[1]) / h;
+        const xp = [...x]; 
+        
+        // Boundary-aware finite difference
+        if (xp[j] + h > bounds[j][1]) {
+          xp[j] -= h;
+          const fp = F(xp);
+          if (fp.error) throw new Error(fp.error);
+          J[0][j] = (f[0] - fp[0]) / h;
+          J[1][j] = (f[1] - fp[1]) / h;
+        } else {
+          xp[j] += h;
+          const fp = F(xp);
+          if (fp.error) throw new Error(fp.error);
+          J[0][j] = (fp[0] - f[0]) / h;
+          J[1][j] = (fp[1] - f[1]) / h;
+        }
       }
-    } catch (e) { 
+      // Log Jacobian and determinant
+      logger.log(`[Iter ${i}] J = [[${J[0][0].toFixed(4)}, ${J[0][1].toFixed(4)}], [${J[1][0].toFixed(4)}, ${J[1][1].toFixed(4)}]]`);
+    } catch (e) {
       logger.log(`Jacobian failed: ${e.message}`);
-      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian failed: ${e.message}` }; 
+      return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian failed: ${e.message}` };
     }
 
     const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
@@ -88,13 +105,19 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
     if (Math.abs(det) > 1e-12) {
       const invDet = 1.0 / det;
       direction = [ -invDet * (J[1][1] * f[0] - J[0][1] * f[1]), -invDet * (-J[1][0] * f[0] + J[0][0] * f[1]) ];
+      logger.log(`[Iter ${i}] det=${det.toFixed(4)}, dir=[${direction[0].toFixed(4)}, ${direction[1].toFixed(4)}]`);
     } else {
       logger.log(`[Iter ${i}] Warning: Matrix singular or saddle point (det=${det}). Using gradient descent.`);
       direction = [ -(J[0][0] * f[0] + J[1][0] * f[1]), -(J[0][1] * f[0] + J[1][1] * f[1]) ];
-      if (Math.sqrt(direction[0]**2 + direction[1]**2) < 1e-12) return { x, f, normF, converged: false, iterations: i+1, error: 'Saddle point.' };
+      const dirNorm = Math.sqrt(direction[0]**2 + direction[1]**2);
+      if (dirNorm < 1e-12) return { x, f, normF, converged: false, iterations: i+1, error: 'Saddle point.' };
     }
 
     let alpha = 1.0, accept = false, newX, newF, newNorm;
+    const armijoC = 1e-4; // keep same constant
+    const slope = direction[0]*f[0] + direction[1]*f[1]; // directional derivative (approximate)
+    logger.log(`[Iter ${i}] Starting line search, initial alpha=1.0, slope=${slope.toFixed(4)}`);
+
     for (let bt = 0; bt < 15; bt++) {
       newX = [
         Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
@@ -105,16 +128,25 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
         if (newF.error) throw new Error(newF.error);
         newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]); 
       } catch (e) { 
+        logger.log(`  [bt=${bt}] F(x+αd) failed at α=${alpha.toFixed(4)}: ${e.message}`);
         alpha *= 0.5; 
         continue; 
       }
       
-      if (newNorm < normF - 1e-4 * alpha * normF) { accept = true; break; }
+      const enoughDecrease = newNorm < normF - armijoC * alpha * normF;
+      logger.log(`  [bt=${bt}] α=${alpha.toFixed(4)}, newNorm=${newNorm.toFixed(4)}, enoughDecrease=${enoughDecrease}`);
+      
+      if (enoughDecrease) { 
+        accept = true; 
+        logger.log(`  -> accepted α=${alpha.toFixed(4)}`);
+        break; 
+      }
       alpha *= 0.5;
     }
 
     if (!accept) {
       logger.log(`[Iter ${i}] Line search failed! Alpha hit bottom.`);
+      // Additional info: current x, f, norm
       if (Math.abs(x[1] - bounds[1][0]) < 1e-4 && direction[1] < 0) return { x, f, normF, converged: true, iterations: i+1, warning: 'Compressor oversized limit.' };
       if (Math.abs(x[1] - bounds[1][1]) < 1e-4 && direction[1] > 0) return { x, f, normF, converged: true, iterations: i+1, warning: 'Compressor undersized limit.' };
       return { x, f, normF, converged: false, iterations: i+1, error: 'Line search failed.' };
@@ -160,6 +192,19 @@ const F = (vars) => {
     const MF = fan.fanAirflow_m3h - MR;
     const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.fanAirflow_m3h;
     const maxPossibleLMTD = (T1 - T2); // actually max possible is T1 - T2 (if TE = T2)
+
+    // --- Guard against invalid inverter RPM ---
+    if (isInverterMode && (RPM < bounds[1][0] || RPM > bounds[1][1])) {
+      return { error: `RPM ${RPM} out of bounds [${bounds[1][0]}, ${bounds[1][1]}]` };
+    }
+    if (!isInverterMode && (PR < bounds[1][0] || PR > bounds[1][1])) {
+      return { error: `PR ${PR} out of bounds [${bounds[1][0]}, ${bounds[1][1]}]` };
+    }
+    
+    if (innerOpts.debug) console.log(`[BALANCE-CHECK inside f] QF=${loads.QF.toFixed(2)} MF*CV*(TF-T3)*PR=${(MF*CV*(fixedTemps.TF-T3)*PR).toFixed(2)} T3=${T3.toFixed(2)} MF=${MF.toFixed(2)} PR=${PR}`);
+
+    if (innerOpts.debug) console.log(`[LOADS-CHECK inside f] QF=${loads.QF} QR=${loads.QR} QEV=${loads.QEV}`);
+    
     if (LMTD_req > maxPossibleLMTD * 0.95) {
       // The required LMTD exceeds physical limit; force a large error
       return { error: 'LMTD_req too large' };
@@ -173,7 +218,9 @@ const F = (vars) => {
     }
     
     const comp = evaluateCompressorSafely(calculated_TE, TC, refIndex, compParams, RPM);
-    
+    if (innerOpts.debug) {
+      console.log(`[COMP-CHECK] TC=${TC.toFixed(3)} T2=${T2.toFixed(3)} RPM/PR=${secondVar.toFixed(3)} TE=${calculated_TE.toFixed(3)} | Pe=${comp.Pe} Pc=${comp.Pc} QComp=${comp.QCompressor} CompPower=${comp.CompPower} massFlow=${comp.massFlow}`);
+    }
     const f1 = loads.QF - MF * CV * (fixedTemps.TF - T3) * PR;
     const f2 = (loads.QF + loads.QR + loads.QEV) - comp.QCompressor * PR;
 
@@ -186,8 +233,27 @@ const F = (vars) => {
   let res = newton2(F, initialGuess, [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
   if (!res.converged) {
     if (!res.error || (!res.error.includes('undersized') && !res.error.includes('oversized'))) {
-      for (const [t2, pr] of [[initialGuess[0], 0.4], [initialGuess[0]-2, 0.5], [-21, 0.3]]) {
-        res = newton2(F, [t2, pr], [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
+      let fallbackGuesses;
+      if (isInverterMode) {
+        // For inverter, try different RPM values around the initial guess and min/max
+        const rpmMin = compParams.rpmMin || 1000;
+        const rpmMax = compParams.rpmMax || 6000;
+        const midRPM = (rpmMin + rpmMax) / 2;
+        fallbackGuesses = [
+          [initialGuess[0], midRPM],
+          [initialGuess[0]-2, rpmMin],
+          [initialGuess[0]+2, rpmMax],
+          [-21, midRPM]
+        ];
+      } else {
+        fallbackGuesses = [
+          [initialGuess[0], 0.4],
+          [initialGuess[0]-2, 0.5],
+          [-21, 0.3]
+        ];
+      }
+      for (const guess of fallbackGuesses) {
+        res = newton2(F, guess, [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
         if (res.converged) break;
       }
     }
@@ -198,6 +264,9 @@ const F = (vars) => {
   const fT2 = res.x[0], fPR = isInverterMode ? fixedPR : res.x[1], fRPM = isInverterMode ? res.x[1] : undefined;
   const loads = calcHeatLoads(geom, { ...fixedTemps, T2: fT2, TC, PR: fPR, TE }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
   const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
+    if (innerOpts.debug) console.log(`[BALANCE-CHECK before solverinner return] QF=${loads.QF.toFixed(2)} MF*CV*(TF-T3)*PR=${(MF*CV*(fixedTemps.TF-T3)*PR).toFixed(2)} T3=${T3.toFixed(2)} MF=${MF.toFixed(2)} PR=${PR}`);
+    
+    if (innerOpts.debug) console.log(`[LOADS-CHECK before solverinner return] QF=${loads.QF} QR=${loads.QR} QEV=${loads.QEV}`);
 
   return {
     T2: fT2, PR: fPR, RPM: fRPM, TE, converged: true, iterations: res.iterations, warning: res.warning,
@@ -317,6 +386,7 @@ export function runThermalAnalysisDynamic(config) {
   for (let i = 0; i < 15; i++) {
     if (!(result = solveThermalSystem(config, TE)).converged) return result;
     const error = calculateNewTE(result, config.fan, config.evapGeom, config.fixedTemps.TF, config.fixedTemps.TR) - TE;
+    console.log(`[TE-UPDATE] i=${i} TE=${TE} result.MR=${result.MR} result.MF=${result.MF} result.T2=${result.T2} newTE_raw=${error+TE} error=${error}`);
     if (Math.abs(error) < 0.1) { result.TE = TE + error; return evaluateSafetyCheckpoints(result, config, TE + error); }
     
     if (i > 0 && prevError !== undefined) TE += Math.max(-3.0, Math.min(3.0, -error * (TE - prevTE) / (error - prevError)));

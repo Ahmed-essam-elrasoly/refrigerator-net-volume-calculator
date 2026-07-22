@@ -279,9 +279,9 @@ function openThermalSettings() {
   thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
 
   const fanP = settings.fanParam || {};
-  thermalModalInputs.tipDiam_mm.value  = fanP.tipDiam_mm ?? 220;
+  thermalModalInputs.tipDiam_mm.value  = fanP.tipDiam_mm ?? 110;
   thermalModalInputs.fanRPM.value   = fanP.fanRPM ?? 2200;
-  thermalModalInputs.hubDiam_mm.value = fanP.hubDiam_mm ?? 236;
+  thermalModalInputs.hubDiam_mm.value = fanP.hubDiam_mm ?? 45.6;
   thermalModalInputs.PitchAngle_degree.value = fanP.PitchAngle_degree ?? 30;
   thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
