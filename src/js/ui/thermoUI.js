@@ -890,7 +890,7 @@ function handleRun() {
   if (evap && fanP && result.results && result.results.converged !== false) {
     try {
       const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap);
+      const v = airSpeed(fanP, evap).v_ms;
       const alpha = evaporatorAlpha(v);
       const TF_ = parseFloat(document.getElementById('thermoTF')?.value);
       const TR_ = parseFloat(document.getElementById('thermoTR')?.value);
@@ -1003,7 +1003,7 @@ function handleInverterRun() {
   if (evap && fanP && result.results && result.results.converged !== false) {
     try {
       const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap);
+      const v = airSpeed(fanP, evap).v_ms;
       const alpha = evaporatorAlpha(v);
       const MR = result.results.MR;
       const MF = result.results.MF;

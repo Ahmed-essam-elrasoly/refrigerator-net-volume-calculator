@@ -177,11 +177,11 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     if (innerOpts.forcePR !== undefined) bounds[1] = [innerOpts.forcePR, innerOpts.forcePR];
     initialGuess = [innerOpts.initialT2 ?? -21.25, innerOpts.forcePR ?? innerOpts.initialPR ?? 0.59];
   }
+  let convergedTE = TE;  // initial fallback, will be overwritten by successful F evaluations
 
 const F = (vars) => {
     const T2 = vars[0], secondVar = vars[1];
     const PR = isInverterMode ? fixedPR : secondVar, RPM = isInverterMode ? secondVar : undefined;
-    
     const loads = calcHeatLoads(geom, { ...fixedTemps, T2, TC, PR, TE: -25 }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W ?? 2.1, freezerPos, condenserConfig.backCondenser);
     
     const LMTD_req = ((loads.QF + loads.QR + loads.QEV) / PR) / ((12.93 * Math.pow(fan.fanAirflow_m3h / ((evapGeom?.evapWidth_mm ?? 460)/1000 * (evapGeom?.evapDepth_mm ?? 60)/1000) / 3600, 0.415) * 1.16279) * (evapGeom?.evapArea_m2 ?? 1.754));
@@ -191,7 +191,6 @@ const F = (vars) => {
     const MR = denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0;
     const MF = fan.fanAirflow_m3h - MR;
     const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.fanAirflow_m3h;
-    const maxPossibleLMTD = (T1 - T2); // actually max possible is T1 - T2 (if TE = T2)
 
     // --- Guard against invalid inverter RPM ---
     if (isInverterMode && (RPM < bounds[1][0] || RPM > bounds[1][1])) {
@@ -205,18 +204,13 @@ const F = (vars) => {
 
     if (innerOpts.debug) console.log(`[LOADS-CHECK inside f] QF=${loads.QF} QR=${loads.QR} QEV=${loads.QEV}`);
     
-    if (LMTD_req > maxPossibleLMTD * 0.95) {
-      // The required LMTD exceeds physical limit; force a large error
-      return { error: 'LMTD_req too large' };
-    }
-
     const calculated_TE = solveTE_Brent(T1, T2, LMTD_req);
     
     if (!isFinite(calculated_TE)) {
       if (innerOpts.debug) console.warn(`[Physics Error] TE search failed. LMTD_req: ${LMTD_req.toFixed(2)}, T1: ${T1.toFixed(2)}, T2: ${T2.toFixed(2)}`);
       return { error: 'TE search failed: LMTD impossible' };
     }
-    
+    convergedTE = calculated_TE;   // <-- save the TE that passed the LMTD check
     const comp = evaluateCompressorSafely(calculated_TE, TC, refIndex, compParams, RPM);
     if (innerOpts.debug) {
       console.log(`[COMP-CHECK] TC=${TC.toFixed(3)} T2=${T2.toFixed(3)} RPM/PR=${secondVar.toFixed(3)} TE=${calculated_TE.toFixed(3)} | Pe=${comp.Pe} Pc=${comp.Pc} QComp=${comp.QCompressor} CompPower=${comp.CompPower} massFlow=${comp.massFlow}`);
@@ -262,14 +256,11 @@ const F = (vars) => {
   if (!res.converged) return { ...res, T2: res.x[0], PR: isInverterMode ? fixedPR : res.x[1], RPM: isInverterMode ? res.x[1] : undefined };
 
   const fT2 = res.x[0], fPR = isInverterMode ? fixedPR : res.x[1], fRPM = isInverterMode ? res.x[1] : undefined;
-  const loads = calcHeatLoads(geom, { ...fixedTemps, T2: fT2, TC, PR: fPR, TE }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
-  const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
-    if (innerOpts.debug) console.log(`[BALANCE-CHECK before solverinner return] QF=${loads.QF.toFixed(2)} MF*CV*(TF-T3)*PR=${(MF*CV*(fixedTemps.TF-T3)*PR).toFixed(2)} T3=${T3.toFixed(2)} MF=${MF.toFixed(2)} PR=${PR}`);
-    
-    if (innerOpts.debug) console.log(`[LOADS-CHECK before solverinner return] QF=${loads.QF} QR=${loads.QR} QEV=${loads.QEV}`);
+  const loads = calcHeatLoads(geom, { ...fixedTemps, T2: fT2, TC, PR: fPR, TE: convergedTE },  electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
+  const comp = evaluateCompressorSafely(convergedTE, TC, refIndex, compParams, fRPM);
 
   return {
-    T2: fT2, PR: fPR, RPM: fRPM, TE, converged: true, iterations: res.iterations, warning: res.warning,
+    T2: fT2, PR: fPR, RPM: fRPM, TE: convergedTE, converged: true, iterations: res.iterations, warning: res.warning,
     heatLoads: loads,
     compressor: { etaV: comp.VolumetricEfficiency, coolingCapacity: comp.QCompressor, inputPower: comp.CompPower, COP: comp.QCompressor / comp.CompPower, massFlow: comp.massFlow, Pe: comp.Pe, Pc: comp.Pc },
     MR: (denomR => denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.fanAirflow_m3h * CV * fPR))) * fPR),

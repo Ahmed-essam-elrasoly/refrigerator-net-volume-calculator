@@ -13,7 +13,8 @@
       width_mm: 460,
       height_mm: 150,
       depth_mm: 60,
-      rows: 2,
+      rows: 7,
+      layers: 2,
       tubeOD_mm: 8,
       finPitch_mm: 4,
       finHeight_mm: 150,
@@ -22,18 +23,30 @@
       sidePlateNo: 0
     },
     fanParam: {
-      fanDiam: 100,
+      tipDiam_mm: 110,
       fanRPM: 2200,
-      fanThick: 25
+      hubDiam_mm: 45.6,
+      PitchAngle_degree: 30
     }
   };
   var STORAGE_KEY = "refrigerator-calc-settings";
+  function deepMerge(target, source) {
+    const result = { ...target };
+    for (const key of Object.keys(source)) {
+      if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
+        result[key] = deepMerge(target[key] || {}, source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+    return result;
+  }
   function loadSettings() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        return { ...DEFAULTS, ...parsed };
+        return deepMerge(DEFAULTS, parsed);
       }
     } catch (e) {
     }
@@ -2084,6 +2097,7 @@
     const CompPower = predict(W, TE, TC, RPM);
     const prop = getRefrigerantProperties(refrigerantIndex);
     const Pe = prop.satPressure(TE + KELVIN_OFFSET);
+    console.log(`[INV-PERF] RPM=${RPM} TE=${TE} TC=${TC} | Q.type=${Q.type} W.type=${W.type} | QCompressor=${QCompressor} CompPower=${CompPower} Pe=${Pe}`);
     return {
       QCompressor,
       CompPower,
@@ -2096,20 +2110,37 @@
 
   // src/js/engine/thermo/evaporator.js
   function computeEvaporatorArea(evap) {
-    const { width_mm, height_mm, depth_mm, rows, tubeOD_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
+    const { width_mm, height_mm, depth_mm, rows, layers, tubeOD_mm, finHeight_mm, finLength_mm, numFins, sidePlateNo } = evap;
     const tubeCrossArea = Math.PI * (tubeOD_mm / 2) ** 2;
-    const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * 2 / 1e6;
+    const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea * layers) * 2 / 1e6;
     const totalFinArea = finAreaPerFin * numFins;
-    const tubeArea = Math.PI * tubeOD_mm * width_mm * rows * 2 / 1e6;
-    const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows * 2) * 2 / 1e6;
+    const tubeArea = Math.PI * tubeOD_mm * width_mm * rows * layers / 1e6;
+    const sidePlateArea = (height_mm * depth_mm * sidePlateNo - tubeCrossArea * rows * layers) * 2 / 1e6;
     return totalFinArea + tubeArea + sidePlateArea;
   }
   function airSpeed(fanParam, evap) {
-    const { fanDiam, fanRPM, fanThick } = fanParam;
-    const fanAirflow_CFM = Math.PI * (fanDiam / 2) ** 2 * fanThick * fanRPM / 283168466e-1;
-    const fanAirflow_m3h = fanAirflow_CFM * 1.699;
+    const { tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree } = fanParam;
+    if (!fanParam || typeof fanParam !== "object") {
+      throw new Error("fanParam is missing or invalid");
+    }
+    if ([tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree].some((v) => v == null || isNaN(v))) {
+      throw new Error("fanParam missing required fields: tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree");
+    }
+    if (hubDiam_mm >= tipDiam_mm) {
+      throw new Error(`Fan hub diameter (${hubDiam_mm}mm) must be smaller than tip diameter (${tipDiam_mm}mm).`);
+    }
+    const tipDiam_m = tipDiam_mm / 1e3;
+    const hubDiam_m = hubDiam_mm / 1e3;
+    const R = tipDiam_m / 2;
+    const r = hubDiam_m / 2;
+    const Q_m3s = 70 * fanRPM / 3e3 * (tipDiam_mm / 100) ** 2 / 3600;
+    const fanAirflow_m3h = Q_m3s * 3600;
     const frontArea_m2 = evap.width_mm * evap.depth_mm / 1e6;
-    return fanAirflow_m3h / frontArea_m2 / 3600;
+    if (frontArea_m2 <= 0) throw new Error("Evaporator face area is zero or negative");
+    const v_ms = fanAirflow_m3h / frontArea_m2 / 3600;
+    const fanAirflow_cfm = fanAirflow_m3h * 0.588578;
+    console.log(`[Fan param] tipDiam_mm=${tipDiam_mm} fanRPM=${fanRPM} hubDiam_mm=${hubDiam_mm} PitchAngle_degree=${PitchAngle_degree} | Q_m3s=${Q_m3s.toFixed(4)} m\xB3/s, fanAirflow_m3h=${fanAirflow_m3h.toFixed(2)} m\xB3/h, v_ms=${v_ms.toFixed(2)} m/s, fanAirflow_cfm=${fanAirflow_cfm.toFixed(2)} CFM`);
+    return { v_ms, fanAirflow_m3h, fanAirflow_cfm };
   }
   function evaporatorAlpha(v_ms) {
     return 12.93 * Math.pow(v_ms, 0.415) * 1.16279;
@@ -2157,27 +2188,49 @@
     );
   }
   function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
-    const logger = { log: (...args) => debug && console.log(...args), table: (data) => debug && console.table(data) };
+    const logger = {
+      log: (...args) => debug && console.log(...args),
+      table: (data) => debug && console.table(data)
+    };
     let x = [...x0], f, normF;
+    logger.log(`
+--- Starting Newton2 --- Initial Guess: [${x[0].toFixed(3)}, ${x[1].toFixed(3)}]`);
     try {
       f = F(x);
+      if (f.error) return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: f.error };
       normF = Math.sqrt(f[0] * f[0] + f[1] * f[1]);
     } catch (e) {
+      logger.log(`Initial F(x) failed: ${e.message}`);
       return { x, f: [NaN, NaN], normF: NaN, converged: false, iterations: 0, error: `Initial F(x) failed: ${e.message}` };
     }
     for (let i = 0; i < maxIter; i++) {
-      if (normF <= tol) return { x, f, normF, converged: true, iterations: i + 1 };
+      logger.log(`[Iter ${i}] x=[${x[0].toFixed(3)}, ${x[1].toFixed(3)}], f=[${f[0].toFixed(2)}, ${f[1].toFixed(2)}], norm=${normF.toFixed(4)}`);
+      if (normF <= tol) {
+        logger.log(`-> Converged in ${i + 1} iterations.`);
+        return { x, f, normF, converged: true, iterations: i + 1 };
+      }
       const J = [[0, 0], [0, 0]];
       try {
         for (let j = 0; j < 2; j++) {
           const h = Math.max(1e-7, Math.abs(x[j]) * 1e-6);
           const xp = [...x];
-          xp[j] += h;
-          const fp = F(xp);
-          J[0][j] = (fp[0] - f[0]) / h;
-          J[1][j] = (fp[1] - f[1]) / h;
+          if (xp[j] + h > bounds[j][1]) {
+            xp[j] -= h;
+            const fp = F(xp);
+            if (fp.error) throw new Error(fp.error);
+            J[0][j] = (f[0] - fp[0]) / h;
+            J[1][j] = (f[1] - fp[1]) / h;
+          } else {
+            xp[j] += h;
+            const fp = F(xp);
+            if (fp.error) throw new Error(fp.error);
+            J[0][j] = (fp[0] - f[0]) / h;
+            J[1][j] = (fp[1] - f[1]) / h;
+          }
         }
+        logger.log(`[Iter ${i}] J = [[${J[0][0].toFixed(4)}, ${J[0][1].toFixed(4)}], [${J[1][0].toFixed(4)}, ${J[1][1].toFixed(4)}]]`);
       } catch (e) {
+        logger.log(`Jacobian failed: ${e.message}`);
         return { x, f, normF, converged: false, iterations: i + 1, error: `Jacobian failed: ${e.message}` };
       }
       const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
@@ -2185,11 +2238,17 @@
       if (Math.abs(det) > 1e-12) {
         const invDet = 1 / det;
         direction = [-invDet * (J[1][1] * f[0] - J[0][1] * f[1]), -invDet * (-J[1][0] * f[0] + J[0][0] * f[1])];
+        logger.log(`[Iter ${i}] det=${det.toFixed(4)}, dir=[${direction[0].toFixed(4)}, ${direction[1].toFixed(4)}]`);
       } else {
+        logger.log(`[Iter ${i}] Warning: Matrix singular or saddle point (det=${det}). Using gradient descent.`);
         direction = [-(J[0][0] * f[0] + J[1][0] * f[1]), -(J[0][1] * f[0] + J[1][1] * f[1])];
-        if (Math.sqrt(direction[0] ** 2 + direction[1] ** 2) < 1e-12) return { x, f, normF, converged: false, iterations: i + 1, error: "Saddle point." };
+        const dirNorm = Math.sqrt(direction[0] ** 2 + direction[1] ** 2);
+        if (dirNorm < 1e-12) return { x, f, normF, converged: false, iterations: i + 1, error: "Saddle point." };
       }
       let alpha = 1, accept = false, newX, newF, newNorm;
+      const armijoC = 1e-4;
+      const slope = direction[0] * f[0] + direction[1] * f[1];
+      logger.log(`[Iter ${i}] Starting line search, initial alpha=1.0, slope=${slope.toFixed(4)}`);
       for (let bt = 0; bt < 15; bt++) {
         newX = [
           Math.max(bounds[0][0], Math.min(bounds[0][1], x[0] + alpha * direction[0])),
@@ -2197,18 +2256,24 @@
         ];
         try {
           newF = F(newX);
+          if (newF.error) throw new Error(newF.error);
           newNorm = Math.sqrt(newF[0] * newF[0] + newF[1] * newF[1]);
         } catch (e) {
+          logger.log(`  [bt=${bt}] F(x+\u03B1d) failed at \u03B1=${alpha.toFixed(4)}: ${e.message}`);
           alpha *= 0.5;
           continue;
         }
-        if (newNorm < normF - 1e-4 * alpha * normF) {
+        const enoughDecrease = newNorm < normF - armijoC * alpha * normF;
+        logger.log(`  [bt=${bt}] \u03B1=${alpha.toFixed(4)}, newNorm=${newNorm.toFixed(4)}, enoughDecrease=${enoughDecrease}`);
+        if (enoughDecrease) {
           accept = true;
+          logger.log(`  -> accepted \u03B1=${alpha.toFixed(4)}`);
           break;
         }
         alpha *= 0.5;
       }
       if (!accept) {
+        logger.log(`[Iter ${i}] Line search failed! Alpha hit bottom.`);
         if (Math.abs(x[1] - bounds[1][0]) < 1e-4 && direction[1] < 0) return { x, f, normF, converged: true, iterations: i + 1, warning: "Compressor oversized limit." };
         if (Math.abs(x[1] - bounds[1][1]) < 1e-4 && direction[1] > 0) return { x, f, normF, converged: true, iterations: i + 1, warning: "Compressor undersized limit." };
         return { x, f, normF, converged: false, iterations: i + 1, error: "Line search failed." };
@@ -2217,6 +2282,7 @@
       f = newF;
       normF = newNorm;
     }
+    logger.log(`Max iterations reached without convergence.`);
     return { x, f, normF, converged: false, iterations: maxIter, error: "Max iterations reached" };
   }
   function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
@@ -2233,49 +2299,85 @@
       if (innerOpts.forcePR !== void 0) bounds[1] = [innerOpts.forcePR, innerOpts.forcePR];
       initialGuess = [innerOpts.initialT2 ?? -21.25, innerOpts.forcePR ?? innerOpts.initialPR ?? 0.59];
     }
+    let convergedTE = TE;
     const F = (vars) => {
       const T2 = vars[0], secondVar = vars[1];
       const PR = isInverterMode ? fixedPR : secondVar, RPM = isInverterMode ? secondVar : void 0;
       const loads2 = calcHeatLoads(geom, { ...fixedTemps, T2, TC, PR, TE: -25 }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W ?? 2.1, freezerPos, condenserConfig.backCondenser);
-      const LMTD_req = (loads2.QF + loads2.QR + loads2.QEV) / PR / (12.93 * Math.pow(fan.totalAirflow / ((evapGeom?.evapWidth_mm ?? 460) / 1e3 * (evapGeom?.evapDepth_mm ?? 60) / 1e3) / 3600, 0.415) * 1.16279 * (evapGeom?.evapArea_m2 ?? 1.754));
-      const T3 = T2 + loads2.QEV / (fan.totalAirflow * CV * PR);
+      const LMTD_req = (loads2.QF + loads2.QR + loads2.QEV) / PR / (12.93 * Math.pow(fan.fanAirflow_m3h / ((evapGeom?.evapWidth_mm ?? 460) / 1e3 * (evapGeom?.evapDepth_mm ?? 60) / 1e3) / 3600, 0.415) * 1.16279 * (evapGeom?.evapArea_m2 ?? 1.754));
+      const T3 = T2 + loads2.QEV / (fan.fanAirflow_m3h * CV * PR);
       const denomR = CV * Math.max(0.01, fixedTemps.TR - T3) * PR;
-      const MR = denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads2.QR / denomR)) : 0;
-      const MF = fan.totalAirflow - MR;
-      const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.totalAirflow;
+      const MR = denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads2.QR / denomR)) : 0;
+      const MF = fan.fanAirflow_m3h - MR;
+      const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / fan.fanAirflow_m3h;
+      if (isInverterMode && (RPM < bounds[1][0] || RPM > bounds[1][1])) {
+        return { error: `RPM ${RPM} out of bounds [${bounds[1][0]}, ${bounds[1][1]}]` };
+      }
+      if (!isInverterMode && (PR < bounds[1][0] || PR > bounds[1][1])) {
+        return { error: `PR ${PR} out of bounds [${bounds[1][0]}, ${bounds[1][1]}]` };
+      }
+      if (innerOpts.debug) console.log(`[BALANCE-CHECK inside f] QF=${loads2.QF.toFixed(2)} MF*CV*(TF-T3)*PR=${(MF * CV * (fixedTemps.TF - T3) * PR).toFixed(2)} T3=${T3.toFixed(2)} MF=${MF.toFixed(2)} PR=${PR}`);
+      if (innerOpts.debug) console.log(`[LOADS-CHECK inside f] QF=${loads2.QF} QR=${loads2.QR} QEV=${loads2.QEV}`);
       const calculated_TE = solveTE_Brent(T1, T2, LMTD_req);
-      if (!isFinite(calculated_TE)) return { error: "TE search failed: LMTD impossible" };
+      if (!isFinite(calculated_TE)) {
+        if (innerOpts.debug) console.warn(`[Physics Error] TE search failed. LMTD_req: ${LMTD_req.toFixed(2)}, T1: ${T1.toFixed(2)}, T2: ${T2.toFixed(2)}`);
+        return { error: "TE search failed: LMTD impossible" };
+      }
+      convergedTE = calculated_TE;
       const comp2 = evaluateCompressorSafely(calculated_TE, TC, refIndex, compParams, RPM);
-      return [
-        loads2.QF - MF * CV * (fixedTemps.TF - T3) * PR,
-        loads2.QF + loads2.QR + loads2.QEV - comp2.QCompressor * PR
-      ];
+      if (innerOpts.debug) {
+        console.log(`[COMP-CHECK] TC=${TC.toFixed(3)} T2=${T2.toFixed(3)} RPM/PR=${secondVar.toFixed(3)} TE=${calculated_TE.toFixed(3)} | Pe=${comp2.Pe} Pc=${comp2.Pc} QComp=${comp2.QCompressor} CompPower=${comp2.CompPower} massFlow=${comp2.massFlow}`);
+      }
+      const f1 = loads2.QF - MF * CV * (fixedTemps.TF - T3) * PR;
+      const f2 = loads2.QF + loads2.QR + loads2.QEV - comp2.QCompressor * PR;
+      if (innerOpts.debug) {
+        console.log(`[Physics] T2:${T2.toFixed(2)}, PR/RPM:${secondVar.toFixed(2)} | Loads(QF/QR/QEV): ${loads2.QF.toFixed(1)}/${loads2.QR.toFixed(1)}/${loads2.QEV.toFixed(1)} | TE: ${calculated_TE.toFixed(2)} | Qcomp: ${(comp2.QCompressor * PR).toFixed(1)} | Res: [${f1.toFixed(2)}, ${f2.toFixed(2)}]`);
+      }
+      return [f1, f2];
     };
-    let res = newton2(F, initialGuess, [dx, dx], tol, maxIter, bounds, false);
+    let res = newton2(F, initialGuess, [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
     if (!res.converged) {
       if (!res.error || !res.error.includes("undersized") && !res.error.includes("oversized")) {
-        for (const [t2, pr] of [[initialGuess[0], 0.4], [initialGuess[0] - 2, 0.5], [-21, 0.3]]) {
-          res = newton2(F, [t2, pr], [dx, dx], tol, maxIter, bounds, false);
+        let fallbackGuesses;
+        if (isInverterMode) {
+          const rpmMin = compParams.rpmMin || 1e3;
+          const rpmMax = compParams.rpmMax || 6e3;
+          const midRPM = (rpmMin + rpmMax) / 2;
+          fallbackGuesses = [
+            [initialGuess[0], midRPM],
+            [initialGuess[0] - 2, rpmMin],
+            [initialGuess[0] + 2, rpmMax],
+            [-21, midRPM]
+          ];
+        } else {
+          fallbackGuesses = [
+            [initialGuess[0], 0.4],
+            [initialGuess[0] - 2, 0.5],
+            [-21, 0.3]
+          ];
+        }
+        for (const guess of fallbackGuesses) {
+          res = newton2(F, guess, [dx, dx], tol, maxIter, bounds, innerOpts.debug || true);
           if (res.converged) break;
         }
       }
     }
     if (!res.converged) return { ...res, T2: res.x[0], PR: isInverterMode ? fixedPR : res.x[1], RPM: isInverterMode ? res.x[1] : void 0 };
     const fT2 = res.x[0], fPR = isInverterMode ? fixedPR : res.x[1], fRPM = isInverterMode ? res.x[1] : void 0;
-    const loads = calcHeatLoads(geom, { ...fixedTemps, T2: fT2, TC, PR: fPR, TE }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
-    const comp = evaluateCompressorSafely(TE, TC, refIndex, compParams, fRPM);
+    const loads = calcHeatLoads(geom, { ...fixedTemps, T2: fT2, TC, PR: fPR, TE: convergedTE }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency ?? 0, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
+    const comp = evaluateCompressorSafely(convergedTE, TC, refIndex, compParams, fRPM);
     return {
       T2: fT2,
       PR: fPR,
       RPM: fRPM,
-      TE,
+      TE: convergedTE,
       converged: true,
       iterations: res.iterations,
       warning: res.warning,
       heatLoads: loads,
       compressor: { etaV: comp.VolumetricEfficiency, coolingCapacity: comp.QCompressor, inputPower: comp.CompPower, COP: comp.QCompressor / comp.CompPower, massFlow: comp.massFlow, Pe: comp.Pe, Pc: comp.Pc },
-      MR: ((denomR) => denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.totalAirflow * CV * fPR))) * fPR),
-      MF: fan.totalAirflow - ((denomR) => denomR > 0 ? Math.min(fan.totalAirflow, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.totalAirflow * CV * fPR))) * fPR)
+      MR: ((denomR) => denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.fanAirflow_m3h * CV * fPR))) * fPR),
+      MF: fan.fanAirflow_m3h - ((denomR) => denomR > 0 ? Math.min(fan.fanAirflow_m3h, Math.max(0, loads.QR / denomR)) : 0)(CV * Math.max(0.01, fixedTemps.TR - (fT2 + loads.QEV / (fan.fanAirflow_m3h * CV * fPR))) * fPR)
     };
   }
   function solveTE_Brent(T1, T2, LMTD_req, tol = 1e-4) {
@@ -2286,7 +2388,7 @@
       return (Math.abs(ratio - 1) < 1e-6 ? dT1 : (dT1 - dT2) / Math.log(ratio)) - LMTD_req;
     };
     let a = -80, b = T2 - 0.01;
-    while (f(a) * f(b) > 0 && a > -280) a -= 10;
+    while (f(a) * f(b) > 0 && a > -320) a -= 20;
     if (f(a) * f(b) > 0) return NaN;
     let fa = f(a), fb = f(b);
     if (fa > 0) {
@@ -2322,10 +2424,10 @@
   }
   function calculateNewTE(result, fan, evapGeom, TF, TR) {
     const { MR, MF, T2 } = result;
-    const T1 = (MF * TF + MR * TR) / fan.totalAirflow;
+    const T1 = (MF * TF + MR * TR) / fan.fanAirflow_m3h;
     const faceArea = (evapGeom?.evapWidth_mm ?? 460) / 1e3 * ((evapGeom?.evapDepth_mm ?? 60) / 1e3);
-    const alpha = 12.93 * 1.16279 * Math.pow(fan.totalAirflow / faceArea / 3600, 0.415);
-    const NTU = alpha * (evapGeom?.evapArea_m2 ?? 1.754) / (fan.totalAirflow / 3600 * RHO_AIR * CP_AIR * 1e3);
+    const alpha = 12.93 * 1.16279 * Math.pow(fan.fanAirflow_m3h / faceArea / 3600, 0.415);
+    const NTU = alpha * (evapGeom?.evapArea_m2 ?? 1.754) / (fan.fanAirflow_m3h / 3600 * RHO_AIR * CP_AIR * 1e3);
     const effectiveness = 1 - Math.exp(-NTU);
     return effectiveness < 1e-6 ? T1 : T1 - (T1 - T2) / effectiveness;
   }
@@ -2376,6 +2478,7 @@
     for (let i = 0; i < 15; i++) {
       if (!(result = solveThermalSystem(config, TE)).converged) return result;
       const error = calculateNewTE(result, config.fan, config.evapGeom, config.fixedTemps.TF, config.fixedTemps.TR) - TE;
+      console.log(`[TE-UPDATE] i=${i} TE=${TE} result.MR=${result.MR} result.MF=${result.MF} result.T2=${result.T2} newTE_raw=${error + TE} error=${error}`);
       if (Math.abs(error) < 0.1) {
         result.TE = TE + error;
         return evaluateSafetyCheckpoints(result, config, TE + error);
@@ -2398,7 +2501,7 @@
     } else peakConfig.solverOptions.innerOptions.initialPR = 0.95;
     const peakResult = solveThermalSystem(peakConfig, TE_conv);
     if (!peakResult.converged) result.warnings.push("Peak heat load evaluation flagged: System cannot physically balance at 43 \xB0C.");
-    else if (12.93 * Math.pow(config.fan.totalAirflow / ((config.evapGeom?.evapWidth_mm ?? 460) / 1e3 * ((config.evapGeom?.evapDepth_mm ?? 60) / 1e3)) / 3600, 0.415) * 1.16279 * (config.evapGeom?.evapArea_m2 ?? 1.754) * lmtd((result.MF * config.fixedTemps.TF + result.MR * config.fixedTemps.TR) / config.fan.totalAirflow, result.T2, result.T2 - 2) < 1.15 * (peakResult.heatLoads.QF + peakResult.heatLoads.QR + peakResult.heatLoads.QEV)) {
+    else if (12.93 * Math.pow(config.fan.fanAirflow_m3h / ((config.evapGeom?.evapWidth_mm ?? 460) / 1e3 * ((config.evapGeom?.evapDepth_mm ?? 60) / 1e3)) / 3600, 0.415) * 1.16279 * (config.evapGeom?.evapArea_m2 ?? 1.754) * lmtd((result.MF * config.fixedTemps.TF + result.MR * config.fixedTemps.TR) / config.fan.fanAirflow_m3h, result.T2, result.T2 - 2) < 1.15 * (peakResult.heatLoads.QF + peakResult.heatLoads.QR + peakResult.heatLoads.QEV)) {
       result.warnings.push(`Evaporator lacks 15% physical safety margin at 43\xB0C ambient.`);
     }
     return result;
@@ -2512,7 +2615,7 @@
       errors.push("fixedTemps must contain numeric T0, TF, TR, TE.");
     }
     if (config.fan) {
-      if (!config.fan.totalAirflow) errors.push("fan.totalAirflow is required.");
+      if (!config.fan.fanAirflow_m3h) errors.push("fan.fanAirflow_m3h is required.");
       config.fan.density = config.fan.density ?? PHYSICAL_CONSTANTS.air.density;
       config.fan.cp = config.fan.cp ?? PHYSICAL_CONSTANTS.air.cp;
     }
@@ -2614,6 +2717,7 @@
         TE: -23.3
       },
       fan: {
+        fanAirflow_m3h: fan.totalAirflow_m3h,
         totalAirflow: fan.totalAirflow_m3h,
         inputPower_W: fan.inputPower_W
       },
@@ -2628,13 +2732,13 @@
         innerOptions: { dx: 1e-3, tol: 1e-4, maxIter: 100, initialT2: -21.25, initialPR: 0.59 }
       }
     };
-    return deepMerge(base, overrides);
+    return deepMerge2(base, overrides);
   }
-  function deepMerge(target, source) {
+  function deepMerge2(target, source) {
     const out = { ...target };
     for (const key of Object.keys(source)) {
       if (source[key] && typeof source[key] === "object" && !Array.isArray(source[key])) {
-        out[key] = deepMerge(out[key] || {}, source[key]);
+        out[key] = deepMerge2(out[key] || {}, source[key]);
       } else {
         out[key] = source[key];
       }
@@ -2643,20 +2747,6 @@
   }
 
   // src/js/ui/thermoUI.js
-  function computeFanAirflow(fanParam) {
-    const { fanDiam, fanRPM } = fanParam;
-    if (!fanParam || !Number.isFinite(fanDiam) || fanDiam <= 0 || !Number.isFinite(fanRPM) || fanRPM <= 0) {
-      throw new Error(
-        "Fan diameter (mm) and RPM must be positive numbers. Please enter them in Advanced Settings."
-      );
-    }
-    const D = fanDiam / 1e3;
-    const tipSpeed = Math.PI * D * fanRPM / 60;
-    const axialVelocity = tipSpeed * 0.15;
-    const area = Math.PI * D * D / 4;
-    const flow_m3s = axialVelocity * area;
-    return flow_m3s * 3600;
-  }
   var thermalAdvanced = {
     subcool: SJ54H_COMPONENTS.subcool_K,
     dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
@@ -2763,6 +2853,7 @@
         <label>Height (mm): <input id="evapHeight" type="number" step="any"></label>
         <label>Depth (mm): <input id="thermoEvapDepth" type="number" step="any"></label>
         <label>Rows: <input id="evapRows" type="number" step="any"></label>
+        <label>Layers: <input id="evapLayers" type="number" step="any"></label>
         <label>Tube OD (mm): <input id="evapTubeOD" type="number" step="any"></label>
         <label>Fin Height (mm): <input id="evapFinHeight" type="number" step="any"></label>
         <label>Fin Length (mm): <input id="evapFinLength" type="number" step="any"></label>
@@ -2772,9 +2863,10 @@
 
       <fieldset>
         <legend>Fan Parameters</legend>
-        <label>Diameter (mm): <input id="fanDiam" type="number" step="any"></label>
+        <label>Tip Diameter (mm): <input id="tipDiam_mm" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
-        <label>Thickness (mm): <input id="fanThick" type="number" step="any"></label>
+        <label>Hub Diameter (mm): <input id="hubDiam_mm" type="number" step="any"></label>
+        <label>Pitch Angle (\xB0): <input id="PitchAngle_degree" type="number" step="any"></label>
         <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
       </fieldset>
 
@@ -2810,14 +2902,16 @@
       evapHeight: document.getElementById("evapHeight"),
       thermoEvapDepth: document.getElementById("thermoEvapDepth"),
       evapRows: document.getElementById("evapRows"),
+      evapLayers: document.getElementById("evapLayers"),
       evapTubeOD: document.getElementById("evapTubeOD"),
       evapFinHeight: document.getElementById("evapFinHeight"),
       evapFinLength: document.getElementById("evapFinLength"),
       evapNumFins: document.getElementById("evapNumFins"),
       evapSidePlateNo: document.getElementById("evapSidePlateNo"),
-      fanDiam: document.getElementById("fanDiam"),
+      tipDiam_mm: document.getElementById("tipDiam_mm"),
       fanRPM: document.getElementById("fanRPM"),
-      fanThick: document.getElementById("fanThick"),
+      hubDiam_mm: document.getElementById("hubDiam_mm"),
+      PitchAngle_degree: document.getElementById("PitchAngle_degree"),
       fanInputPower: document.getElementById("thermoFanInputPower"),
       compressorSelect: document.getElementById("thermoCompressorSelect"),
       subcool: document.getElementById("thermoSubcool"),
@@ -2852,16 +2946,18 @@
     thermalModalInputs.evapWidth.value = evap.width_mm ?? 460;
     thermalModalInputs.evapHeight.value = evap.height_mm ?? 150;
     thermalModalInputs.thermoEvapDepth.value = evap.depth_mm ?? 60;
-    thermalModalInputs.evapRows.value = evap.rows ?? 2;
+    thermalModalInputs.evapRows.value = evap.rows ?? 7;
+    thermalModalInputs.evapLayers.value = evap.layers ?? 2;
     thermalModalInputs.evapTubeOD.value = evap.tubeOD_mm ?? 8;
     thermalModalInputs.evapFinHeight.value = evap.finHeight_mm ?? 150;
     thermalModalInputs.evapFinLength.value = evap.finLength_mm ?? 460;
     thermalModalInputs.evapNumFins.value = evap.numFins ?? 32;
     thermalModalInputs.evapSidePlateNo.value = evap.sidePlateNo ?? 0;
     const fanP = settings.fanParam || {};
-    thermalModalInputs.fanDiam.value = fanP.fanDiam ?? 100;
+    thermalModalInputs.tipDiam_mm.value = fanP.tipDiam_mm ?? 110;
     thermalModalInputs.fanRPM.value = fanP.fanRPM ?? 2200;
-    thermalModalInputs.fanThick.value = fanP.fanThick ?? 25;
+    thermalModalInputs.hubDiam_mm.value = fanP.hubDiam_mm ?? 45.6;
+    thermalModalInputs.PitchAngle_degree.value = fanP.PitchAngle_degree ?? 30;
     thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
     thermalModalInputs.subcool.value = thermalAdvanced.subcool;
     thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
@@ -2894,6 +2990,7 @@
       height_mm: parseFloat(thermalModalInputs.evapHeight.value),
       depth_mm: parseFloat(thermalModalInputs.thermoEvapDepth.value),
       rows: parseInt(thermalModalInputs.evapRows.value),
+      layers: parseInt(thermalModalInputs.evapLayers.value),
       tubeOD_mm: parseFloat(thermalModalInputs.evapTubeOD.value),
       finHeight_mm: parseFloat(thermalModalInputs.evapFinHeight.value),
       finLength_mm: parseFloat(thermalModalInputs.evapFinLength.value),
@@ -2901,9 +2998,10 @@
       sidePlateNo: parseInt(thermalModalInputs.evapSidePlateNo.value)
     };
     settings.fanParam = {
-      fanDiam: parseFloat(thermalModalInputs.fanDiam.value),
+      tipDiam_mm: parseFloat(thermalModalInputs.tipDiam_mm.value),
       fanRPM: parseFloat(thermalModalInputs.fanRPM.value),
-      fanThick: parseFloat(thermalModalInputs.fanThick.value)
+      hubDiam_mm: parseFloat(thermalModalInputs.hubDiam_mm.value),
+      PitchAngle_degree: parseFloat(thermalModalInputs.PitchAngle_degree.value)
     };
     updateSettings(settings);
     thermalAdvanced.subcool = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
@@ -3398,9 +3496,10 @@
     }
     const refrigerant = document.getElementById("thermoRefrigerant")?.value || "R-600a";
     const fanParam = settings.fanParam || {};
+    const evapParam = settings.evaporator || {};
     let fanFlow;
     try {
-      fanFlow = computeFanAirflow(fanParam);
+      fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h;
     } catch (e) {
       showError(e.message, "inverterErrors");
       return;
@@ -3420,7 +3519,7 @@
       subcool: thermalAdvanced.subcool,
       dischargeTemp: thermalAdvanced.dischargeTemp,
       fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-      fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+      fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
       electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin }
     });
     if (settings.condenser) {
@@ -3489,7 +3588,7 @@
     if (evap && fanP && result.results && result.results.converged !== false) {
       try {
         const area = computeEvaporatorArea(evap);
-        const v = airSpeed(fanP, evap);
+        const v = airSpeed(fanP, evap).v_ms;
         const alpha = evaporatorAlpha(v);
         const TF_ = parseFloat(document.getElementById("thermoTF")?.value);
         const TR_ = parseFloat(document.getElementById("thermoTR")?.value);
@@ -3538,8 +3637,9 @@
     const refrigerant = document.getElementById("inverterRefrigerant")?.value || "R-600a";
     const fanParam = settings.fanParam || {};
     let fanFlow;
+    const evapParam = settings.evaporator || {};
     try {
-      fanFlow = computeFanAirflow(fanParam);
+      fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h;
     } catch (e) {
       showError(e.message, "inverterErrors");
       return;
@@ -3557,7 +3657,7 @@
       subcool: thermalAdvanced.subcool,
       dischargeTemp: thermalAdvanced.dischargeTemp,
       fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
-      fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
+      fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
       electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
       condenserConfig: {
         sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
@@ -3599,6 +3699,10 @@
       rpmMax: comp.rpmMax || 4500
     };
     config.inverterPR = PR;
+    if (!settings.evaporator || settings.evaporator.evapArea_m2 <= 0) {
+      showError("Evaporator area is not set. Please configure in Advanced Settings.");
+      return;
+    }
     const result = runThermoAnalysis(config);
     if (!result.success) {
       showError(result.errors.join("; "), "inverterErrors");
@@ -3619,7 +3723,7 @@
     if (evap && fanP && result.results && result.results.converged !== false) {
       try {
         const area = computeEvaporatorArea(evap);
-        const v = airSpeed(fanP, evap);
+        const v = airSpeed(fanP, evap).v_ms;
         const alpha = evaporatorAlpha(v);
         const MR = result.results.MR;
         const MF = result.results.MF;
@@ -4892,6 +4996,21 @@
     schematicOverlay.classList.add("hidden");
     dirtySchematic = false;
     currentConfig = null;
+    const defaultFanParam = {
+      tipDiam_mm: 220,
+      fanRPM: 2200,
+      hubDiam_mm: 80,
+      PitchAngle_degree: 30
+    };
+    const defaultEvap = {
+      width_mm: 460,
+      depth_mm: 60
+      // … keep other evap fields from DEFAULTS …
+    };
+    settings.fanParam = defaultFanParam;
+    settings.evaporator = defaultEvap;
+    updateSettings(settings);
+    if (settings.autoCalculate) calculateBtn.click();
   });
   document.addEventListener("input", (e) => {
     if (settings.autoCalculate && e.target.closest(".left-panel")) {

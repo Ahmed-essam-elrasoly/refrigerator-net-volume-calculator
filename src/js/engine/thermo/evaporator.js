@@ -19,7 +19,7 @@ export function computeEvaporatorArea(evap) {
   
   // Fin area (both sides)
   const tubeCrossArea = Math.PI * (tubeOD_mm/2)**2;
-  const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea) * layers / 1e6; // m²
+  const finAreaPerFin = (finLength_mm * finHeight_mm - tubeCrossArea * layers)*2   / 1e6; // m²
   const totalFinArea = finAreaPerFin * numFins;
   
   // Tube outer area
@@ -55,7 +55,7 @@ export function airSpeed(fanParam, evap) {
   const r = hubDiam_m / 2;
 
   // Axial fan flow rate: Q [m³/s] = π² · n [rev/s] · (R² − r²) · (R + r) · tan(θ)
-  const Q_m3s = Math.PI ** 2 * (fanRPM / 60) * (R ** 2 - r ** 2) * (R + r) * Math.tan(PitchAngle_degree * Math.PI / 180);
+  const Q_m3s = 70*fanRPM/3000*((tipDiam_mm/100)**2)/3600;
   const fanAirflow_m3h = Q_m3s * 3600;   // convert to m³/h (used by the rest of the engine)
 
   const frontArea_m2 = (evap.width_mm * evap.depth_mm) / 1e6;
