@@ -790,7 +790,6 @@ function handleRun() {
   const cabinetGeom = getGeometryFn();
   const geom = toThermalFormat(cabinetGeom);
   const evapDepthMain = parseFloat(document.getElementById('evapDepth')?.value) ;
-  geom.tEvaBack = evapDepthMain;
 
   const T0 = parseFloat(document.getElementById('thermoT0')?.value);
   const TF = parseFloat(document.getElementById('thermoTF')?.value);
@@ -803,8 +802,9 @@ function handleRun() {
   const evapParam = settings.evaporator || {}; // Grab the evaporator settings
   let fanFlow;
   try {
-    // Pass evapParam as the 2nd argument and use the correct return property
+    // Calculate airflow and explicitly calculate physical heat transfer area
     fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h; 
+    evapParam.evapArea_m2 = computeEvaporatorArea(evapParam);
   } catch (e) {
     showError(e.message, 'inverterErrors');
     return;
@@ -824,6 +824,7 @@ function handleRun() {
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    evapGeom: evapParam // Pass the validated and calculated geometry explicitly
   });
   if (settings.condenser) {
     config.condenserConfig = {
@@ -832,8 +833,8 @@ function handleRun() {
       backPipePitch_mm: settings.condenser.backPipePitch_mm,
     };
   }
-
-  config.evapGeom = settings.evaporator || {};
+  
+  // REMOVE the old, duplicated line: config.evapGeom = settings.evaporator || {};
   config.fanParam = fanParam;
 
   const defaultCompParams = config.compParams;
@@ -890,8 +891,9 @@ function handleRun() {
   if (evap && fanP && result.results && result.results.converged !== false) {
     try {
       const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap).v_ms;
-      const alpha = evaporatorAlpha(v);
+      const fanResult = airSpeed(fanP, evap);
+      const fanAirSpeed = fanResult.fanAirSpeed;
+      const v = fanResult.v_ms;      const alpha = evaporatorAlpha(v);
       const TF_ = parseFloat(document.getElementById('thermoTF')?.value);
       const TR_ = parseFloat(document.getElementById('thermoTR')?.value);
       const MR = result.results.MR;
@@ -907,7 +909,7 @@ function handleRun() {
   }
   if (evapDetails) result.results.evapDetails = evapDetails;
   result.results.fanAirflow = fanFlow;
-
+  result.results.fanAirSpeed = fanAirSpeed;
   document.getElementById('tabThermal').click();
   const thermoRight = document.getElementById('thermoRightPanel');
   if (thermoRight) thermoRight.innerHTML = '';
@@ -938,9 +940,18 @@ function handleInverterRun() {
   const refrigerant = document.getElementById('inverterRefrigerant')?.value || 'R-600a';
 
   const fanParam = settings.fanParam || {};
-  let fanFlow;
+  let fanFlow, fanAirSpeed; // Declare both variables here
   const evapParam = settings.evaporator || {};
-  try { fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h; } catch (e) { showError(e.message, 'inverterErrors'); return; }
+  try { 
+    // Calculate airflow and explicitly calculate physical heat transfer area
+    const fanResult = airSpeed(fanParam, evapParam);
+    fanFlow = fanResult.fanAirflow_m3h; 
+    fanAirSpeed = fanResult.fanAirSpeed; // Assign it here
+    evapParam.evapArea_m2 = computeEvaporatorArea(evapParam);
+  } catch (e) { 
+    showError(e.message, 'inverterErrors'); 
+    return; 
+  }
   if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputPower < 0) {
     showError('Fan input power must be a non‑negative number. Set it in Advanced Settings.', 'inverterErrors'); return;
   }
@@ -957,6 +968,7 @@ function handleInverterRun() {
       backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
       backCondenserEfficiency: 0.7, backCondenser: 'Yes',
     },
+    evapGeom: evapParam // Pass the validated and calculated geometry explicitly
   });
 
   loadCompressors();
@@ -993,18 +1005,20 @@ function handleInverterRun() {
       result.results.compressorModel = comp.compressorModel;
   }
 
-  let energy = null;
-  if (result.results && (result.results.converged !== false)) energy = EnergyConsumption(result.results);
+let energy = null;
+  if (result.results && (result.results.converged !== false))
+  energy = EnergyConsumption(result.results);
   result.results.fanAirflow = fanFlow;
-
+  result.results.fanAirSpeed = fanAirSpeed; // Pass it to the results object  result.results.fanAirflow = fanFlow;
   let evapDetails = null;
   const evap = settings.evaporator;
   const fanP = settings.fanParam;
   if (evap && fanP && result.results && result.results.converged !== false) {
     try {
       const area = computeEvaporatorArea(evap);
-      const v = airSpeed(fanP, evap).v_ms;
-      const alpha = evaporatorAlpha(v);
+      const fanResult = airSpeed(fanP, evap);
+      const fanAirSpeed = fanResult.fanAirSpeed;
+      const v = fanResult.v_ms;      const alpha = evaporatorAlpha(v);
       const MR = result.results.MR;
       const MF = result.results.MF;
       const totalFlow = MR + MF;
@@ -1121,6 +1135,7 @@ function displayResults(res, energy, isInverter = false) {
 
   const fanAirflow_m3h = res.fanAirflow !== undefined ? res.fanAirflow : 0;
   const fanAirflow_CFM = fanAirflow_m3h * 0.588578;
+  const fanAirSpeed = res.fanAirSpeed;
 
   const configLabel = res.configLabel || 'Unknown';
   const totalLoad = res.heatLoads?.totalLoad ?? '—';
@@ -1165,6 +1180,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr><td>Total load</td><td>${fmt(res.heatLoads.totalLoad)}</td></tr>
 
         <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
+        <tr><td>Calculated Fan Air Speed</td><td>${fmt(fanAirSpeed, 1)}  m/s</td></tr>
         <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m³/h)</td></tr>
         ${
           res.evapDetails ? `

@@ -33,7 +33,7 @@ export function runThermoAnalysis(config) {
   // 1. Core payload validation
   const required = [
     'geom', 'compParams', 'condenserConfig', 'refrigerant',
-    'subcool', 'dischargeTemp', 'fixedTemps', 'fan', 'electrical'
+    'subcool', 'dischargeTemp', 'fixedTemps', 'fan', 'electrical', 'evapGeom'
   ];
   for (const key of required) {
     if (config[key] === undefined) errors.push(`Missing required config field: ${key}`);
