@@ -482,6 +482,62 @@ function evaluateSafetyCheckpoints(result, config, TE_conv) {
  */
 export function EnergyConsumption(result) {
   if (result.converged === false) return NaN;
-  const energy_W = ((result.compressor.inputPower + result.fan.inputPower_W + result.electrical.pwbOn_W) * result.PR + result.electrical.pwbOff_W * (1 - result.PR)) * 24 / 1000 + result.electrical.defrostOn_min * result.electrical.defrostHeater_W * (24 / (result.electrical.timerPeriod_h / result.PR)) / 60 / 1000;
-  return { EnergyConsumption_kWhDay: energy_W, EnergyConsumption_kWhMonth: energy_W * 30 };
+
+  // 1. Extract base variables
+  const compPower = result.compressor.inputPower;
+  const fanPower = result.fan.inputPower_W;
+  const pwbOn = result.electrical.pwbOn_W;
+  const pwbOff = result.electrical.pwbOff_W;
+  const PR = result.PR;
+  
+  // 2. Extract defrost variables
+  const defHeater = result.electrical.defrostHeater_W;
+  const defOnMin = result.electrical.defrostOn_min;
+  const defTimerPeriodH = result.electrical.timerPeriod_h;
+
+  // --- DEBUG TRACE START ---
+  console.log("\n=== ENERGY CALCULATION DEBUG TRACE ===");
+  console.table({
+    "Compressor Power (W)": compPower,
+    "Fan Input Power (W)": fanPower,
+    "PWB On Power (W)": pwbOn,
+    "PWB Off Power (W)": pwbOff,
+    "Running Ratio (PR)": PR,
+    "Defrost Heater (W)": defHeater,
+    "Defrost On Time (min)": defOnMin,
+    "Timer Period (h)": defTimerPeriodH
+  });
+
+  // 3. Component Math Breakdown
+  // Active cycle includes compressor, fan, and active PCB, weighted by running ratio
+  const activeCyclePower_W = (compPower + fanPower + pwbOn) * PR;
+  
+  // Off cycle includes only standby PCB, weighted by inverse of running ratio
+  const offCyclePower_W = pwbOff * (1 - PR);
+  
+  // Base daily energy (kWh)
+  const dailyBaseEnergy_kWh = (activeCyclePower_W + offCyclePower_W) * 24 / 1000;
+
+  // Defrost math: Timer period is extended by the inverse of PR
+  const actualDefrostInterval_h = defTimerPeriodH / PR; 
+  const defrostEventsPerDay = 24 / actualDefrostInterval_h;
+  const dailyDefrostEnergy_kWh = (defOnMin / 60) * defHeater * defrostEventsPerDay / 1000;
+
+  // Total
+  const totalDaily_kWh = dailyBaseEnergy_kWh + dailyDefrostEnergy_kWh;
+
+  console.log(`[Component] Active Cycle Power:   ${activeCyclePower_W.toFixed(3)} W`);
+  console.log(`[Component] Off Cycle Power:      ${offCyclePower_W.toFixed(3)} W`);
+  console.log(`[Component] Actual Defrost Interval: ${actualDefrostInterval_h.toFixed(3)} h`);
+  console.log(`[Component] Defrost Events/Day:   ${defrostEventsPerDay.toFixed(3)}`);
+  console.log(`[Integration] Daily Base Energy:    ${dailyBaseEnergy_kWh.toFixed(4)} kWh`);
+  console.log(`[Integration] Daily Defrost Energy: ${dailyDefrostEnergy_kWh.toFixed(4)} kWh`);
+  console.log(`[Integration] TOTAL DAILY ENERGY:   ${totalDaily_kWh.toFixed(4)} kWh`);
+  console.log("======================================\n");
+  // --- DEBUG TRACE END ---
+
+  return { 
+    EnergyConsumption_kWhDay: totalDaily_kWh, 
+    EnergyConsumption_kWhMonth: totalDaily_kWh * 30 
+  };
 }
