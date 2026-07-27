@@ -18,3 +18,4 @@ node_modules/
 # Temporary files
 *.tmp
 ~$*
+src/release/
