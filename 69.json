@@ -3,45 +3,45 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-27T13:20:08.602Z"
+    "updatedAt": "2026-07-27T13:29:10.697Z"
   },
   "cabinet": {
     "geometry": {
-      "H": 1800,
+      "H": 1715,
       "W": 795,
       "D": 650,
-      "Hb": 314,
-      "Db1": 192,
-      "Db2": 217,
+      "Hb": 246,
+      "Db1": 154,
+      "Db2": 171,
       "doorGap": 10,
       "packingPos": 15,
       "airGap": 0,
-      "Hf": 670,
-      "Hr": 945,
+      "Hf": 631,
+      "Hr": 868,
       "walls": {
         "freezer": {
-          "top": 50,
-          "bottom": 50,
-          "left": 80,
-          "right": 80,
-          "door": 70,
-          "rear": 80,
-          "bottom1": 50,
-          "bottom2": 80,
-          "bottom3": 80
+          "top": 76,
+          "bottom": 70,
+          "left": 74,
+          "right": 74,
+          "door": 75,
+          "rear": 70,
+          "bottom1": 60,
+          "bottom2": 65,
+          "bottom3": 70
         },
         "refrigerator": {
-          "top": 55,
-          "bottom1": 50,
-          "bottom2": 80,
-          "bottom3": 80,
-          "left": 55,
-          "right": 55,
-          "door": 55,
-          "rear": 55
+          "top": 70,
+          "bottom1": 60,
+          "bottom2": 65,
+          "bottom3": 70,
+          "left": 65,
+          "right": 65,
+          "door": 60,
+          "rear": 56
         }
       },
-      "dividerThickness": 50,
+      "dividerThickness": 70,
       "special": {
         "railHeight": 20,
         "railWidth": 10,
@@ -61,25 +61,25 @@
       },
       "_compartments": [
         {
-          "type": "fresh",
-          "top": 55,
-          "left": 55,
-          "right": 55,
-          "rear": 55,
-          "door": 55,
-          "height": 945,
-          "ratio": 0.5851393188854489,
+          "type": "freezer",
+          "top": 76,
+          "left": 74,
+          "right": 74,
+          "rear": 70,
+          "door": 75,
+          "height": 631,
+          "ratio": 0.4209472981987992,
           "shelfCount": 0
         },
         {
-          "type": "freezer",
-          "top": 50,
-          "left": 80,
-          "right": 80,
-          "rear": 80,
-          "door": 70,
-          "height": 670,
-          "ratio": 0.4148606811145511,
+          "type": "fresh",
+          "top": 70,
+          "left": 65,
+          "right": 65,
+          "rear": 56,
+          "door": 60,
+          "height": 868,
+          "ratio": 0.5790527018012008,
           "shelfCount": 0
         }
       ]
@@ -90,11 +90,11 @@
       "children": [
         {
           "heightMode": "ratio",
-          "heightValue": 0.5851393188854489,
+          "heightValue": 0.4209472981987992,
           "node": {
             "nodeType": "leaf",
             "id": "comp0",
-            "type": "fresh",
+            "type": "freezer",
             "fittings": {
               "shelfCount": 0,
               "shelves": [],
@@ -111,11 +111,11 @@
         },
         {
           "heightMode": "ratio",
-          "heightValue": 0.4148606811145511,
+          "heightValue": 0.5790527018012008,
           "node": {
             "nodeType": "leaf",
             "id": "comp1",
-            "type": "freezer",
+            "type": "fresh",
             "fittings": {
               "shelfCount": 0,
               "shelves": [],
@@ -134,7 +134,7 @@
       "dividers": [
         {
           "afterChildIndex": 0,
-          "thickness": 50
+          "thickness": 70
         }
       ]
     }
@@ -172,7 +172,7 @@
       "backPipePitch_mm": 0
     },
     "fanParam": {
-      "tipDiam_mm": 110,
+      "tipDiam_mm": 118,
       "fanRPM": 2200,
       "hubDiam_mm": 45.6,
       "PitchAngle_degree": 30

@@ -35,7 +35,10 @@ let thermalAdvanced = {
   dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
   fanInputPower: SJ54H_COMPONENTS.fan.inputPower_W,
   defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
-  defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
+  defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min,
+  pwbOn: SJ54H_COMPONENTS.electrical.pwbOn_W,
+  pwbOff: SJ54H_COMPONENTS.electrical.pwbOff_W,
+  timerPeriod: SJ54H_COMPONENTS.electrical.timerPeriod_h
 };
 
 let getGeometryFn = () => null; // geometry provider function
@@ -196,9 +199,12 @@ function buildThermalModalOnce() {
       </fieldset>
 
       <fieldset>
-        <legend>Defrost</legend>
-        <label>Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
-        <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
+        <legend>Electrical &amp; Defrost</legend>
+        <label>PWB On Power (W): <input type="number" id="thermoPwbOn" step="any"></label>
+        <label>PWB Standby Power (W): <input type="number" id="thermoPwbOff" step="any"></label>
+        <label>Defrost Heater (W): <input type="number" id="thermoDefHeater" step="any"></label>
+        <label>Defrost On time (min): <input type="number" id="thermoDefOn" step="any"></label>
+        <label>Timer Period (h): <input type="number" id="thermoTimerPeriod" step="any"></label>
       </fieldset>
 
       <div class="settings-actions">
@@ -231,7 +237,9 @@ function buildThermalModalOnce() {
     dischargeTemp: document.getElementById('thermoDiscTemp'),
     defHeater: document.getElementById('thermoDefHeater'),
     defOn: document.getElementById('thermoDefOn'),
-  };
+    pwbOn: document.getElementById('thermoPwbOn'),
+    pwbOff: document.getElementById('thermoPwbOff'),
+    timerPeriod: document.getElementById('thermoTimerPeriod'),  };
 
   // Attach permanent event listeners
   document.getElementById('closeThermalSettings').onclick = () => thermalModal.classList.add('hidden');
@@ -289,7 +297,9 @@ function openThermalSettings() {
   thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
   thermalModalInputs.defHeater.value     = thermalAdvanced.defHeater;
   thermalModalInputs.defOn.value         = thermalAdvanced.defOnMin;
-
+  thermalModalInputs.pwbOn.value         = thermalAdvanced.pwbOn;
+  thermalModalInputs.pwbOff.value        = thermalAdvanced.pwbOff;
+  thermalModalInputs.timerPeriod.value   = thermalAdvanced.timerPeriod;
   refreshCompressorSelect();
   updateInverterCompressorDisplay();
   thermalModal.classList.remove('hidden');
@@ -348,7 +358,9 @@ function saveThermalSettings() {
   thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
   thermalAdvanced.defHeater     = parseFloat(thermalModalInputs.defHeater.value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
   thermalAdvanced.defOnMin      = parseFloat(thermalModalInputs.defOn.value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
-  localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
+  thermalAdvanced.pwbOn         = parseFloat(thermalModalInputs.pwbOn.value) || SJ54H_COMPONENTS.electrical.pwbOn_W;
+  thermalAdvanced.pwbOff        = parseFloat(thermalModalInputs.pwbOff.value) || SJ54H_COMPONENTS.electrical.pwbOff_W;
+  thermalAdvanced.timerPeriod   = parseFloat(thermalModalInputs.timerPeriod.value) || SJ54H_COMPONENTS.electrical.timerPeriod_h;  localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
 
   const compSelect = thermalModalInputs.compressorSelect;
   if (compSelect) setSelectedCompressor(compSelect.value);
@@ -603,9 +615,13 @@ function openAddCompressorModal() {
         const compressorModel = fitInverterCoefficients(
           loadedInverterPoints, normalizeRPM, centerTE, centerTC, 3.0
         );
+        const actualRpmMin = Math.min(...loadedInverterPoints.map(d => d.RPM));
+        const actualRpmMax = Math.max(...loadedInverterPoints.map(d => d.RPM));
+
         addCompressor({
           id: name.replace(/\s/g, ''), name, model: name, voltage: 220, frequency: 50, isInverter: true,
           cylinderVolumeCm3: invCyl, refrigerantIndex: refIdx, compressorModel, dataPoints: loadedInverterPoints,
+          rpmMin: actualRpmMin, rpmMax: actualRpmMax
         });
       } catch (e) {
         errorDiv.textContent = 'Fitting failed: ' + e.message;
@@ -738,11 +754,15 @@ function openEditCompressorModal() {
         const compressorModel = fitInverterCoefficients(
           loadedDataPoints, normalizeRPM, centerTE, centerTC, 3.0
         );
+        const actualRpmMin = Math.min(...loadedDataPoints.map(d => d.RPM));
+        const actualRpmMax = Math.max(...loadedDataPoints.map(d => d.RPM));
+
         const updated = {
           ...comp, id: comp.id, name: newName, model: newName, refrigerantIndex: newRefIdx,
           cylinderVolumeCm3: parseFloat(document.getElementById('acCyl')?.value) || comp.cylinderVolumeCm3 || 0,
           isInverter: true, normalizeRPM, centerTE, centerTC, compressorModel, dataPoints: loadedDataPoints,
-        };
+          rpmMin: actualRpmMin, rpmMax: actualRpmMax
+        };  
         deleteCompressor(comp.id); addCompressor(updated); setSelectedCompressor(comp.id);
       } catch (err) { errorDiv.textContent = 'Fitting failed: ' + err.message; return; }
     } else {
@@ -800,10 +820,12 @@ function handleRun() {
 
   const fanParam = settings.fanParam || {};
   const evapParam = settings.evaporator || {}; // Grab the evaporator settings
-  let fanFlow;
+  let fanFlow, fanAirSpeed; // Declare both variables here
   try {
     // Calculate airflow and explicitly calculate physical heat transfer area
-    fanFlow = airSpeed(fanParam, evapParam).fanAirflow_m3h; 
+    const fanResult = airSpeed(fanParam, evapParam);
+    fanFlow = fanResult.fanAirflow_m3h; 
+    fanAirSpeed = fanResult.fanAirSpeed; // Assign it here
     evapParam.evapArea_m2 = computeEvaporatorArea(evapParam);
   } catch (e) {
     showError(e.message, 'inverterErrors');
@@ -823,7 +845,13 @@ function handleRun() {
     geom, freezerPosition, refrigerant, subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    electrical: { 
+      defrostHeater_W: thermalAdvanced.defHeater, 
+      defrostOn_min: thermalAdvanced.defOnMin,
+      pwbOn_W: thermalAdvanced.pwbOn,
+      pwbOff_W: thermalAdvanced.pwbOff,
+      timerPeriod_h: thermalAdvanced.timerPeriod
+    },
     evapGeom: evapParam // Pass the validated and calculated geometry explicitly
   });
   if (settings.condenser) {
@@ -962,7 +990,13 @@ function handleInverterRun() {
     geom, freezerPosition: freezerPos, refrigerant, subcool: thermalAdvanced.subcool,
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    electrical: { 
+      defrostHeater_W: thermalAdvanced.defHeater, 
+      defrostOn_min: thermalAdvanced.defOnMin,
+      pwbOn_W: thermalAdvanced.pwbOn,
+      pwbOff_W: thermalAdvanced.pwbOff,
+      timerPeriod_h: thermalAdvanced.timerPeriod
+    },
     condenserConfig: {
       sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
       backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
@@ -1182,6 +1216,9 @@ function displayResults(res, energy, isInverter = false) {
         <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
         <tr><td>Calculated Fan Air Speed</td><td>${fmt(fanAirSpeed, 1)}  m/s</td></tr>
         <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m³/h)</td></tr>
+        <tr><td>Freezer flow (MF)</td><td>${fmt(res.MF, 2)} m³/h</td></tr>
+        <tr><td>Refrigerator flow (MR)</td><td>${fmt(res.MR, 2)} m³/h</td></tr>
+        <tr><td>t3</td><td>${fmt(res.T3, 2)} C</td></tr>
         ${
           res.evapDetails ? `
           <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>

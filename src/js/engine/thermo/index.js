@@ -115,6 +115,9 @@ export function runThermoAnalysis(config) {
         outer: result.outerIterations,
         innerTotal: result.innerTotalIterations,
       },
+      MR: result.MR,
+      MF: result.MF,
+      T3: result.T3,
     };
 
     if (result.RPM !== undefined) output.RPM = result.RPM;

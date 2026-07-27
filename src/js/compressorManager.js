@@ -48,7 +48,6 @@ const DEFAULT_COMPRESSORS = [
   model: 'DZ90A1X',
   voltage: 220, frequency: 50,
   isInverter: true,
-  rpmMin: 1600, rpmMax: 4500,
   normalizeRPM: 4320,
   centerTE: -25.0, centerTC: 45.0,
   compressorModel: null,   // will be generated on first use
@@ -93,15 +92,19 @@ const DEFAULT_COMPRESSORS = [
     ],
 },
 ];
-
+DEFAULT_COMPRESSORS.forEach(comp => {
+  if (comp.isInverter && Array.isArray(comp.dataPoints) && comp.dataPoints.length > 0) {
+    comp.rpmMin = Math.min(...comp.dataPoints.map(d => d.RPM));
+    comp.rpmMax = Math.max(...comp.dataPoints.map(d => d.RPM));
+  }
+});
 let compressorList = [];
 let selectedCompressorId = 'EGX80CLC';
 
-/** 
- * Helper: ensures coefficient fields are flat arrays.
+/**
+ * Helper: ensures coefficient fields are flat arrays and enforces dynamic RPM bounds.
  * Upgrades legacy data structures where coefficients were stored as keyed objects
  * (e.g. { AW, BW... }) into the ordered arrays expected by the new solver matrix.
- * 
  * @param {Object} comp - Raw compressor definition.
  * @returns {Object} Cleaned compressor definition.
  */
@@ -111,11 +114,20 @@ function ensureArrays(comp) {
     if (val && typeof val === 'object') return keys.map(k => val[k]).filter(v => v !== undefined);
     return null;
   };
-  return {
+
+  const cleaned = {
     ...comp,
     wCoeffs:   toArray(comp.wCoeffs,   ['AW','BW','CW','DW','EW']),
     etaCoeffs: toArray(comp.etaCoeffs, ['A','B','C']),
   };
+
+  // Dynamically extract and enforce RPM bounds for any inverter compressor based on its physical data
+  if (cleaned.isInverter && Array.isArray(cleaned.dataPoints) && cleaned.dataPoints.length > 0) {
+    cleaned.rpmMin = Math.min(...cleaned.dataPoints.map(d => d.RPM));
+    cleaned.rpmMax = Math.max(...cleaned.dataPoints.map(d => d.RPM));
+  }
+
+  return cleaned;
 }
 
 /**

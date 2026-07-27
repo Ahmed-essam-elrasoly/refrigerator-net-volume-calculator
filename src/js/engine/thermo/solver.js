@@ -289,7 +289,8 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     heatLoads: loads,
     compressor: { etaV: comp.VolumetricEfficiency, coolingCapacity: comp.QCompressor, inputPower: comp.CompPower, COP: comp.QCompressor / comp.CompPower, massFlow: comp.massFlow, Pe: comp.Pe, Pc: comp.Pc },
     MR: fMR,
-    MF: fMF
+    MF: fMF,
+    T3: fT3,
   };
 }
 
@@ -412,7 +413,7 @@ export function solveThermalSystem(config, TE_override = null) {
     
     const F3 = QCout.QCout - (compOuter.massFlow * (prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, prop.satPressure(TC + KELVIN_OFFSET)) - prop.liquidEnthalpy(TC - subcool)) / 3.6);
 
-    if (Math.abs(F3) < tolOuter) return { TC, T2: inner.T2, PR: inner.PR, RPM: inner.RPM, TE, Pe: inner.compressor.Pe, Pc: inner.compressor.Pc, converged: true, warnings: inner.warning ? [inner.warning] : [], outerIterations: iter + 1, innerTotalIterations: totalInner, heatLoads: inner.heatLoads, compressor: { ...inner.compressor }, MR: inner.MR, MF: inner.MF, fan, electrical };
+    if (Math.abs(F3) < tolOuter) return { TC, T2: inner.T2, PR: inner.PR, T3: inner.T3, RPM: inner.RPM, TE, Pe: inner.compressor.Pe, Pc: inner.compressor.Pc, converged: true, warnings: inner.warning ? [inner.warning] : [], outerIterations: iter + 1, innerTotalIterations: totalInner, heatLoads: inner.heatLoads, compressor: { ...inner.compressor }, MR: inner.MR, MF: inner.MF, fan, electrical };
 
     let innerPert = null;
     try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
