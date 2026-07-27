@@ -1074,32 +1074,46 @@ let energy = null;
  * Transforms an Inverter polynomial configuration back into a readable math string.
  */
 function buildInverterEquation(model, varName) {
-    if (!model || model.type !== 'global' || !model.coeffs) {
-        return model?.type === 'piecewise' ? 'Piecewise model' : '—';
-    }
-    const c = model.coeffs;
-    const form = model.rpmForm;
-    const log = model.logTransform;
-    const prefix = log ? `ln(${varName})` : varName;
-    let eq = `${prefix} = ${c[0].toFixed(4)}`;
+    if (!model) return '';
 
-    const addTerm = (coeff, term) => {
-        if (Math.abs(coeff) < 1e-12) return;
-        const sign = coeff > 0 ? ' + ' : ' − ';
-        eq += `${sign}${Math.abs(coeff).toFixed(4)}·${term}`;
+    const formatEq = (c, form, log) => {
+        const prefix = log ? `ln(${varName})` : varName;
+        let eq = `${prefix} = ${c[0].toFixed(4)}`;
+        const addTerm = (coeff, term) => {
+            if (Math.abs(coeff) < 1e-12) return;
+            const sign = coeff > 0 ? ' + ' : ' - ';
+            eq += `${sign}${Math.abs(coeff).toFixed(4)} * ${term}`;
+        };
+        
+        // Map exact features from makeFeatures() in CompressorPerformance.js
+        if (form === 'n_lin') {
+            addTerm(c[1], 'n'); addTerm(c[2], 'n*te'); addTerm(c[3], 'n*tc'); addTerm(c[4], 'n*tc*te'); addTerm(c[5], 'n*te²');
+        } else if (form === 'n_quad') {
+            addTerm(c[1], 'n'); addTerm(c[2], 'n²'); addTerm(c[3], 'n*te'); addTerm(c[4], 'n*tc'); addTerm(c[5], 'n*tc*te'); addTerm(c[6], 'n*te²');
+        } else if (form === 'ln_n_lin') {
+            addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)*te'); addTerm(c[3], 'ln(n)*tc'); addTerm(c[4], 'ln(n)*tc*te'); addTerm(c[5], 'ln(n)*te²');
+        } else if (form === 'ln_n_quad') {
+            addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)²'); addTerm(c[3], 'ln(n)*te'); addTerm(c[4], 'ln(n)*tc'); addTerm(c[5], 'ln(n)*tc*te'); addTerm(c[6], 'ln(n)*te²');
+        }
+        
+        if (log) eq = `ln(${varName}) = ${eq.substring(eq.indexOf('=') + 1)}`;
+        return eq;
     };
 
-    if (form === 'n_lin') {
-        addTerm(c[1], 'n'); addTerm(c[2], 'n·te'); addTerm(c[3], 'n·tc'); addTerm(c[4], 'n·tc·te'); addTerm(c[5], 'n·te²');
-    } else if (form === 'n_quad') {
-        addTerm(c[1], 'n'); addTerm(c[2], 'n²'); addTerm(c[3], 'n·te'); addTerm(c[4], 'n·tc'); addTerm(c[5], 'n·tc·te'); addTerm(c[6], 'n·te²');
-    } else if (form === 'ln_n_lin') {
-        addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)·te'); addTerm(c[3], 'ln(n)·tc'); addTerm(c[4], 'ln(n)·tc·te'); addTerm(c[5], 'ln(n)·te²');
-    } else if (form === 'ln_n_quad') {
-        addTerm(c[1], 'ln(n)'); addTerm(c[2], 'ln(n)²'); addTerm(c[3], 'ln(n)·te'); addTerm(c[4], 'ln(n)·tc'); addTerm(c[5], 'ln(n)·tc·te'); addTerm(c[6], 'ln(n)·te²');
+    if (model.type === 'global' && model.coeffs) {
+        return formatEq(model.coeffs, model.rpmForm, model.logTransform);
+    } else if (model.type === 'piecewise') {
+        // Piecewise models in this engine strictly use 'n_quad' without log transforms
+        const eqLow = model.coeffs_low ? formatEq(model.coeffs_low, 'n_quad', false) : 'N/A';
+        const eqMax = model.coeffs_max ? formatEq(model.coeffs_max, 'n_quad', false) : 'N/A';
+        
+        return `<strong>Piecewise Model</strong><br>
+                RPM &le; ${model.splitRPM}: ${eqLow}<br>
+                RPM = ${model.maxRPM}: ${eqMax}<br>
+                <em style="color:#555;">(Interpolates between ${model.splitRPM} and ${model.maxRPM} RPM)</em>`;
     }
-    if (log) eq = `ln(${varName}) = ${eq.substring(eq.indexOf('=') + 1)}`;
-    return eq;
+    
+    return '';
 }
 
 /**

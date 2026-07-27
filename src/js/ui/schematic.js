@@ -317,7 +317,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ─── Control Box & R‑Shower ───
+ // ─── Control Box & R‑Shower ───
   let freshIdx = -1;
   if (numCompartments === 1) {
     freshIdx = 0;
@@ -361,10 +361,23 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
 
     const both = ctrlBoxH > 0 && rshowerH > 0 && ctrlBoxW > 0 && rshowerW > 0;
     const totalH_px = ctrlBoxH_px + rshowerH_px;
+    
+    // Determine configuration: if fresh is not the top compartment, it's a Top Freezer
+    const isTopFreezer = freshIdx > 0; 
+    let currentY = isTopFreezer ? freshCompTop * scale : freshCompBottom * scale;
 
     if (both && totalH_px <= compartmentHeight * scale) {
-      const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
-      const rshowerY = ctrlBoxY - rshowerH_px;
+      let ctrlBoxY, rshowerY;
+      
+      if (isTopFreezer) {
+        // Top Freezer: Anchor to top (divider), sequence downwards
+        ctrlBoxY = currentY;
+        rshowerY = currentY + ctrlBoxH_px;
+      } else {
+        // Bottom Freezer: Anchor to bottom (divider), sequence upwards
+        ctrlBoxY = currentY - ctrlBoxH_px;
+        rshowerY = ctrlBoxY - rshowerH_px;
+      }
 
       const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
       const rshowerX = (W / 2 - rshowerW / 2) * scale;
@@ -374,17 +387,19 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
               'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
 
-    } else if (ctrlBoxH > 0 && ctrlBoxW > 0) {
-      const ctrlBoxY = (freshCompBottom * scale) - ctrlBoxH_px;
-      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
-      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
-              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
-
-    } else if (rshowerH > 0 && rshowerW > 0) {
-      const rshowerY = (freshCompBottom * scale) - rshowerH_px;
-      const rshowerX = (W / 2 - rshowerW / 2) * scale;
-      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
-              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
+    } else {
+      if (ctrlBoxH > 0 && ctrlBoxW > 0) {
+        const ctrlBoxY = isTopFreezer ? freshCompTop * scale : (freshCompBottom * scale) - ctrlBoxH_px;
+        const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
+        drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
+                'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
+      }
+      if (rshowerH > 0 && rshowerW > 0) {
+        const rshowerY = isTopFreezer ? freshCompTop * scale : (freshCompBottom * scale) - rshowerH_px;
+        const rshowerX = (W / 2 - rshowerW / 2) * scale;
+        drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
+                'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
+      }
     }
   }
 
@@ -738,7 +753,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // Obstructions (Control box, R-shower)
+// Obstructions (Control box, R-shower)
   if (freshCompIdx >= 0) {
     const rearX = compRear[freshCompIdx];
     const freshHeight = freshBottomWorld - freshTopWorld;
@@ -749,11 +764,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const drawRshower = rshowerH > 0 && rshowerL > 0;
     const totalH_needed = (drawCtrl ? ctrlBoxH_eff : 0) + (drawRshower ? rshowerH_eff : 0);
 
+    // Determine configuration: if fresh is not the top compartment, it's a Top Freezer
+    const isTopFreezer = freshCompIdx > 0;
+
     if (totalH_needed <= freshHeight) {
-      let yCursor = freshBottomWorld;
+      let yCursor = isTopFreezer ? freshTopWorld : freshBottomWorld;
 
       if (drawCtrl) {
-        const boxTop = yCursor - ctrlBoxH_eff;
+        const boxTop = isTopFreezer ? yCursor : yCursor - ctrlBoxH_eff;
         const boxH = ctrlBoxH_eff * scale;
         const boxW = ctrlBoxL * scale;
         const boxX = rearX * scale;
@@ -769,12 +787,13 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
         ctrlBoxFrontX = rearX + ctrlBoxL;
         ctrlBoxTop = boxTop;
-        ctrlBoxBottom = yCursor;
-        yCursor = boxTop;
+        ctrlBoxBottom = boxTop + ctrlBoxH_eff;
+        
+        yCursor = isTopFreezer ? ctrlBoxBottom : boxTop;
       }
 
       if (drawRshower) {
-        const boxTop = yCursor - rshowerH_eff;
+        const boxTop = isTopFreezer ? yCursor : yCursor - rshowerH_eff;
         const boxH = rshowerH_eff * scale;
         const boxW = rshowerL * scale;
         const boxX = rearX * scale;
@@ -790,11 +809,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
         rshowerFrontX = rearX + rshowerL;
         rshowerTop = boxTop;
-        rshowerBottom = yCursor;
+        rshowerBottom = boxTop + rshowerH_eff;
       }
     } else {
       if (drawCtrl) {
-        const boxTop = freshBottomWorld - ctrlBoxH_eff;
+        const boxTop = isTopFreezer ? freshTopWorld : freshBottomWorld - ctrlBoxH_eff;
         const boxH = ctrlBoxH_eff * scale;
         const boxW = ctrlBoxL * scale;
         const boxX = rearX * scale;
@@ -810,9 +829,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
         ctrlBoxFrontX = rearX + ctrlBoxL;
         ctrlBoxTop = boxTop;
-        ctrlBoxBottom = freshBottomWorld;
-      } else if (drawRshower) {
-        const boxTop = freshBottomWorld - rshowerH_eff;
+        ctrlBoxBottom = boxTop + ctrlBoxH_eff;
+      }
+      if (drawRshower) {
+        const boxTop = isTopFreezer ? freshTopWorld : freshBottomWorld - rshowerH_eff;
         const boxH = rshowerH_eff * scale;
         const boxW = rshowerL * scale;
         const boxX = rearX * scale;
@@ -828,7 +848,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
         rshowerFrontX = rearX + rshowerL;
         rshowerTop = boxTop;
-        rshowerBottom = freshBottomWorld;
+        rshowerBottom = boxTop + rshowerH_eff;
       }
     }
   }

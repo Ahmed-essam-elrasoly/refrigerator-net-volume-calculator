@@ -237,7 +237,7 @@ function fitPiecewiseInverter(dataPoints, targetCol, splitRPM, normalizeRPM, cen
   };
 
   const preds = dataPoints.map(d => predict(d.RPM, d.TE, d.TC));
-  return { type: 'piecewise', splitRPM, maxRPM, coeffs_low: coeffs, rmse: Math.sqrt(preds.reduce((s, p, i) => s + (p - dataPoints[i][targetCol])**2, 0) / preds.length), predict };
+  return { type: 'piecewise', splitRPM, maxRPM, coeffs_low: coeffs, coeffs_max: coeffs_max, rmse: Math.sqrt(preds.reduce((s, p, i) => s + (p - dataPoints[i][targetCol])**2, 0) / preds.length), predict };
 }
 
 function buildGlobalModel(dataPoints, targetCol, normalizeRPM, centerTE, centerTC, targetRMSE) {
