@@ -354,16 +354,37 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       ctx.fillText(label, x + w / 2, y + h / 2);
     }
 
+    const isTopFreezer = freshIdx > 0; 
+    
+    const availableRearH = isTopFreezer 
+      ? Math.max(0, Math.min(compartmentHeight, floorRaisedY - freshTopY))
+      : compartmentHeight;
+
+    const effectiveCtrlH = Math.min(ctrlBoxH, availableRearH);
+    const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
+
     const ctrlBoxW_px = ctrlBoxW * scale;
     const rshowerW_px = rshowerW * scale;
-    const ctrlBoxH_px = Math.min(ctrlBoxH, compartmentHeight) * scale;
-    const rshowerH_px = Math.min(rshowerH, compartmentHeight) * scale;
+    const ctrlBoxH_px = effectiveCtrlH * scale;
+    const rshowerH_px = effectiveRShowerH * scale;
 
-    const both = ctrlBoxH > 0 && rshowerH > 0 && ctrlBoxW > 0 && rshowerW > 0;
-    const totalH_px = ctrlBoxH_px + rshowerH_px;
-    
-    // Determine configuration: if fresh is not the top compartment, it's a Top Freezer
-    const isTopFreezer = freshIdx > 0; 
+    let currentY = isTopFreezer ? freshCompTop * scale : freshCompBottom * scale;
+
+    if (effectiveCtrlH > 0 && ctrlBoxW > 0) {
+      const ctrlBoxY = isTopFreezer ? currentY : currentY - ctrlBoxH_px;
+      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
+      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
+              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
+      
+      currentY = isTopFreezer ? ctrlBoxY + ctrlBoxH_px : ctrlBoxY;
+    }
+
+    if (effectiveRShowerH > 0 && rshowerW > 0) {
+      const rshowerY = isTopFreezer ? currentY : currentY - rshowerH_px;
+      const rshowerX = (W / 2 - rshowerW / 2) * scale;
+      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
+              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
+    } 
     let currentY = isTopFreezer ? freshCompTop * scale : freshCompBottom * scale;
 
     if (both && totalH_px <= compartmentHeight * scale) {
@@ -757,99 +778,60 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   if (freshCompIdx >= 0) {
     const rearX = compRear[freshCompIdx];
     const freshHeight = freshBottomWorld - freshTopWorld;
-    const ctrlBoxH_eff = Math.min(ctrlBoxH, freshHeight);
-    const rshowerH_eff = Math.min(rshowerH, freshHeight);
-
-    const drawCtrl = ctrlBoxH > 0 && ctrlBoxL > 0;
-    const drawRshower = rshowerH > 0 && rshowerL > 0;
-    const totalH_needed = (drawCtrl ? ctrlBoxH_eff : 0) + (drawRshower ? rshowerH_eff : 0);
-
-    // Determine configuration: if fresh is not the top compartment, it's a Top Freezer
     const isTopFreezer = freshCompIdx > 0;
+    
+    const availableRearH = isTopFreezer 
+      ? Math.max(0, Math.min(freshHeight, floorRaisedY - freshTopWorld))
+      : freshHeight;
 
-    if (totalH_needed <= freshHeight) {
-      let yCursor = isTopFreezer ? freshTopWorld : freshBottomWorld;
+    const ctrlBoxH_eff = Math.min(ctrlBoxH, availableRearH);
+    const rshowerH_eff = Math.max(0, Math.min(rshowerH, availableRearH - ctrlBoxH_eff));
 
-      if (drawCtrl) {
-        const boxTop = isTopFreezer ? yCursor : yCursor - ctrlBoxH_eff;
-        const boxH = ctrlBoxH_eff * scale;
-        const boxW = ctrlBoxL * scale;
-        const boxX = rearX * scale;
+    const drawCtrl = ctrlBoxH_eff > 0 && ctrlBoxL > 0;
+    const drawRshower = rshowerH_eff > 0 && rshowerL > 0;
 
-        ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.strokeStyle = '#aa6600';
-        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.fillStyle = '#333';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+    let yCursor = isTopFreezer ? freshTopWorld : freshBottomWorld;
 
-        ctrlBoxFrontX = rearX + ctrlBoxL;
-        ctrlBoxTop = boxTop;
-        ctrlBoxBottom = boxTop + ctrlBoxH_eff;
-        
-        yCursor = isTopFreezer ? ctrlBoxBottom : boxTop;
-      }
+    if (drawCtrl) {
+      const boxTop = isTopFreezer ? yCursor : yCursor - ctrlBoxH_eff;
+      const boxH = ctrlBoxH_eff * scale;
+      const boxW = ctrlBoxL * scale;
+      const boxX = rearX * scale;
 
-      if (drawRshower) {
-        const boxTop = isTopFreezer ? yCursor : yCursor - rshowerH_eff;
-        const boxH = rshowerH_eff * scale;
-        const boxW = rshowerL * scale;
-        const boxX = rearX * scale;
+      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.strokeStyle = '#aa6600';
+      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
 
-        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.strokeStyle = '#0066aa';
-        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.fillStyle = '#333';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+      ctrlBoxFrontX = rearX + ctrlBoxL;
+      ctrlBoxTop = boxTop;
+      ctrlBoxBottom = boxTop + ctrlBoxH_eff;
+      
+      yCursor = isTopFreezer ? ctrlBoxBottom : boxTop;
+    }
 
-        rshowerFrontX = rearX + rshowerL;
-        rshowerTop = boxTop;
-        rshowerBottom = boxTop + rshowerH_eff;
-      }
-    } else {
-      if (drawCtrl) {
-        const boxTop = isTopFreezer ? freshTopWorld : freshBottomWorld - ctrlBoxH_eff;
-        const boxH = ctrlBoxH_eff * scale;
-        const boxW = ctrlBoxL * scale;
-        const boxX = rearX * scale;
+    if (drawRshower) {
+      const boxTop = isTopFreezer ? yCursor : yCursor - rshowerH_eff;
+      const boxH = rshowerH_eff * scale;
+      const boxW = rshowerL * scale;
+      const boxX = rearX * scale;
 
-        ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.strokeStyle = '#aa6600';
-        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.fillStyle = '#333';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.strokeStyle = '#0066aa';
+      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
 
-        ctrlBoxFrontX = rearX + ctrlBoxL;
-        ctrlBoxTop = boxTop;
-        ctrlBoxBottom = boxTop + ctrlBoxH_eff;
-      }
-      if (drawRshower) {
-        const boxTop = isTopFreezer ? freshTopWorld : freshBottomWorld - rshowerH_eff;
-        const boxH = rshowerH_eff * scale;
-        const boxW = rshowerL * scale;
-        const boxX = rearX * scale;
-
-        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-        ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.strokeStyle = '#0066aa';
-        ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-        ctx.fillStyle = '#333';
-        ctx.font = '9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
-
-        rshowerFrontX = rearX + rshowerL;
-        rshowerTop = boxTop;
-        rshowerBottom = boxTop + rshowerH_eff;
-      }
+      rshowerFrontX = rearX + rshowerL;
+      rshowerTop = boxTop;
+      rshowerBottom = boxTop + rshowerH_eff;
     }
   }
 

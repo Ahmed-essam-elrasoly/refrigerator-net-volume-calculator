@@ -668,8 +668,34 @@ function computeObstacleVolumes(geometry) {
   const fHeight = freezerComp.height;
   const evapVolMm3 = evapDepth * fHeight * fInnerW;
 
-  // Control box and R‑shower volumes (assume oriented in fresh compartment)
-  const ctrlVolMm3 = ctrlH * ctrlW * ctrlL;
+  // Calculate available rear height for the fresh compartment
+  const freshIdx = comps.findIndex(c => c.type === 'fresh');
+  const freshComp = comps[freshIdx >= 0 ? freshIdx : 0];
+  const isTopFreezer = freshIdx > 0;
+  
+  let freshTopWorld = comps[0].top;
+  for (let i = 0; i < freshIdx; i++) {
+    freshTopWorld += comps[i].height;
+    if (i < comps.length - 1) {
+      freshTopWorld += (parseFloat(divHorizInput.value) || 20);
+    }
+  }
+
+  const Hb = parseFloat(document.getElementById('geom-Hb')?.value) || 0;
+  const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
+  const floorRaisedY = geometry.H - Hb - bottom1;
+
+  const availableRearH = isTopFreezer 
+    ? Math.max(0, Math.min(freshComp.height, floorRaisedY - freshTopWorld))
+    : freshComp.height;
+
+  // Enforce reduction hierarchy
+  const effectiveCtrlH = Math.min(ctrlH, availableRearH);
+  const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
+
+  // Control box and R‑shower volumes using clamped heights
+  const ctrlVolMm3 = effectiveCtrlH * ctrlW * ctrlL;
+  const rshowerVolMm3 = effectiveRShowerH * rshowerW * rshowerL;
   const rshowerVolMm3 = rshowerH * rshowerW * rshowerL;
 
   // ---- Rails (two per shelf) ----

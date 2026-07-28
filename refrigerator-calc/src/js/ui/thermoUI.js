@@ -55,7 +55,8 @@ let thermalAdvanced = {
   dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
   fanInputPower: SJ54H_COMPONENTS.fan.inputPower_W,
   defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
-  defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min
+  defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min,
+  Damp: 1.0
 };
 
 let getGeometryFn = () => null;               // geometry provider
@@ -233,6 +234,13 @@ function buildThermalModalOnce() {
         </label>
       </fieldset>
 
+      <fieldset>
+        <legend>Damper</legend>
+        <label>Damp:
+          <input type="number" id="thermoDamp" step="any">
+        </label>
+      </fieldset>
+
       <div class="settings-actions">
         <button id="saveThermalSettings">Save &amp; Close</button>
       </div>
@@ -261,6 +269,7 @@ function buildThermalModalOnce() {
     dischargeTemp: document.getElementById('thermoDiscTemp'),
     defHeater: document.getElementById('thermoDefHeater'),
     defOn: document.getElementById('thermoDefOn'),
+    damp: document.getElementById('thermoDamp'),
   };
 
   // Attach permanent event listeners
@@ -320,6 +329,7 @@ function openThermalSettings() {
   thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
   thermalModalInputs.defHeater.value     = thermalAdvanced.defHeater;
   thermalModalInputs.defOn.value         = thermalAdvanced.defOnMin;
+  thermalModalInputs.damp.value          = thermalAdvanced.Damp;
 
   // Compressor dropdown
   refreshCompressorSelect();
@@ -378,6 +388,7 @@ function saveThermalSettings() {
   thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
   thermalAdvanced.defHeater     = parseFloat(thermalModalInputs.defHeater.value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
   thermalAdvanced.defOnMin      = parseFloat(thermalModalInputs.defOn.value) || SJ54H_COMPONENTS.electrical.defrostOn_min;
+  thermalAdvanced.Damp          = parseFloat(thermalModalInputs.damp.value) || 1.0;
   localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
 
   // Compressor
@@ -973,7 +984,7 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
     dischargeTemp: thermalAdvanced.dischargeTemp,
     fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin, Damp: thermalAdvanced.Damp },
   });
   if (settings.condenser) {
   config.condenserConfig = {
@@ -1391,7 +1402,7 @@ if (!Number.isFinite(thermalAdvanced.fanInputPower) || thermalAdvanced.fanInputP
     dischargeTemp: thermalAdvanced.dischargeTemp,
     fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
-    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin },
+    electrical: { defrostHeater_W: thermalAdvanced.defHeater, defrostOn_min: thermalAdvanced.defOnMin, Damp: thermalAdvanced.Damp },
     condenserConfig: {
       sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,
       backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,

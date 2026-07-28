@@ -179,6 +179,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
  */
 function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
   const { tol = 1e-4, maxIter = 100, dx = 1e-3 } = innerOpts;
+  const { Damp = 1.0 } = electrical;
   const PIPEPITCH = { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm };
   const refIndex = getRefrigerantIndex(refrigerant);
   const isInverterMode = compParams.isInverter && fixedPR !== undefined;
@@ -208,15 +209,15 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     const UA = alpha * evapGeom.evapArea_m2;
     
     const totalHeat_W = loads.QF + loads.QR + loads.QEV;
-    const LMTD_req = (totalHeat_W / PR) / UA;
+    const LMTD_req = totalHeat_W / PR / UA;
     
     const T3 = T2 + loads.QEV / (Flow_m3h * CV * PR);
-    const denomR = CV * Math.max(0.01, fixedTemps.TR - T3) * PR;
+    const denomR = CV * Math.max(0.01, fixedTemps.TR - T3) * PR * Damp;
     const MR = denomR > 0 ? Math.min(Flow_m3h, Math.max(0, loads.QR / denomR)) : 0;
     const MF = Flow_m3h - MR;
     const T1 = (MF * fixedTemps.TF + MR * fixedTemps.TR) / Flow_m3h;
 
-    if (isInverterMode && (RPM < bounds[1][0] || RPM > bounds[1][1])) {
+    if (isInverterMode && (RPM < bounds[1][0] || RPM > bounds[1][1])) { 
       return { error: `RPM ${RPM} out of bounds [${bounds[1][0]}, ${bounds[1][1]}]` };
     }
     if (!isInverterMode && (PR < bounds[1][0] || PR > bounds[1][1])) {
@@ -280,7 +281,7 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
   const comp = evaluateCompressorSafely(convergedTE, TC, refIndex, compParams, fRPM);
 
   const fT3 = fT2 + loads.QEV / (Flow_m3h * CV * fPR);
-  const fDenomR = CV * Math.max(0.01, fixedTemps.TR - fT3) * fPR;
+  const fDenomR = CV * Math.max(0.01, fixedTemps.TR - fT3) * fPR * Damp;
   const fMR = fDenomR > 0 ? Math.min(Flow_m3h, Math.max(0, loads.QR / fDenomR)) : 0;
   const fMF = Flow_m3h - fMR;
 

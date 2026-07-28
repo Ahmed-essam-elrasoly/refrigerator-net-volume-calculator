@@ -38,7 +38,8 @@ let thermalAdvanced = {
   defOnMin: SJ54H_COMPONENTS.electrical.defrostOn_min,
   pwbOn: SJ54H_COMPONENTS.electrical.pwbOn_W,
   pwbOff: SJ54H_COMPONENTS.electrical.pwbOff_W,
-  timerPeriod: SJ54H_COMPONENTS.electrical.timerPeriod_h
+  timerPeriod: SJ54H_COMPONENTS.electrical.timerPeriod_h,
+  Damp: 0.6
 };
 
 let getGeometryFn = () => null; // geometry provider function
@@ -207,6 +208,14 @@ function buildThermalModalOnce() {
         <label>Timer Period (h): <input type="number" id="thermoTimerPeriod" step="any"></label>
       </fieldset>
 
+      <fieldset>
+        <legend>Damper</legend>
+        <label>Damper Ratio:
+          <input type="number" id="thermoDamp" step="any">
+        </label>
+      </fieldset>
+
+
       <div class="settings-actions">
         <button id="saveThermalSettings">Save &amp; Close</button>
       </div>
@@ -239,6 +248,7 @@ function buildThermalModalOnce() {
     defOn: document.getElementById('thermoDefOn'),
     pwbOn: document.getElementById('thermoPwbOn'),
     pwbOff: document.getElementById('thermoPwbOff'),
+    damp: document.getElementById('thermoDamp'),
     timerPeriod: document.getElementById('thermoTimerPeriod'),  };
 
   // Attach permanent event listeners
@@ -300,6 +310,7 @@ function openThermalSettings() {
   thermalModalInputs.pwbOn.value         = thermalAdvanced.pwbOn;
   thermalModalInputs.pwbOff.value        = thermalAdvanced.pwbOff;
   thermalModalInputs.timerPeriod.value   = thermalAdvanced.timerPeriod;
+  thermalModalInputs.damp.value          = thermalAdvanced.Damp;
   refreshCompressorSelect();
   updateInverterCompressorDisplay();
   thermalModal.classList.remove('hidden');
@@ -361,6 +372,7 @@ function saveThermalSettings() {
   thermalAdvanced.pwbOn         = parseFloat(thermalModalInputs.pwbOn.value) || SJ54H_COMPONENTS.electrical.pwbOn_W;
   thermalAdvanced.pwbOff        = parseFloat(thermalModalInputs.pwbOff.value) || SJ54H_COMPONENTS.electrical.pwbOff_W;
   thermalAdvanced.timerPeriod   = parseFloat(thermalModalInputs.timerPeriod.value) || SJ54H_COMPONENTS.electrical.timerPeriod_h;  localStorage.setItem('thermoAdvanced', JSON.stringify(thermalAdvanced));
+  thermalAdvanced.Damp          = parseFloat(thermalModalInputs.damp.value) || 1.0;
 
   const compSelect = thermalModalInputs.compressorSelect;
   if (compSelect) setSelectedCompressor(compSelect.value);
@@ -850,7 +862,8 @@ function handleRun() {
       defrostOn_min: thermalAdvanced.defOnMin,
       pwbOn_W: thermalAdvanced.pwbOn,
       pwbOff_W: thermalAdvanced.pwbOff,
-      timerPeriod_h: thermalAdvanced.timerPeriod
+      timerPeriod_h: thermalAdvanced.timerPeriod,
+      Damp: thermalAdvanced.Damp
     },
     evapGeom: evapParam // Pass the validated and calculated geometry explicitly
   });
@@ -995,7 +1008,8 @@ function handleInverterRun() {
       defrostOn_min: thermalAdvanced.defOnMin,
       pwbOn_W: thermalAdvanced.pwbOn,
       pwbOff_W: thermalAdvanced.pwbOff,
-      timerPeriod_h: thermalAdvanced.timerPeriod
+      timerPeriod_h: thermalAdvanced.timerPeriod,
+      Damp: thermalAdvanced.Damp
     },
     condenserConfig: {
       sidePipePitch_mm: settings.condenser?.sidePipePitch_mm ?? 150,

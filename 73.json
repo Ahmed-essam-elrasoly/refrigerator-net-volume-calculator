@@ -3,36 +3,36 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-27T13:20:08.602Z"
+    "updatedAt": "2026-07-28T07:09:09.101Z"
   },
   "cabinet": {
     "geometry": {
       "H": 1800,
       "W": 795,
       "D": 650,
-      "Hb": 314,
-      "Db1": 192,
-      "Db2": 217,
+      "Hb": 260,
+      "Db1": 190,
+      "Db2": 237,
       "doorGap": 10,
       "packingPos": 15,
       "airGap": 0,
-      "Hf": 670,
-      "Hr": 945,
+      "Hf": 695,
+      "Hr": 940,
       "walls": {
         "freezer": {
-          "top": 50,
-          "bottom": 50,
+          "top": 30,
+          "bottom": 80,
           "left": 80,
           "right": 80,
-          "door": 70,
+          "door": 80,
           "rear": 80,
-          "bottom1": 50,
+          "bottom1": 80,
           "bottom2": 80,
           "bottom3": 80
         },
         "refrigerator": {
           "top": 55,
-          "bottom1": 50,
+          "bottom1": 30,
           "bottom2": 80,
           "bottom3": 80,
           "left": 55,
@@ -41,7 +41,7 @@
           "rear": 55
         }
       },
-      "dividerThickness": 50,
+      "dividerThickness": 30,
       "special": {
         "railHeight": 20,
         "railWidth": 10,
@@ -51,13 +51,13 @@
         "doorDikeTopWidth": 15
       },
       "obstacles": {
-        "evapDepth": 85,
-        "ctrlBoxH": 150,
-        "ctrlBoxW": 500,
-        "ctrlBoxL": 100,
-        "rshowerH": 700,
-        "rshowerW": 500,
-        "rshowerL": 50
+        "evapDepth": 135,
+        "ctrlBoxH": 125,
+        "ctrlBoxW": 525,
+        "ctrlBoxL": 103,
+        "rshowerH": 776,
+        "rshowerW": 600,
+        "rshowerL": 27
       },
       "_compartments": [
         {
@@ -67,20 +67,20 @@
           "right": 55,
           "rear": 55,
           "door": 55,
-          "height": 945,
-          "ratio": 0.5851393188854489,
-          "shelfCount": 0
+          "height": 940,
+          "ratio": 0.5749235474006116,
+          "shelfCount": 3
         },
         {
           "type": "freezer",
-          "top": 50,
+          "top": 30,
           "left": 80,
           "right": 80,
           "rear": 80,
-          "door": 70,
-          "height": 670,
-          "ratio": 0.4148606811145511,
-          "shelfCount": 0
+          "door": 80,
+          "height": 695,
+          "ratio": 0.42507645259938837,
+          "shelfCount": 1
         }
       ]
     },
@@ -90,13 +90,13 @@
       "children": [
         {
           "heightMode": "ratio",
-          "heightValue": 0.5851393188854489,
+          "heightValue": 0.5749235474006116,
           "node": {
             "nodeType": "leaf",
             "id": "comp0",
             "type": "fresh",
             "fittings": {
-              "shelfCount": 0,
+              "shelfCount": 3,
               "shelves": [],
               "drawers": [],
               "doorBins": [],
@@ -111,13 +111,13 @@
         },
         {
           "heightMode": "ratio",
-          "heightValue": 0.4148606811145511,
+          "heightValue": 0.42507645259938837,
           "node": {
             "nodeType": "leaf",
             "id": "comp1",
             "type": "freezer",
             "fittings": {
-              "shelfCount": 0,
+              "shelfCount": 1,
               "shelves": [],
               "drawers": [],
               "doorBins": [],
@@ -134,7 +134,7 @@
       "dividers": [
         {
           "afterChildIndex": 0,
-          "thickness": 50
+          "thickness": 30
         }
       ]
     }
@@ -200,6 +200,15 @@
             -0.0001406022810257531,
             0.11577696109588417
           ],
+          "coeffs_max": [
+            180.74098846393844,
+            0,
+            0,
+            6.907981079871395,
+            -0.7769954270496128,
+            -0.00016982944217020443,
+            0.13027272205126697
+          ],
           "rmse": 4.0753038546267595
         },
         "W": {
@@ -214,6 +223,15 @@
             0.8553739162463548,
             0.038783381810269524,
             -0.000689277697537724
+          ],
+          "coeffs_max": [
+            109.13903009762943,
+            0,
+            0,
+            2.2649318428440792,
+            -1.1419374428833862,
+            -0.05177641614925495,
+            -0.007751446844773292
           ],
           "rmse": 1.3758327943789253
         },
