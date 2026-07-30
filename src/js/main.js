@@ -641,19 +641,24 @@ function buildLayoutNodeForPrecise() {
   };
 }
 
-/**
- * Computes volumetric deductions for obstacles (evaporator, control box, R‑shower, rails, dikes).
- * Used to translate purely gross geometry into the 'Total Usable' volume.
- * 
- * @param {Object} geometry - The unified geometry object containing obstacle properties.
- * @returns {Object} Individual volumes in Litres, and totals for rails/dikes vs all obstacles.
- */
+function getCompTopWorldYFor(comps, idx, dividerThickness) {
+  let y = comps[0].top;
+  for (let i = 0; i < idx; i++) {
+    y += comps[i].height;
+    if (i < comps.length - 1) y += dividerThickness;
+  }
+  return y;
+}
+
 function computeObstacleVolumes(geometry) {
   const comps = geometry._compartments || compartmentsData;
   const special = geometry.special || {};
   const obs = geometry.obstacles || {};
 
-  // ---- Fixed elements (evap, ctrl, rshower) ----
+  // Snapshot-safe divider thickness — fixes the pre-existing bug where this
+  // read live divHorizInput.value even for stored Slot A/B geometries.
+  const dividerThick = geometry.dividerThickness ?? (parseFloat(divHorizInput.value) || 20);
+
   const evapDepth = obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 85);
   const ctrlH = obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 150);
   const ctrlW = obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 500);
@@ -662,41 +667,41 @@ function computeObstacleVolumes(geometry) {
   const rshowerW = obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 500);
   const rshowerL = obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 50);
 
-  // Freezer compartment for evaporator
-  const freezerComp = comps.find(c => c.type === 'freezer') || comps[0];
-  const fInnerW = geometry.W - freezerComp.left - freezerComp.right;
-  const fHeight = freezerComp.height;
-  const evapVolMm3 = evapDepth * fHeight * fInnerW;
-
-  // Calculate available rear height for the fresh compartment
-  const freshIdx = comps.findIndex(c => c.type === 'fresh');
-  const freshComp = comps[freshIdx >= 0 ? freshIdx : 0];
-  const isTopFreezer = freshIdx > 0;
-  
-  let freshTopWorld = comps[0].top;
-  for (let i = 0; i < freshIdx; i++) {
-    freshTopWorld += comps[i].height;
-    if (i < comps.length - 1) {
-      freshTopWorld += (parseFloat(divHorizInput.value) || 20);
-    }
-  }
-
   const Hb = parseFloat(document.getElementById('geom-Hb')?.value) || 0;
   const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
   const floorRaisedY = geometry.H - Hb - bottom1;
 
-  const availableRearH = isTopFreezer 
+  // ---- Evaporator (freezer compartment), clamped to compressor-step floor ----
+  const freezerIdx = comps.findIndex(c => c.type === 'freezer');
+  const freezerComp = freezerIdx >= 0 ? comps[freezerIdx] : comps[0];
+  const freezerIsBottommost = comps.length === 1 || freezerIdx === comps.length - 1;
+
+  const freezerTopWorld = getCompTopWorldYFor(comps, freezerIdx >= 0 ? freezerIdx : 0, dividerThick);
+
+  const fHeight = freezerIsBottommost
+    ? Math.max(0, Math.min(freezerComp.height, floorRaisedY - freezerTopWorld))
+    : freezerComp.height;
+
+  const fInnerW = geometry.W - freezerComp.left - freezerComp.right;
+  const evapVolMm3 = evapDepth * fHeight * fInnerW;
+
+  // ---- Control box / R-shower (fresh compartment), clamped to available rear height ----
+  const freshIdx = comps.findIndex(c => c.type === 'fresh');
+  const freshComp = comps[freshIdx >= 0 ? freshIdx : 0];
+  const isTopFreezer = freshIdx > 0;
+
+  const freshTopWorld = getCompTopWorldYFor(comps, freshIdx >= 0 ? freshIdx : 0, dividerThick);
+
+  const availableRearH = isTopFreezer
     ? Math.max(0, Math.min(freshComp.height, floorRaisedY - freshTopWorld))
     : freshComp.height;
 
-  // Enforce reduction hierarchy
   const effectiveCtrlH = Math.min(ctrlH, availableRearH);
   const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
 
-  // Control box and R‑shower volumes using clamped heights
   const ctrlVolMm3 = effectiveCtrlH * ctrlW * ctrlL;
   const rshowerVolMm3 = effectiveRShowerH * rshowerW * rshowerL;
-  const rshowerVolMm3 = rshowerH * rshowerW * rshowerL;
+  // (duplicate unclamped `rshowerVolMm3` line removed — was the crash-causing bug)
 
   // ---- Rails (two per shelf) ----
   const railH = special.railHeight || 0;
@@ -708,21 +713,18 @@ function computeObstacleVolumes(geometry) {
   const dikeH = special.doorDikeHeight || 0;
   const dikeBaseW = special.doorDikeBaseWidth || 0;
   const dikeTopW = special.doorDikeTopWidth || 0;
-  const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;  // mm² cross-section
+  const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
   let totalDikeMm3 = 0;
 
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i];
     const shelfCount = c.shelfCount || 0;
-    // Per‑compartment inner dimensions
     const innerW = geometry.W - c.left - c.right;
     const innerD = geometry.D - c.rear;
 
-    // Rail volume: each shelf has two rails
     const railVol = railH * railW * railDepthPct * innerD * shelfCount * 2;
     totalRailMm3 += railVol;
 
-    // Dike volume: perimeter of door opening × average cross‑section area
     const perimeter = 2 * (innerW + c.height);
     const dikeVol = dikeArea * perimeter;
     totalDikeMm3 += dikeVol;
@@ -740,9 +742,7 @@ function computeObstacleVolumes(geometry) {
     rshower:    rshowerLiters,
     rails:      railsL,
     dikes:      dikesL,
-    // Total of all obstacles (rails + dikes + fixed elements)
     totalAll:   evapL + ctrlLiters + rshowerLiters + railsL + dikesL,
-    // Total of rails+dikes only (for adjusting gross)
     railsDikesOnly: railsL + dikesL,
   };
 }
@@ -823,28 +823,62 @@ function displayPreciseResults(leaves, geometry) {
   document.getElementById('fridgeTotalVol').textContent       = getDisplay(freshTotal, 'L');
   document.getElementById('fridgeTotalVolCuft').textContent   = getCuft(freshTotal);
 
-  // ---- PU Estimation (unchanged) ----
+// ---- PU Estimation ----
   let fdoorPUVolL = 0, rdoorPUVolL = 0;
+  let totalDikesL = 0; 
+  
+  // Variables to track vertical world coordinates for the doors
+  let doorStartY = 0; // First door starts at the very top of the exterior cabinet
+  let yOffset = comps[0].top || 0; // Tracks the inner cavity Y-coordinate
+
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i];
     const innerW = geometry.W - c.left - c.right;
     const doorThick = c.door || 0;
-    const baseVol = doorThick * innerW * c.height * settings.mm3ToL;
+    // 1. Calculate the true outer height of the door panel
+    let doorEndY;
+    if (i === comps.length - 1) {
+      // The bottom-most door extends to the absolute floor of the cabinet
+      doorEndY = geometry.H;
+    } else {
+      // Upper doors end at the midpoint of the divider, minus half the door gap
+      const compBottomY = yOffset + c.height;
+      const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
+      doorEndY = dividerMidpoint - (geometry.doorGap / 2);
+    }
+
+    const outerDoorHeight = doorEndY - doorStartY;
+    // 2. Door Base Volume uses the full exterior width and outer door height
+    const baseVol = doorThick * geometry.W * outerDoorHeight * settings.mm3ToL;
+    
+    // 3. Dike volume uses the internal cavity dimensions (c.height and innerW)
     const dikeH = special.doorDikeHeight || 0;
     const dikeBaseW = special.doorDikeBaseWidth || 0;
     const dikeTopW = special.doorDikeTopWidth || 0;
     const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
     const perimeter = 2 * (innerW + c.height);
     const dikeVolL = dikeArea * perimeter * settings.mm3ToL;
+    totalDikesL += dikeVolL; 
     const totalDoorVol = baseVol + dikeVolL;
     if (c.type === 'freezer') fdoorPUVolL = totalDoorVol;
     else if (c.type === 'fresh') rdoorPUVolL = totalDoorVol;
+    // 4. Prepare coordinates for the next door (if any)
+    if (i < comps.length - 1) {
+      const compBottomY = yOffset + c.height;
+      const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
+      // Next door starts below the gap
+      doorStartY = dividerMidpoint + (geometry.doorGap / 2);
+      // Advance inner cavity tracker past the divider
+      yOffset = compBottomY + geometry.dividerThickness; 
+    }
   }
 
   const extVolMm3 = geometry.H * geometry.W * geometry.D;
   const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
   const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
-  const cabPUVolL = extVolL - grossL;
+  
+  // 5. Subtract totalDikesL so it is strictly credited to the door, not the cabinet
+  const cabPUVolL = extVolL - grossL - totalDikesL;
 
   document.getElementById('cabpuVol').textContent      = roundForDisplay(cabPUVolL, 'L');
   document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(cabPUVolL * settings.lToCuft, 'cuft');
@@ -1269,13 +1303,13 @@ window.addEventListener('click', (e) => { if (e.target === comparisonModal) comp
  */
 function buildComparisonTable(resultA, resultB) {
   if (!resultA && !resultB) { comparisonContent.innerHTML = '<p>No configurations stored.</p>'; return; }
-  const obstaclesA = resultA ? computeObstacleVolumes(configSlotA.cabinet.geometry) : { total: 0 };
-  const obstaclesB = resultB ? computeObstacleVolumes(configSlotB.cabinet.geometry) : { total: 0 };
+  const obstaclesA = resultA ? computeObstacleVolumes(configSlotA.cabinet.geometry) : { totalAll: 0 };
+  const obstaclesB = resultB ? computeObstacleVolumes(configSlotB.cabinet.geometry) : { totalAll: 0 };
 
   const fmtTotals = (leaves, obstacles) => {
     if (!leaves) return { gross:'-', total:'-', grossCuft:'-', totalCuft:'-' };
     const gross = leaves.reduce((s,l) => s + l.gross, 0);
-    const total = Math.max(0, gross - obstacles.total);
+    const total = Math.max(0, gross - obstacles.totalAll);
     return {
       gross: roundForDisplay(gross, 'L'),
       total: roundForDisplay(total, 'L'),

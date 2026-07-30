@@ -385,43 +385,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
               'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
     } 
-    let currentY = isTopFreezer ? freshCompTop * scale : freshCompBottom * scale;
-
-    if (both && totalH_px <= compartmentHeight * scale) {
-      let ctrlBoxY, rshowerY;
-      
-      if (isTopFreezer) {
-        // Top Freezer: Anchor to top (divider), sequence downwards
-        ctrlBoxY = currentY;
-        rshowerY = currentY + ctrlBoxH_px;
-      } else {
-        // Bottom Freezer: Anchor to bottom (divider), sequence upwards
-        ctrlBoxY = currentY - ctrlBoxH_px;
-        rshowerY = ctrlBoxY - rshowerH_px;
-      }
-
-      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
-      const rshowerX = (W / 2 - rshowerW / 2) * scale;
-
-      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
-              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
-      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
-              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
-
-    } else {
-      if (ctrlBoxH > 0 && ctrlBoxW > 0) {
-        const ctrlBoxY = isTopFreezer ? freshCompTop * scale : (freshCompBottom * scale) - ctrlBoxH_px;
-        const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
-        drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
-                'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
-      }
-      if (rshowerH > 0 && rshowerW > 0) {
-        const rshowerY = isTopFreezer ? freshCompTop * scale : (freshCompBottom * scale) - rshowerH_px;
-        const rshowerX = (W / 2 - rshowerW / 2) * scale;
-        drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
-                'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
-      }
-    }
   }
 
   // Outer cabinet stroke

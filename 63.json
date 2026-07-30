@@ -3,12 +3,12 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-29T08:12:45.717Z"
+    "updatedAt": "2026-07-29T08:11:24.908Z"
   },
   "cabinet": {
     "geometry": {
       "H": 1715,
-      "W": 795,
+      "W": 730,
       "D": 650,
       "Hb": 246,
       "Db1": 154,
@@ -53,10 +53,10 @@
       "obstacles": {
         "evapDepth": 85,
         "ctrlBoxH": 148,
-        "ctrlBoxW": 613,
+        "ctrlBoxW": 548,
         "ctrlBoxL": 100,
         "rshowerH": 459,
-        "rshowerW": 431,
+        "rshowerW": 366,
         "rshowerL": 37.7
       },
       "_compartments": [

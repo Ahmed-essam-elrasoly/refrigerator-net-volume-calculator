@@ -3,45 +3,45 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-29T08:12:45.717Z"
+    "updatedAt": "2026-07-29T08:00:04.044Z"
   },
   "cabinet": {
     "geometry": {
-      "H": 1715,
-      "W": 795,
+      "H": 1665,
+      "W": 730,
       "D": 650,
-      "Hb": 246,
-      "Db1": 154,
-      "Db2": 171,
+      "Hb": 260,
+      "Db1": 190,
+      "Db2": 237,
       "doorGap": 10,
       "packingPos": 15,
       "airGap": 0,
-      "Hf": 520,
-      "Hr": 979,
+      "Hf": 695,
+      "Hr": 805,
       "walls": {
         "freezer": {
-          "top": 76,
-          "bottom": 70,
-          "left": 74,
-          "right": 74,
-          "door": 75,
-          "rear": 70,
-          "bottom1": 60,
-          "bottom2": 65,
-          "bottom3": 70
+          "top": 30,
+          "bottom": 30,
+          "left": 80,
+          "right": 80,
+          "door": 80,
+          "rear": 80,
+          "bottom1": 30,
+          "bottom2": 80,
+          "bottom3": 80
         },
         "refrigerator": {
-          "top": 70,
-          "bottom1": 60,
-          "bottom2": 65,
-          "bottom3": 70,
-          "left": 65,
-          "right": 65,
-          "door": 60,
-          "rear": 56
+          "top": 55,
+          "bottom1": 30,
+          "bottom2": 80,
+          "bottom3": 80,
+          "left": 55,
+          "right": 55,
+          "door": 55,
+          "rear": 55
         }
       },
-      "dividerThickness": 70,
+      "dividerThickness": 30,
       "special": {
         "railHeight": 20,
         "railWidth": 10,
@@ -51,35 +51,35 @@
         "doorDikeTopWidth": 15
       },
       "obstacles": {
-        "evapDepth": 85,
-        "ctrlBoxH": 148,
-        "ctrlBoxW": 613,
-        "ctrlBoxL": 100,
-        "rshowerH": 459,
-        "rshowerW": 431,
-        "rshowerL": 37.7
+        "evapDepth": 135,
+        "ctrlBoxH": 125,
+        "ctrlBoxW": 525,
+        "ctrlBoxL": 103,
+        "rshowerH": 645,
+        "rshowerW": 535,
+        "rshowerL": 27
       },
       "_compartments": [
         {
-          "type": "freezer",
-          "top": 76,
-          "left": 74,
-          "right": 74,
-          "rear": 70,
-          "door": 75,
-          "height": 520,
-          "ratio": 0.3468979319546364,
+          "type": "fresh",
+          "top": 55,
+          "left": 55,
+          "right": 55,
+          "rear": 55,
+          "door": 55,
+          "height": 805,
+          "ratio": 0.5366666666666666,
           "shelfCount": 0
         },
         {
-          "type": "fresh",
-          "top": 70,
-          "left": 65,
-          "right": 65,
-          "rear": 56,
-          "door": 60,
-          "height": 979,
-          "ratio": 0.6531020680453636,
+          "type": "freezer",
+          "top": 30,
+          "left": 80,
+          "right": 80,
+          "rear": 80,
+          "door": 80,
+          "height": 695,
+          "ratio": 0.4633333333333334,
           "shelfCount": 0
         }
       ]
@@ -90,11 +90,11 @@
       "children": [
         {
           "heightMode": "ratio",
-          "heightValue": 0.3468979319546364,
+          "heightValue": 0.5366666666666666,
           "node": {
             "nodeType": "leaf",
             "id": "comp0",
-            "type": "freezer",
+            "type": "fresh",
             "fittings": {
               "shelfCount": 0,
               "shelves": [],
@@ -111,11 +111,11 @@
         },
         {
           "heightMode": "ratio",
-          "heightValue": 0.6531020680453636,
+          "heightValue": 0.4633333333333334,
           "node": {
             "nodeType": "leaf",
             "id": "comp1",
-            "type": "fresh",
+            "type": "freezer",
             "fittings": {
               "shelfCount": 0,
               "shelves": [],
@@ -134,7 +134,7 @@
       "dividers": [
         {
           "afterChildIndex": 0,
-          "thickness": 70
+          "thickness": 30
         }
       ]
     }
@@ -173,7 +173,7 @@
       "backPipePitch_mm": 0
     },
     "fanParam": {
-      "tipDiam_mm": 118,
+      "tipDiam_mm": 110,
       "fanRPM": 2200,
       "hubDiam_mm": 45.6,
       "PitchAngle_degree": 30
@@ -201,6 +201,15 @@
             -0.0001406022810257531,
             0.11577696109588417
           ],
+          "coeffs_max": [
+            180.74098846393844,
+            0,
+            0,
+            6.907981079871395,
+            -0.7769954270496128,
+            -0.00016982944217020443,
+            0.13027272205126697
+          ],
           "rmse": 4.0753038546267595
         },
         "W": {
@@ -215,6 +224,15 @@
             0.8553739162463548,
             0.038783381810269524,
             -0.000689277697537724
+          ],
+          "coeffs_max": [
+            109.13903009762943,
+            0,
+            0,
+            2.2649318428440792,
+            -1.1419374428833862,
+            -0.05177641614925495,
+            -0.007751446844773292
           ],
           "rmse": 1.3758327943789253
         },
