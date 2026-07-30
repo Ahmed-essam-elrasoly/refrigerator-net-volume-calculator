@@ -3,7 +3,7 @@
   "meta": {
     "name": "UI Config",
     "createdAt": "2026-07-12T12:19:02.595Z",
-    "updatedAt": "2026-07-29T08:12:45.717Z"
+    "updatedAt": "2026-07-30T05:38:03.369Z"
   },
   "cabinet": {
     "geometry": {
@@ -69,7 +69,7 @@
           "door": 75,
           "height": 520,
           "ratio": 0.3468979319546364,
-          "shelfCount": 0
+          "shelfCount": 1
         },
         {
           "type": "fresh",
@@ -79,8 +79,8 @@
           "rear": 56,
           "door": 60,
           "height": 979,
-          "ratio": 0.6531020680453636,
-          "shelfCount": 0
+          "ratio": 0.6531020680453635,
+          "shelfCount": 3
         }
       ]
     },
@@ -96,7 +96,7 @@
             "id": "comp0",
             "type": "freezer",
             "fittings": {
-              "shelfCount": 0,
+              "shelfCount": 1,
               "shelves": [],
               "drawers": [],
               "doorBins": [],
@@ -111,13 +111,13 @@
         },
         {
           "heightMode": "ratio",
-          "heightValue": 0.6531020680453636,
+          "heightValue": 0.6531020680453635,
           "node": {
             "nodeType": "leaf",
             "id": "comp1",
             "type": "fresh",
             "fittings": {
-              "shelfCount": 0,
+              "shelfCount": 3,
               "shelves": [],
               "drawers": [],
               "doorBins": [],

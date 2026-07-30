@@ -8,6 +8,8 @@
  */
 
 import { runThermoAnalysis, buildDefaultConfig } from '../engine/thermo/index.js';
+import { traverseAndComputePrecise } from '../engine/traversal.js'; // ← new precise engine
+import { exportvolume, readGeometryFromPanel, buildLayoutNodeForPrecise } from '../main.js';
 import { toThermalFormat } from '../engine/geometry.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import {
@@ -529,7 +531,7 @@ function openAddCompressorModal() {
       </fieldset>
     </div>
 
-    <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
+    <div id="acError" class="error-msg"></div>
     <div class="settings-actions">
       <button id="fitCompressorBtn">Add Compressor</button>
       <button id="cancelAddCompressor">Cancel</button>
@@ -718,7 +720,7 @@ function openEditCompressorModal() {
       <legend>Replace with New Excel File</legend>
       <input type="file" id="acFileInput" accept=".xlsx,.xls,.csv">
       <button id="acLoadBtn" type="button">Load & Replace</button>
-      <div id="acError" class="error-msg" style="color:#d32f2f; margin-top:8px;"></div>
+      <div id="acError" class="error-msg"></div>
     </fieldset>
     <div class="settings-actions">
       <button id="fitAndSaveBtn">Fit & Save</button>
@@ -1152,7 +1154,12 @@ function displayResults(res, energy, isInverter = false) {
 
   const fmt  = (v, dp = 2)  => (isFinite(v) ? v.toFixed(dp) : '—');
   const fmtP = (v, dp = 1)  => (isFinite(v) ? (v * 100).toFixed(dp) + ' %' : '—');
-
+  let TF;
+  if(isInverter){
+    TF = parseFloat(document.getElementById('inverterTF')?.value);
+  }else{
+    TF = parseFloat(document.getElementById('thermoTF')?.value);
+  }
   const comp = res.compressor || {};
   const pe = (comp.Pe !== undefined ? comp.Pe : res.Pe)?.toFixed(4) ?? '—';
   const pc = (comp.Pc !== undefined ? comp.Pc : res.Pc)?.toFixed(4) ?? '—';
@@ -1162,6 +1169,50 @@ function displayResults(res, energy, isInverter = false) {
   const mFlow = comp.massFlow         !== undefined ? fmt(comp.massFlow, 4) : '—';
   const eW   = energy ? fmt(energy.EnergyConsumption_kWhDay, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
+  const volumes = exportvolume(traverseAndComputePrecise(buildLayoutNodeForPrecise(), readGeometryFromPanel()).leaves, readGeometryFromPanel());  
+  const Ann_EC = eW * 365;
+  const AV = (volumes.freezerTotal * (25-TF)/21)+volumes.freshTotal;
+  const ES_27 = AV * .57 + (800 * 0.9);
+  const ES_29 = AV * .57 + (800 * 0.8);
+  const ES_31 = AV * .57 + (800 * 0.6);
+  const IEE_27 = eKWh * 12 / ES_27;
+  const IEE_29 = eKWh * 12 / ES_29;
+  const IEE_31 = eKWh * 12 / ES_31;
+  let Rank_27, Rank_29, Rank_31;
+  if( IEE_27 <= 0.45){
+     Rank_27 = "A"
+    }else if(IEE_27 <= 0.55){
+     Rank_27 = "B"
+    }else if(IEE_27 <= 0.65){
+     Rank_27 = "C"
+    }else if(IEE_27 <= 0.75){
+     Rank_27 = "D"
+    }else if(IEE_27 <= 0.85){
+     Rank_27 = "OUT OF RANKING"
+  }
+  if( IEE_29 <= 0.45){
+     Rank_29 = "A"
+    }else if(IEE_29 <= 0.55){
+     Rank_29 = "B"
+    }else if(IEE_29 <= 0.65){
+     Rank_29 = "C"
+    }else if(IEE_29 <= 0.75){
+     Rank_29 = "D"
+    }else if(IEE_29 <= 0.85){
+     Rank_29 = "OUT OF RANKING"
+  }
+  if( IEE_31 <= 0.45){
+     Rank_31 = "A"
+    }else if(IEE_31 <= 0.55){
+     Rank_31 = "B"
+    }else if(IEE_31 <= 0.65){
+     Rank_31 = "C"
+    }else if(IEE_31 <= 0.75){
+     Rank_31 = "D"
+    }else if(IEE_31 <= 0.85){
+     Rank_31 = "OUT OF RANKING"
+  }
+
   
   let etaV = '—';
   if (isInverter && res.RPM !== undefined && res.refrigerantIndex !== undefined && res.cylinderVolumeCm3 && comp.massFlow) {
@@ -1232,6 +1283,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
         <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
         <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
+        <tr><td>energy Rank</td><td>Rank_27 = ${Rank_27} <br> Rank_29 = ${Rank_29} <br> Rank_31 = ${Rank_31}</td>/td></tr>
 
         <tr class="section-header"><td colspan="2">Heat Loads (W)</td></tr>
         <tr><td>QF — Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>
@@ -1377,10 +1429,10 @@ function updateInverterCompressorDisplay() {
   if (!nameEl) return;
   if (comp && comp.isInverter) {
     nameEl.textContent = comp.name;
-    nameEl.style.color = '#2e7d32';
+    nameEl.style.color = '#22a55e';
   } else {
     nameEl.textContent = 'No inverter compressor selected';
-    nameEl.style.color = '#d32f2f';
+    nameEl.style.color = '#ef4444';
   }
 }
 

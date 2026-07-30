@@ -465,7 +465,7 @@ function fillGeometryDefaults() {
  * 
  * @returns {Object} The complete `geometry` object mapped to the engine schema.
  */
-function readGeometryFromPanel() {
+export function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
   const comps = compartmentsData;
   const count = comps.length;
@@ -605,7 +605,7 @@ numCompartmentsInput.addEventListener('input', () => {
 //  NEW: Precise calculation using per-compartment geometry
 // ======================================================================
 
-function buildLayoutNodeForPrecise() {
+export function buildLayoutNodeForPrecise() {
   const count = compartmentsData.length;
   const leaves = [];
   for (let i = 0; i < count; i++) {
@@ -747,6 +747,59 @@ function computeObstacleVolumes(geometry) {
   };
 }
 
+
+export function exportvolume(leaves, geometry){
+  const comps = compartmentsData;
+  const special = geometry.special || {}; // Ensure special is defined for the loop
+
+  const perCompRailsDikesL = comps.map(c => {
+    const shelfCount = c.shelfCount || 0;
+    const innerW = geometry.W - c.left - c.right;
+    const innerD = geometry.D - c.rear;
+    const railH = special.railHeight || 0;
+    const railW = special.railWidth || 0;
+    const railDepthPct = (special.railDepthPct || 0) / 100;
+    const railsVol = railH * railW * railDepthPct * innerD * shelfCount * 2 * settings.mm3ToL;
+
+    const dikeH = special.doorDikeHeight || 0;
+    const dikeBaseW = special.doorDikeBaseWidth || 0;
+    const dikeTopW = special.doorDikeTopWidth || 0;
+    const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+    const perimeter = 2 * (innerW + c.height);
+    const dikesVol = dikeArea * perimeter * settings.mm3ToL;
+
+    return railsVol + dikesVol;
+  });
+
+  const adjustedLeaves = leaves.map((leaf, idx) => ({
+    ...leaf,
+    gross: Math.max(0, leaf.gross - perCompRailsDikesL[idx]),
+  }));
+
+  const freezerIdx = comps.findIndex(c => c.type === 'freezer');
+  const freshIdx   = comps.findIndex(c => c.type === 'fresh');
+
+  const freezerGross = freezerIdx >= 0 ? adjustedLeaves[freezerIdx]?.gross : null;
+  const freshGross   = freshIdx >= 0 ? adjustedLeaves[freshIdx]?.gross : null;
+
+  // --- ADD THIS LINE TO FIX THE ERROR ---
+  const obstacles = computeObstacleVolumes(geometry);
+
+  const freezerTotal = freezerGross != null
+    ? Math.max(0, freezerGross - (obstacles.evaporator || 0))
+    : null;
+
+  const freshTotal = freshGross != null
+    ? Math.max(0, freshGross - (obstacles.controlBox || 0) - (obstacles.rshower || 0))
+    : null;
+
+  return {
+    freezerGross: freezerGross,
+    freezerTotal: freezerTotal,
+    freshGross: freshGross,
+    freshTotal: freshTotal,
+  };
+}
 /**
  * Submits computed volumes to the UI table.
  * Applies obstacle subtractions to transform precise gross into display gross and total volumes.

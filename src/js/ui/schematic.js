@@ -119,7 +119,7 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
 }
 
 export const DRAW_THEME = {
-  color: '#446688',
+  color: '#4c7df5',
   lineWidth: 1,
   arrowSize: 5,
   font: '11px "Segoe UI", Arial, sans-serif',
@@ -326,37 +326,15 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   }
 
   let freshTopY = 0, freshHeight = 0;
-  if (freshIdx >= 0) {
-    let yAcc = innerTopY;
-    for (let i = 0; i < freshIdx; i++) {
-      yAcc += compHeights[i];
-      if (i < freshIdx - 1) yAcc += dividerThickness;
-    }
-    if (freshIdx > 0) yAcc += dividerThickness;
-    freshTopY = yAcc;
-    freshHeight = compHeights[freshIdx];
-  }
-
-  if (freshIdx >= 0) {
+if (freshIdx >= 0) {
+    // Re-declare the missing layout variables
     const compartmentHeight = freshHeight;
     const freshCompTop = freshTopY;
     const freshCompBottom = freshTopY + compartmentHeight;
 
-    function drawBox(x, y, w, h, label, fillColor, strokeColor) {
-      ctx.fillStyle = fillColor;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = strokeColor;
-      ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = '#333';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(label, x + w / 2, y + h / 2);
-    }
-
-    const isTopFreezer = freshIdx > 0; 
+    const placeAtTop = (numCompartments === 1) || (freshIdx > 0); 
     
-    const availableRearH = isTopFreezer 
+    const availableRearH = placeAtTop 
       ? Math.max(0, Math.min(compartmentHeight, floorRaisedY - freshTopY))
       : compartmentHeight;
 
@@ -368,23 +346,23 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     const ctrlBoxH_px = effectiveCtrlH * scale;
     const rshowerH_px = effectiveRShowerH * scale;
 
-    let currentY = isTopFreezer ? freshCompTop * scale : freshCompBottom * scale;
+    let currentY = placeAtTop ? freshCompTop * scale : freshCompBottom * scale;
 
     if (effectiveCtrlH > 0 && ctrlBoxW > 0) {
-      const ctrlBoxY = isTopFreezer ? currentY : currentY - ctrlBoxH_px;
+      const ctrlBoxY = placeAtTop ? currentY : currentY - ctrlBoxH_px;
       const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
       drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
               'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
       
-      currentY = isTopFreezer ? ctrlBoxY + ctrlBoxH_px : ctrlBoxY;
+      currentY = placeAtTop ? ctrlBoxY + ctrlBoxH_px : ctrlBoxY;
     }
 
     if (effectiveRShowerH > 0 && rshowerW > 0) {
-      const rshowerY = isTopFreezer ? currentY : currentY - rshowerH_px;
+      const rshowerY = placeAtTop ? currentY : currentY - rshowerH_px;
       const rshowerX = (W / 2 - rshowerW / 2) * scale;
       drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
               'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
-    } 
+    }
   }
 
   // Outer cabinet stroke
@@ -741,9 +719,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   if (freshCompIdx >= 0) {
     const rearX = compRear[freshCompIdx];
     const freshHeight = freshBottomWorld - freshTopWorld;
-    const isTopFreezer = freshCompIdx > 0;
     
-    const availableRearH = isTopFreezer 
+    const isTopFreezer = freshCompIdx > 0;
+    const placeAtTop = (compHeights.length === 1) || isTopFreezer;
+    
+    // Shift the X coordinate to clear the evaporator wall in a single compartment
+    const offsetRearX = (compHeights.length === 1 && evapDepth > 0) ? rearX + evapDepth : rearX;
+    
+    const availableRearH = placeAtTop 
       ? Math.max(0, Math.min(freshHeight, floorRaisedY - freshTopWorld))
       : freshHeight;
 
@@ -753,13 +736,13 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const drawCtrl = ctrlBoxH_eff > 0 && ctrlBoxL > 0;
     const drawRshower = rshowerH_eff > 0 && rshowerL > 0;
 
-    let yCursor = isTopFreezer ? freshTopWorld : freshBottomWorld;
+    let yCursor = placeAtTop ? freshTopWorld : freshBottomWorld;
 
     if (drawCtrl) {
-      const boxTop = isTopFreezer ? yCursor : yCursor - ctrlBoxH_eff;
+      const boxTop = placeAtTop ? yCursor : yCursor - ctrlBoxH_eff;
       const boxH = ctrlBoxH_eff * scale;
       const boxW = ctrlBoxL * scale;
-      const boxX = rearX * scale;
+      const boxX = offsetRearX * scale; // Placed at offset
 
       ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
       ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
@@ -770,18 +753,18 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       ctx.textAlign = 'center';
       ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
 
-      ctrlBoxFrontX = rearX + ctrlBoxL;
+      ctrlBoxFrontX = offsetRearX + ctrlBoxL;
       ctrlBoxTop = boxTop;
       ctrlBoxBottom = boxTop + ctrlBoxH_eff;
       
-      yCursor = isTopFreezer ? ctrlBoxBottom : boxTop;
+      yCursor = placeAtTop ? ctrlBoxBottom : boxTop;
     }
 
     if (drawRshower) {
-      const boxTop = isTopFreezer ? yCursor : yCursor - rshowerH_eff;
+      const boxTop = placeAtTop ? yCursor : yCursor - rshowerH_eff;
       const boxH = rshowerH_eff * scale;
       const boxW = rshowerL * scale;
-      const boxX = rearX * scale;
+      const boxX = offsetRearX * scale; // Placed at offset
 
       ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
       ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
@@ -792,7 +775,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       ctx.textAlign = 'center';
       ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
 
-      rshowerFrontX = rearX + rshowerL;
+      rshowerFrontX = offsetRearX + rshowerL;
       rshowerTop = boxTop;
       rshowerBottom = boxTop + rshowerH_eff;
     }
