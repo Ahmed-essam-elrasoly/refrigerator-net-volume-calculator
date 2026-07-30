@@ -1,43 +1,46 @@
 import * as esbuild from 'esbuild';
 import fs from 'fs';
-import path from 'path';
 
-// Build the bundle
-await esbuild.build({
-  entryPoints: ['src/js/main.js'],
-  bundle: true,
-  outfile: 'dist/bundle.js',
-  format: 'iife',
-  platform: 'browser',
-  target: 'es2020',
-  minify: false,
-  sourcemap: false,
+async function buildStandalone() {
+  console.log('Building standalone offline app...');
+
+  // 1. Build the JS bundle in memory (do not write to disk)
+  const jsResult = await esbuild.build({
+    entryPoints: ['src/js/main.js'],
+    bundle: true,
+    write: false, 
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2020',
+    minify: true, // Minifying keeps the single file size down
+  });
+  
+  // Extract the bundled JavaScript code
+  const jsCode = jsResult.outputFiles[0].text;
+
+  // 2. Read the CSS file
+  const cssCode = fs.readFileSync('src/css/style.css', 'utf-8');
+
+  // 3. Read the HTML template
+  let html = fs.readFileSync('src/index.html', 'utf-8');
+
+  // 4. Inject CSS and JS directly into the HTML
+  html = html.replace(
+    '<link rel="stylesheet" href="css/style.css">',
+    `<style>\n${cssCode}\n</style>`
+  );
+
+  html = html.replace(
+    '<script type="module" src="js/main.js"></script>',
+    `<script>\n${jsCode}\n</script>`
+  );
+
+  // 5. Write the final single-file application to your root directory
+  fs.writeFileSync('Refrigerator_Calculator.html', html);
+  console.log('✅ Standalone app created: Refrigerator_Calculator.html');
+}
+
+buildStandalone().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
-
-console.log('✅ Bundle written to dist/bundle.js');
-
-// Copy index.html from src to dist, replacing the module script tag
-let html = fs.readFileSync('src/index.html', 'utf-8');
-html = html.replace(
-  '<script type="module" src="js/main.js"></script>',
-  '<script src="bundle.js"></script>'
-);
-fs.writeFileSync('dist/index.html', html);
-console.log('✅ dist/index.html updated with production script tag');
-
-// Copy CSS folder
-const copyDir = (src, dest) => {
-  fs.mkdirSync(dest, { recursive: true });
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDir(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-};
-copyDir('src/css', 'dist/css');
-console.log('✅ dist/css folder copied');

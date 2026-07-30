@@ -28,7 +28,7 @@ import { settings, updateSettings } from '../settings.js';
 import { getRefrigerantProperties } from '../engine/thermo/CompressorPerformance.js';
 import { INVERTER_EXAMPLE_COMPONENTS } from '../engine/thermo/defaultComponents.js';
 import { computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity } from '../engine/thermo/evaporator.js';
-
+import * as XLSX from 'xlsx';
 
 
 // Module-level state for advanced parameters
