@@ -1,4 +1,9 @@
-// js/compressorManager.js
+/**
+ * @file compressorManager.js
+ * Manages the catalog of available compressors (both constant-speed and inverter).
+ * Handles loading standard defaults, saving custom user-added compressors to localStorage,
+ * and migrating legacy data structures (objects -> arrays).
+ */
 
 import { SJ54H_COMPONENTS } from './engine/thermo/defaultComponents.js';
 
@@ -36,26 +41,99 @@ const DEFAULT_COMPRESSORS = [
       { TE: -12.2, TC: 46.1, Q: 210.803100 * 1.16279, W:  93.5 },
       { TE: -12.2, TC: 54.4, Q: 203.919733 * 1.16279, W: 237.0 },
     ]
-  }
+  },
+  {
+  id: 'DZ90A1X',
+  name: 'DZ90A1X Inverter',
+  model: 'DZ90A1X',
+  voltage: 220, frequency: 50,
+  isInverter: true,
+  normalizeRPM: 4320,
+  centerTE: -25.0, centerTC: 45.0,
+  compressorModel: null,   // will be generated on first use
+  refrigerantIndex: 2,
+  dataPoints: [
+    { RPM: 4320, TE: -35.0, TC: 35, W: 90.3, Q: 126.1 },
+    { RPM: 4320, TE: -25.0, TC: 35, W: 121.1, Q: 188.4 },
+    { RPM: 4320, TE: -15.0, TC: 35, W: 152.0, Q: 279.7 },
+    { RPM: 4320, TE: -35.0, TC: 45, W: 83.4, Q: 117.5 },
+    { RPM: 4320, TE: -25.0, TC: 45, W: 109.6, Q: 179.8 },
+    { RPM: 4320, TE: -15.0, TC: 45, W: 134.0, Q: 271.0 },
+    { RPM: 4320, TE: -35.0, TC: 55, W: 75.8, Q: 108.9 },
+    { RPM: 4320, TE: -25.0, TC: 55, W: 96.9, Q: 171.1 },
+    { RPM: 4320, TE: -15.0, TC: 55, W: 114.5, Q: 262.3 },
+    { RPM: 3000, TE: -35.0, TC: 35, W: 53.3, Q: 101.7 },
+    { RPM: 3000, TE: -25.0, TC: 35, W: 68.1, Q: 150.1 },
+    { RPM: 3000, TE: -15.0, TC: 35, W: 80.5, Q: 220.9 },
+    { RPM: 3000, TE: -35.0, TC: 45, W: 58.6, Q: 93.1 },
+    { RPM: 3000, TE: -25.0, TC: 45, W: 77.0, Q: 141.4 },
+    { RPM: 3000, TE: -15.0, TC: 45, W: 94.2, Q: 212.3 },
+    { RPM: 3000, TE: -35.0, TC: 55, W: 63.4, Q: 84.5 },
+    { RPM: 3000, TE: -25.0, TC: 55, W: 85.1, Q: 132.8 },
+    { RPM: 3000, TE: -15.0, TC: 55, W: 106.8, Q: 203.7 },
+    { RPM: 1620, TE: -35.0, TC: 35, W: 28.4, Q: 62.0 },
+    { RPM: 1620, TE: -25.0, TC: 35, W: 36.3, Q: 87.8 },
+    { RPM: 1620, TE: -15.0, TC: 35, W: 42.9, Q: 125.5 },
+    { RPM: 1620, TE: -35.0, TC: 45, W: 31.2, Q: 53.4 },
+    { RPM: 1620, TE: -25.0, TC: 45, W: 41.0, Q: 79.2 },
+    { RPM: 1620, TE: -15.0, TC: 45, W: 50.2, Q: 116.9 },
+    { RPM: 1620, TE: -35.0, TC: 55, W: 33.8, Q: 44.8 },
+    { RPM: 1620, TE: -25.0, TC: 55, W: 45.4, Q: 70.5 },
+    { RPM: 1620, TE: -15.0, TC: 55, W: 56.9, Q: 108.3 },
+    { RPM: 1320, TE: -35.0, TC: 35, W: 23.0, Q: 53.3 },
+    { RPM: 1320, TE: -25.0, TC: 35, W: 29.4, Q: 74.2 },
+    { RPM: 1320, TE: -15.0, TC: 35, W: 34.7, Q: 104.7 },
+    { RPM: 1320, TE: -35.0, TC: 45, W: 25.3, Q: 44.7 },
+    { RPM: 1320, TE: -25.0, TC: 45, W: 33.2, Q: 65.6 },
+    { RPM: 1320, TE: -15.0, TC: 45, W: 40.6, Q: 96.1 },
+    { RPM: 1320, TE: -35.0, TC: 55, W: 27.4, Q: 36.1 },
+    { RPM: 1320, TE: -25.0, TC: 55, W: 36.7, Q: 57.0 },
+    { RPM: 1320, TE: -15.0, TC: 55, W: 46.0, Q: 87.5 }
+    ],
+},
 ];
-
+DEFAULT_COMPRESSORS.forEach(comp => {
+  if (comp.isInverter && Array.isArray(comp.dataPoints) && comp.dataPoints.length > 0) {
+    comp.rpmMin = Math.min(...comp.dataPoints.map(d => d.RPM));
+    comp.rpmMax = Math.max(...comp.dataPoints.map(d => d.RPM));
+  }
+});
 let compressorList = [];
 let selectedCompressorId = 'EGX80CLC';
 
-/** Helper: ensures coefficient fields are flat arrays (handles legacy objects) */
+/**
+ * Helper: ensures coefficient fields are flat arrays and enforces dynamic RPM bounds.
+ * Upgrades legacy data structures where coefficients were stored as keyed objects
+ * (e.g. { AW, BW... }) into the ordered arrays expected by the new solver matrix.
+ * @param {Object} comp - Raw compressor definition.
+ * @returns {Object} Cleaned compressor definition.
+ */
 function ensureArrays(comp) {
   const toArray = (val, keys) => {
     if (Array.isArray(val)) return val;
     if (val && typeof val === 'object') return keys.map(k => val[k]).filter(v => v !== undefined);
     return null;
   };
-  return {
+
+  const cleaned = {
     ...comp,
     wCoeffs:   toArray(comp.wCoeffs,   ['AW','BW','CW','DW','EW']),
     etaCoeffs: toArray(comp.etaCoeffs, ['A','B','C']),
   };
+
+  // Dynamically extract and enforce RPM bounds for any inverter compressor based on its physical data
+  if (cleaned.isInverter && Array.isArray(cleaned.dataPoints) && cleaned.dataPoints.length > 0) {
+    cleaned.rpmMin = Math.min(...cleaned.dataPoints.map(d => d.RPM));
+    cleaned.rpmMax = Math.max(...cleaned.dataPoints.map(d => d.RPM));
+  }
+
+  return cleaned;
 }
 
+/**
+ * Hydrates the internal state from localStorage. 
+ * Re-injects defaults if local storage is empty or applies the schema upgrade (`ensureArrays`).
+ */
 export function loadCompressors() {
   const saved = localStorage.getItem('compressorList');
   if (saved) {
@@ -81,30 +159,51 @@ export function loadCompressors() {
   selectedCompressorId = localStorage.getItem('selectedCompressorId') || 'EGX80CLC';
 }
 
+/**
+ * Persists the current catalog and user selection to localStorage.
+ */
 export function saveCompressors() {
   localStorage.setItem('compressorList', JSON.stringify(compressorList));
   localStorage.setItem('selectedCompressorId', selectedCompressorId);
 }
 
+/**
+ * @returns {Array<Object>} The full list of registered compressors.
+ */
 export function getCompressorList() {
   return compressorList;
 }
 
+/**
+ * @returns {Object} The currently selected compressor for thermodynamic calculations.
+ */
 export function getCurrentCompressor() {
   return compressorList.find(c => c.id === selectedCompressorId) || compressorList[0];
 }
 
+/**
+ * Selects an active compressor by ID and saves the preference.
+ * @param {string} id - The ID of the compressor to activate.
+ */
 export function setSelectedCompressor(id) {
   selectedCompressorId = id;
   saveCompressors();
 }
 
+/**
+ * Adds a new custom compressor to the catalog and saves state.
+ * @param {Object} comp - The new compressor definition (including performance data).
+ */
 export function addCompressor(comp) {
   // Always store coefficients as arrays
   compressorList.push(ensureArrays(comp));
   saveCompressors();
 }
 
+/**
+ * Deletes a compressor from the catalog. Auto-selects the fallback if the active one is deleted.
+ * @param {string} id - The ID to remove.
+ */
 export function deleteCompressor(id) {
   compressorList = compressorList.filter(c => c.id !== id);
   if (selectedCompressorId === id) selectedCompressorId = compressorList[0]?.id || '';

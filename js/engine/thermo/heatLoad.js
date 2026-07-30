@@ -1,29 +1,52 @@
-// heatLoad.js – universal top- / bottom-freezer heat load model (physically correct)
+/**
+ * @file heatLoad.js
+ * @description Universal top/bottom-freezer heat load model.
+ * Calculates total system heat ingress through conduction (walls) and parasitic 
+ * loads (defrost, fan, partition heating).
+ */
+
 import { PHYSICAL_CONSTANTS as PC } from './constants.js';
 
+/**
+ * Calculates the thermal conductivity (λ) of Polyurethane Foam based on temperature.
+ * λ worsens (increases) at higher average temperatures.
+ */
 function lambdaUrethane(T_in, T_out) {
   const T_avg = (T_in + T_out) / 2;
-  return 0.0165 + 0.00011 * (T_avg-25) * 1.16279;   // Excel formula, shifted to be 0.0165 at 25°C
+  return (0.0165 + 0.00011 * (T_avg-25)) * 1.16279; // Convert to W/(m·°C)
 }
+
+/**
+ * Overall Heat Transfer Coefficient (U-value) for an exterior wall.
+ * Incorporates internal and external air film resistance.
+ */
 function kExterior(thk, T_in, T_out) {
   const lam = lambdaUrethane(T_in, T_out);
   return 1 / (1/PC.surfaceCoefficients.outside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
 }
+
+/**
+ * Overall Heat Transfer Coefficient (U-value) for an internal dividing partition.
+ */
 function kInterior(thk, T1, T2) {
   const lam = lambdaUrethane(T1, T2);
   return 1 / (1/PC.surfaceCoefficients.inside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
 }
 
-export const DEFAULT_GEOMETRY = {
-  H: 1680, W: 800, D: 630, Hf: 550, Hr: 1130, Hb: 260, Db1: 210, Db2: 230,
-  doorGap: 10, packingPos: 15,
-  tFtop: 59.4, tFleft: 59.4, tFright: 59.4, tFbottom: 70, tFdoor: 59.4, tFback: 60, tEvaBack: 60,
-  tRtop: 70, tRleft: 40, tRright: 40, tRback: 60,
-  tRbottom1: 40, tRbottom2: 40, tRbottom3: 40, tRdoor: 40,
-  tFfloor1: 40, tFfloor2: 40, tFfloor3: 40,
-  tRfloor: 70,
-};
-
+/**
+ * Computes all heat loads (Freezer, Refrigerator, Evaporator) by evaluating
+ * every 3D boundary surface.
+ * 
+ * @param {Object} geom - Flat geometric schema.
+ * @param {Object} temps - Current temperature state.
+ * @param {Object} electrical - Parasitic load definitions.
+ * @param {Object} PIPEPITCH - Condenser piping layout.
+ * @param {number} BackcondenserEfficiency - Efficiency of back panel (0 if absent).
+ * @param {number} fanInputPower_W - Wattage of evaporator fan.
+ * @param {string} freezerPosition - 'top' or 'bottom'.
+ * @param {string} backCondenser - 'Yes' or 'No'.
+ * @returns {Object} Computed thermal loads in Watts.
+ */
 export function calcHeatLoads(
   geom, temps, electrical, PIPEPITCH, BackcondenserEfficiency=0,
   fanInputPower_W,
@@ -38,6 +61,7 @@ export function calcHeatLoads(
   } = geom;
   const { T0, TF, TR, T2, TC, PR, TE } = temps;
 
+  // Condenser skin temperature rise impacts side-wall insulation gradients
   const K_side = 1.0738-0.004152*PIPEPITCH.side+0.00000482*PIPEPITCH.side**2;
   const K_back = 1.0738-0.004152*PIPEPITCH.back+0.00000482*PIPEPITCH.back**2;
   const T_compZone = T0 + (TC - T0) * PR;
@@ -51,7 +75,7 @@ export function calcHeatLoads(
   const hasFreezer = Hf > 0;
   const hasFresh   = Hr > 0;
 
-  // ── Freezer ───────────────────────────────────────────────────
+  // ── 1. Freezer Compartment Load ────────────────────────────────
   let QF = 0;
 
   if (hasFreezer) {
@@ -66,6 +90,7 @@ export function calcHeatLoads(
       AFright1 = AFleft1;
       AFright2 = AFleft2;
     } else {
+      // Bottom freezer accounts for compressor step intrusion
       const fSideHeight = Hf - (tFtop + tFfloor1)/2;
       AFleft1  = (fSideHeight * (D - tFback/2) - (Db1 + Db2) * Hb / 2 - tEvaBack*(fSideHeight-Hb)) / 1e6;
       AFleft2 = (tEvaBack) * (fSideHeight - Hb) / 1e6;
@@ -73,20 +98,19 @@ export function calcHeatLoads(
       AFright2 = AFleft2;
     }
 
-    // Freezer top
+    // Freezer Top Conduction
     QF += (isTopFreezer
       ? kExterior(tFtop, TF, T0) * AFtop * (T0 - TF)
       : kInterior(tFtop, TF, TR) * AFtop * (TR - TF));
 
-    // Freezer sides
+    // Freezer Sides Conduction (accounts for hot skin condenser)
     QF += kExterior(tFleft, TF, T_wallSide) * AFleft1 * (T_wallSide - TF)
         + kExterior(tFright, TF, T_wallSide) * AFright1 * (T_wallSide - TF)
         + kExterior(tFleft, T2, T_wallSide) * AFleft2 * (T_wallSide - T2)
         + kExterior(tFright, T2, T_wallSide) * AFright2 * (T_wallSide - T2);
 
-    // Freezer bottom
+    // Freezer Bottom
     if (!hasFresh) {
-      // single freezer – bottom is exterior stepped floor
       const AFb1 = (W - (tFleft+tFright)/2) * Db1 / 1e6;
       const AFb2 = (W - (tFleft+tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
       const AFb3 = (W - (tFleft+tFright)/2) * (D-Db2) / 1e6;
@@ -105,17 +129,16 @@ export function calcHeatLoads(
           + kExterior(tFfloor3, TF, T0)        * AFbottom3 * (T0 - TF);
     }
 
-    // Freezer door + packing
+    // Door + Packing leak
     QF += kExterior(tFdoor, TF, T0) * AFdoor * (T0 - TF)
         + PC.insulation.packing * AFpackin * (T0 - TF);
 
-    // Partition losses
-    QF += (0.1219*(TC-TF)*PR + 0.07551*(T0-TF)*(1-PR))
-          * (W - tFleft - tFright) / 1000;
-    QF += (0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000;
+    // Dew Point (DP) Pipe Partition losses
+    QF += ((0.1219*(TC-TF)*PR + 0.07551*(T0-TF)*(1-PR)) * (W - tFleft - tFright) / 1000) * 1.16279;
+    QF += ((0.0344*(TC-TF) - 0.031235*(T0-TF)) * PR * (Hf*2 + W) / 1000) * 1.16279;
   }
 
-  // ── Refrigerator ───────────────────────────────────────────────
+  // ── 2. Refrigerator Compartment Load ───────────────────────────
   let QR = 0;
 
   if (hasFresh) {
@@ -135,32 +158,24 @@ export function calcHeatLoads(
       ARback = (Hr - (tRtop + tRfloor)/2) * (W - (tRleft+tRright)/2) / 1e6;
     }
 
-    // Refrigerator top
+    // Top
     QR += (isTopFreezer
       ? kInterior(tRtop, TF, TR) * ARtop * (TF - TR)
       : kExterior(tRtop, TR, T0) * ARtop * (T0 - TR));
 
-    // Refrigerator sides
+    // Sides
     QR += kExterior(tRleft, TR, T_wallSide) * ARleft * (T_wallSide - TR)
         + kExterior(tRright, TR, T_wallSide) * ARleft * (T_wallSide - TR);
 
-    // Refrigerator back
+    // Back
     if (isBackCondenserAbsent) {
       QR += kExterior(tRback, TR, T0) * ARback * (T0 - TR);
     } else {
       QR += kExterior(tRback, TR, T_wallBack) * ARback * (T_wallBack - TR);
     }
 
-    // Refrigerator bottom
-    if (!hasFreezer) {
-      // single fresh – bottom is exterior stepped floor
-      const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
-      const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
-      const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
-      QR += kExterior(tRbottom1, TR, T_compZone) * ARb1 * (T_compZone - TR)
-          + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
-          + kExterior(tRbottom3, TR, T0)        * ARb3 * (T0 - TR);
-    } else if (isTopFreezer) {
+    // Bottom
+    if (!hasFreezer || isTopFreezer) {
       const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
       const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
       const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
@@ -168,25 +183,25 @@ export function calcHeatLoads(
           + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
           + kExterior(tRbottom3, TR, T0)        * ARb3 * (T0 - TR);
     } else {
-      // bottom‑freezer (partition to freezer)
       const ARbottom = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
       QR += kInterior(tRfloor, TF, TR) * ARbottom * (TF - TR);
     }
 
-    // Refrigerator door + packing
+    // Door + Packing
     QR += kExterior(tRdoor, TR, T0) * ARdoor * (T0 - TR)
         + PC.insulation.packing * ARpackin * (T0 - TR);
 
     // DP condenser
-    QR += (0.03322*(TC-TR)-0.030267*(T0-TR))* PR * (Hr*2 ) / 1000;
+    QR += ((0.03322*(TC-TR)-0.030267*(T0-TR))* PR * (Hr*2 ) / 1000) * 1.16279;
   }
 
-  // ── Evaporator back (always on the "freezer" side) ─────────────────
+  // ── 3. Evaporator Area & Parasitic Loads ──────────────────────
   const H_evap      = hasFreezer ? Hf : Hr;
   const tTop_evap   = hasFreezer ? tFtop : tRtop;
   const tLeft_evap  = hasFreezer ? tFleft : tRleft;
   const tRight_evap = hasFreezer ? tFright : tRright;
   const tBack_evap  = hasFreezer ? tFback : tRback;
+  
   let tBottom_evap;
   if (hasFreezer) {
     tBottom_evap = (freezerPosition === 'top') ? tFbottom : tFfloor1;
@@ -212,8 +227,17 @@ export function calcHeatLoads(
     }
   }
 
+  // Fan runs synchronously with compressor
   const fanLoad = (fanInputPower_W ?? 2.1) * PR;
-  const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); // 10.5 is the timer period in h
+  const defrostEventsPerDay = 24 / (electrical.timerPeriod_h / PR); 
   const defrostLoad = electrical.defrostHeater_W * (electrical.defrostOn_min / 60) * (defrostEventsPerDay / 24); 
-  return { QF: QF * 1.16279, QR: QR * 1.16279, QEV: QEV_cond * 1.16279 + fanLoad + defrostLoad, fanLoad, defrostLoad };
+
+  return { 
+    QF, 
+    QR, 
+    QEV: QEV_cond + fanLoad + defrostLoad, 
+    fanLoad, 
+    defrostLoad, 
+    totalLoad: QF + QR + QEV_cond + fanLoad + defrostLoad 
+  };
 }

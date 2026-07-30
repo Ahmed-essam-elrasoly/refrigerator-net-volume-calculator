@@ -1,6 +1,22 @@
 /**
+ * @file schematic.js
+ * Renders the 2D CAD-like representations of the refrigerator configuration.
+ * Maps abstract geometric boundaries and user inputs directly onto an HTML5 Canvas.
+ */
+
+
+/**
  * Draw a dimension line with extension lines, arrows, and label.
- * Styled to standard CAD drafting representation.
+ * Styled to mimic standard CAD drafting representations.
+ * 
+ * @param {CanvasRenderingContext2D} ctx - The active canvas context.
+ * @param {number} x1 - Start X coordinate in pixels.
+ * @param {number} y1 - Start Y coordinate in pixels.
+ * @param {number} x2 - End X coordinate in pixels.
+ * @param {number} y2 - End Y coordinate in pixels.
+ * @param {number} offset - Pixel offset perpendicular to the line to draw the dimension.
+ * @param {string} label - The text label (e.g., '150mm').
+ * @param {Object} options - Aesthetic overrides.
  */
 export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   color = DRAW_THEME.color,
@@ -64,13 +80,14 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     ctx.fill();
   }
 
-  // Label
+  // Label text with opaque background interruption
   if (label) {
     const midX = (p1x + p2x) / 2 + textOffsetX;
     const midY = (p1y + p2y) / 2 + textOffsetY;
 
     ctx.translate(midX, midY);
 
+    // Keep text upright
     let textAngle = angle;
     if (textAngle > Math.PI / 2 + 0.01) textAngle -= Math.PI;
     else if (textAngle < -Math.PI / 2 + 0.01) textAngle += Math.PI;
@@ -84,7 +101,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     const padX = 4;
     const padY = 2;
 
-    // Draw opaque background to cleanly break the dimension line
     ctx.fillStyle = bgColor;
     ctx.beginPath();
     if (ctx.roundRect) {
@@ -94,7 +110,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     }
     ctx.fill();
 
-    // Draw text perfectly centered
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -103,11 +118,8 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   ctx.restore();
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Drawing theme
-// ──────────────────────────────────────────────────────────────────
 export const DRAW_THEME = {
-  color: '#446688',
+  color: '#4c7df5',
   lineWidth: 1,
   arrowSize: 5,
   font: '11px "Segoe UI", Arial, sans-serif',
@@ -115,9 +127,18 @@ export const DRAW_THEME = {
   textGap: 0,
 };
 
-// ──────────────────────────────────────────────────────────────────
-// Front view
-// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Renders the 2D front-facing elevation of the refrigerator.
+ * Displays compartment heights, widths, dividers, and fixed obstacles.
+ * 
+ * @param {HTMLCanvasElement} canvas - Target rendering canvas.
+ * @param {Object} geometry - The full cabinet geometry configuration.
+ * @param {Object} effectiveWalls - Computed thickest boundary constraints.
+ * @param {Object} layout - Node layout for compartment traversal.
+ * @param {Array} leaves - Calculated compartment node data.
+ * @param {Object} options - Visualization and obstacle metadata.
+ */
 export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, W, Hb = 0, walls = {} } = geometry;
@@ -250,7 +271,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
   }
-  // Fallback: detailed shelves
   else if (fittings && leaves) {
     const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
     let yOffset = effectiveWalls.top;
@@ -297,7 +317,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     }
   }
 
-  // ─── Control Box & R‑Shower (right‑aligned) ───
+ // ─── Control Box & R‑Shower ───
   let freshIdx = -1;
   if (numCompartments === 1) {
     freshIdx = 0;
@@ -306,59 +326,51 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   }
 
   let freshTopY = 0, freshHeight = 0;
-  if (freshIdx >= 0) {
-    let yAcc = innerTopY;
-    for (let i = 0; i < freshIdx; i++) {
-      yAcc += compHeights[i];
-      if (i < freshIdx - 1) yAcc += dividerThickness;
+if (freshIdx >= 0) {
+    // Re-declare the missing layout variables
+    const compartmentHeight = freshHeight;
+    const freshCompTop = freshTopY;
+    const freshCompBottom = freshTopY + compartmentHeight;
+
+    const placeAtTop = (numCompartments === 1) || (freshIdx > 0); 
+    
+    const availableRearH = placeAtTop 
+      ? Math.max(0, Math.min(compartmentHeight, floorRaisedY - freshTopY))
+      : compartmentHeight;
+
+    const effectiveCtrlH = Math.min(ctrlBoxH, availableRearH);
+    const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
+
+    const ctrlBoxW_px = ctrlBoxW * scale;
+    const rshowerW_px = rshowerW * scale;
+    const ctrlBoxH_px = effectiveCtrlH * scale;
+    const rshowerH_px = effectiveRShowerH * scale;
+
+    let currentY = placeAtTop ? freshCompTop * scale : freshCompBottom * scale;
+
+    if (effectiveCtrlH > 0 && ctrlBoxW > 0) {
+      const ctrlBoxY = placeAtTop ? currentY : currentY - ctrlBoxH_px;
+      const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
+      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
+              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
+      
+      currentY = placeAtTop ? ctrlBoxY + ctrlBoxH_px : ctrlBoxY;
     }
-    if (freshIdx > 0) yAcc += dividerThickness;
-    freshTopY = yAcc;
-    freshHeight = compHeights[freshIdx];
-  }
 
-  // Control box
-  if (freshIdx >= 0 && ctrlBoxH > 0 && ctrlBoxW > 0) {
-    const x = (W/2 - ctrlBoxW/2) * scale;
-    const y = freshTopY * scale;
-    const h = Math.min(ctrlBoxH, freshHeight) * scale;
-    const w = ctrlBoxW * scale;
-
-    ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#aa6600';
-    ctx.strokeRect(x, y, w, h);
-    ctx.fillStyle = '#333';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Ctrl Box', x + w/2, y + h/2 + 3);
-  }
-
-  // R‑Shower
-  if (freshIdx >= 0 && numCompartments === 2 && rshowerH > 0 && rshowerW > 0 && ctrlBoxH > 0) {
-    const topY = (freshTopY + ctrlBoxH) * scale;
-    if (topY < (freshTopY + freshHeight) * scale) {
-      const h = Math.min(rshowerH, freshHeight - ctrlBoxH) * scale;
-      const w = rshowerW * scale;
-      const x = (W/2 - rshowerW/2) * scale;
-
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-      ctx.fillRect(x, topY, w, h);
-      ctx.strokeStyle = '#0066aa';
-      ctx.strokeRect(x, topY, w, h);
-      ctx.fillStyle = '#333';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('R-Shower', x + w/2, topY + h/2 + 3);
+    if (effectiveRShowerH > 0 && rshowerW > 0) {
+      const rshowerY = placeAtTop ? currentY : currentY - rshowerH_px;
+      const rshowerX = (W / 2 - rshowerW / 2) * scale;
+      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
+              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
     }
   }
 
-  // ── Outer cabinet stroke ──
+  // Outer cabinet stroke
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, W * scale, H * scale);
 
-  // Dashed Hb line
+  // Dashed Hb line for compressor step reference
   const hbY = (H - Hb - tRbottom1) * scale;
   let yAcc = intTop;
   let compIdx = -1;
@@ -402,9 +414,16 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   ctx.restore();
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Side view
-// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Renders the 2D side-profile elevation of the refrigerator.
+ * Recreates the compressor step geometry (Hb, Db1, Db2) and cross-sectional volumes.
+ * 
+ * @param {HTMLCanvasElement} canvas - Target rendering canvas.
+ * @param {Object} geometry - The full cabinet geometry configuration.
+ * @param {Object} effectiveWalls - Computed thickest boundary constraints.
+ * @param {Object} options - Visualization and obstacle metadata.
+ */
 export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const ctx = canvas.getContext('2d');
   const { H, D, Hb, Db1, Db2, walls } = geometry;
@@ -457,6 +476,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const floorLowerY  = H - tRbottom3;
   const floorRaisedY = H - Hb - tRbottom1;
 
+  // Compressor step coordinates (outer)
   const xTopCB = Db1;
   const yTopCB = H - Hb;
   const xBottomCB = Db2;
@@ -489,7 +509,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // Insulation bands and cavities
+  // Insulation bands and internal cavities
   if (compHeights.length === 1) {
     ctx.fillStyle = '#f0f0f0';
     ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
@@ -575,7 +595,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.font = 'bold 11px sans-serif';
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
-  // ----- Divider & doors -----
+  // Divider & doors
   let drawnDoors = [];
   if (compHeights.length === 2 && dividerThickness > 0) {
     const dividerY = innerTop + compHeights[0];
@@ -616,7 +636,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
   }
 
-  // Dimension labels for doors
   for (const door of drawnDoors) {
     const compIdx = door.compIndex;
     const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
@@ -675,9 +694,94 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Obstruction data ──
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
 
+  let freshCompIdx = -1, freshTopWorld = 0, freshBottomWorld = 0;
+  if (compHeights.length === 1) {
+    freshCompIdx = 0;
+    freshTopWorld = innerTopY;
+    freshBottomWorld = innerBottomY;
+  } else {
+    freshCompIdx = compartmentTypes.findIndex(t => t === 'fresh');
+    if (freshCompIdx >= 0) {
+      let yAcc = innerTopY;
+      for (let i = 0; i < freshCompIdx; i++) {
+        yAcc += compHeights[i];
+        if (i < freshCompIdx - 1) yAcc += dividerThickness;
+      }
+      if (freshCompIdx > 0) yAcc += dividerThickness;
+      freshTopWorld = yAcc;
+      freshBottomWorld = yAcc + compHeights[freshCompIdx];
+    }
+  }
+
+// Obstructions (Control box, R-shower)
+  if (freshCompIdx >= 0) {
+    const rearX = compRear[freshCompIdx];
+    const freshHeight = freshBottomWorld - freshTopWorld;
+    
+    const isTopFreezer = freshCompIdx > 0;
+    const placeAtTop = (compHeights.length === 1) || isTopFreezer;
+    
+    // Shift the X coordinate to clear the evaporator wall in a single compartment
+    const offsetRearX = (compHeights.length === 1 && evapDepth > 0) ? rearX + evapDepth : rearX;
+    
+    const availableRearH = placeAtTop 
+      ? Math.max(0, Math.min(freshHeight, floorRaisedY - freshTopWorld))
+      : freshHeight;
+
+    const ctrlBoxH_eff = Math.min(ctrlBoxH, availableRearH);
+    const rshowerH_eff = Math.max(0, Math.min(rshowerH, availableRearH - ctrlBoxH_eff));
+
+    const drawCtrl = ctrlBoxH_eff > 0 && ctrlBoxL > 0;
+    const drawRshower = rshowerH_eff > 0 && rshowerL > 0;
+
+    let yCursor = placeAtTop ? freshTopWorld : freshBottomWorld;
+
+    if (drawCtrl) {
+      const boxTop = placeAtTop ? yCursor : yCursor - ctrlBoxH_eff;
+      const boxH = ctrlBoxH_eff * scale;
+      const boxW = ctrlBoxL * scale;
+      const boxX = offsetRearX * scale; // Placed at offset
+
+      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
+      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.strokeStyle = '#aa6600';
+      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+      ctrlBoxFrontX = offsetRearX + ctrlBoxL;
+      ctrlBoxTop = boxTop;
+      ctrlBoxBottom = boxTop + ctrlBoxH_eff;
+      
+      yCursor = placeAtTop ? ctrlBoxBottom : boxTop;
+    }
+
+    if (drawRshower) {
+      const boxTop = placeAtTop ? yCursor : yCursor - rshowerH_eff;
+      const boxH = rshowerH_eff * scale;
+      const boxW = rshowerL * scale;
+      const boxX = offsetRearX * scale; // Placed at offset
+
+      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
+      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.strokeStyle = '#0066aa';
+      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
+      ctx.fillStyle = '#333';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
+
+      rshowerFrontX = offsetRearX + rshowerL;
+      rshowerTop = boxTop;
+      rshowerBottom = boxTop + rshowerH_eff;
+    }
+  }
+
+  // Evaporator dashed boundary
   if (numCompartments === 1 && evapDepth > 0) {
     const rearX = compRear[0];
     const evapX = (rearX + evapDepth) * scale;
@@ -694,130 +798,38 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Evap', evapX, innerTopY * scale + 10);
-
-    if (ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const boxRearX = rearX + evapDepth; 
-      const boxX = boxRearX * scale;
-      const boxY = innerTopY * scale;
-      const boxH = Math.min(ctrlBoxH, innerBottomY - innerTopY) * scale;
-      const boxW = ctrlBoxL * scale;
-
-      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#aa6600';
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
-
-      ctrlBoxFrontX = boxRearX + ctrlBoxL;
-      ctrlBoxTop = innerTopY;
-      ctrlBoxBottom = innerTopY + Math.min(ctrlBoxH, innerBottomY - innerTopY);
-    }
   } else {
-    let freshCompIdx = -1;
-    let freshTopWorld = 0, freshBottomWorld = 0;
-    if (compHeights.length === 1) {
-      freshCompIdx = 0;
-      freshTopWorld = innerTopY;
-      freshBottomWorld = innerBottomY;
-    } else {
-      for (let i = 0; i < compHeights.length; i++) {
-        if (compartmentTypes[i] === 'fresh') {
-          freshCompIdx = i;
-          break;
-        }
-      }
-      let yAcc = innerTopY;
-      for (let i = 0; i < freshCompIdx; i++) {
-        yAcc += compHeights[i];
-        if (i < freshCompIdx - 1) yAcc += dividerThickness;
-      }
-      if (freshCompIdx > 0) yAcc += dividerThickness;
-      freshTopWorld = yAcc;
-      freshBottomWorld = yAcc + compHeights[freshCompIdx];
-    }
+    let yOffset = innerTopY;
+    for (let i = 0; i < compHeights.length; i++) {
+      if (isFreezer(i)) {
+        const compTopY = yOffset;
+        let compBottomY = yOffset + compHeights[i];
+        if (i === compHeights.length - 1) {
+          compBottomY = Math.min(compBottomY, floorRaisedY);
+        }          
+        const rearX = compRear[i];
+        const evapX = (rearX + evapDepth) * scale;
+        ctx.save();
+        ctx.strokeStyle = '#cc0000';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(evapX, compTopY * scale);
+        ctx.lineTo(evapX, compBottomY * scale);
+        ctx.stroke();
+        ctx.restore();
 
-    if (evapDepth > 0) {
-      let yOffset = innerTopY;
-      for (let i = 0; i < compHeights.length; i++) {
-        if (isFreezer(i)) {
-          const compTopY = yOffset;
-          let compBottomY = yOffset + compHeights[i];
-          if (i === compHeights.length - 1) {
-            compBottomY = Math.min(compBottomY, floorRaisedY);
-          }          
-          const rearX = compRear[i];
-          const evapX = (rearX + evapDepth) * scale;
-          ctx.save();
-          ctx.strokeStyle = '#cc0000';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([5, 3]);
-          ctx.beginPath();
-          ctx.moveTo(evapX, compTopY * scale);
-          ctx.lineTo(evapX, compBottomY * scale);
-          ctx.stroke();
-          ctx.restore();
-
-          ctx.fillStyle = '#cc0000';
-          ctx.font = '9px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('Evap', evapX, compTopY * scale + 10);
-        }
-        yOffset += compHeights[i];
-        if (i < compHeights.length - 1) yOffset += dividerThickness;
-      }
-    }
-
-    if (freshCompIdx >= 0 && ctrlBoxH > 0 && ctrlBoxL > 0) {
-      const rearX = compRear[freshCompIdx];
-      const boxX = rearX * scale;
-      const boxY = freshTopWorld * scale;
-      const boxH = Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld)) * scale;
-      const boxW = ctrlBoxL * scale;
-
-      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-      ctx.fillRect(boxX, boxY, boxW, boxH);
-      ctx.strokeStyle = '#aa6600';
-      ctx.strokeRect(boxX, boxY, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Ctrl Box', boxX + boxW/2, boxY + boxH/2 + 3);
-
-      ctrlBoxFrontX = rearX  + ctrlBoxL;
-      ctrlBoxTop = freshTopWorld;
-      ctrlBoxBottom = freshTopWorld + Math.min(ctrlBoxH, (freshBottomWorld - freshTopWorld));
-    }
-
-    if (freshCompIdx >= 0 && rshowerH > 0 && rshowerL > 0 && ctrlBoxH > 0) {
-      const rearX = compRear[freshCompIdx];
-      const rTop = freshTopWorld + ctrlBoxH;
-      if (rTop < freshBottomWorld) {
-        const h = Math.min(rshowerH, freshBottomWorld - rTop);
-        const boxX = rearX * scale;
-        const boxY = rTop * scale;
-        const boxW = rshowerL * scale;
-        const boxH = h * scale;
-
-        ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-        ctx.fillRect(boxX, boxY, boxW, boxH);
-        ctx.strokeStyle = '#0066aa';
-        ctx.strokeRect(boxX, boxY, boxW, boxH);
-        ctx.fillStyle = '#333';
+        ctx.fillStyle = '#cc0000';
         ctx.font = '9px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('R-Shower', boxX + boxW/2, boxY + boxH/2 + 3);
-
-        rshowerFrontX = rearX + rshowerL;
-        rshowerTop = rTop;
-        rshowerBottom = rTop + h;
+        ctx.fillText('Evap', evapX, compTopY * scale + 10);
       }
+      yOffset += compHeights[i];
+      if (i < compHeights.length - 1) yOffset += dividerThickness;
     }
   }
 
-  // ── Shelves and rails ──
+  // Shelves and rails
   if (shelfCounts && shelfCounts.length > 0 && innerRearX != null && doorX != null) {
     let yOffset = innerTop;
     for (let i = 0; i < compHeights.length; i++) {
@@ -877,12 +889,12 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-  // ── Outer cabinet stroke ──
+  // Outer cabinet stroke
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
 
-  // ── Cascaded Dimension lines ──
+  // Cascaded Dimension lines
   drawDim(ctx, 0, H * scale, 0, 0, -60, `H: ${H.toFixed(0)}`);
   drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -35, `Hb: ${Hb.toFixed(0)}`);
   drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -15, `Db1: ${Db1.toFixed(0)}`);
@@ -920,7 +932,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     })
   );
 
-  // Compartment height dimensions - pushed further right to bypass door heights
   const compHeightDimX = (D + maxActualDoor) * scale + 40; 
   if (compHeights.length === 2) {
     let yPos = innerTop;
@@ -936,9 +947,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────
-// Click‑to‑show‑coordinate feature
-// ──────────────────────────────────────────────────────────────────
+/**
+ * Binds mouse events to the canvases to display real-world coordinates on hover/click.
+ * Maps canvas pixel space back to real-world millimeters.
+ * 
+ * @param {HTMLCanvasElement} frontCanvas - The front view canvas element.
+ * @param {HTMLCanvasElement} sideCanvas - The side view canvas element.
+ * @param {Function} getGeometryFn - Function returning current cabinet geometry.
+ */
 export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
   const tooltip = document.getElementById('schematicTooltip');
 
@@ -956,14 +972,14 @@ export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) 
 
       let worldX, worldY;
       if (isFront) {
-        const PAD = { left: 50, top: 40, right: 40, bottom: 40 }; // Matched drawing PAD
+        const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
         const drawW = canvas.width - PAD.left - PAD.right;
         const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.W, drawH / geometry.H);
         worldX = (pixelX - PAD.left) / scale;
         worldY = (pixelY - PAD.top) / scale;
       } else {
-        const PAD = { left: 60, top: 40, right: 60, bottom: 40 }; // Matched drawing PAD
+        const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
         const drawW = canvas.width - PAD.left - PAD.right;
         const drawH = canvas.height - PAD.top - PAD.bottom;
         const scale = Math.min(drawW / geometry.D, drawH / geometry.H);
