@@ -476,10 +476,12 @@ function openAddCompressorModal() {
   if (!contentDiv) {
     contentDiv = document.createElement('div');
     contentDiv.id = 'addCompressorContent';
+    contentDiv.className = 'modal-content';
     modal.appendChild(contentDiv);
   }
 
   contentDiv.innerHTML = `
+    <span class="close-btn" id="closeAddModal">&times;</span>
     <fieldset>
       <legend>Compressor Type</legend>
       <label><input type="radio" name="compType" value="constant" checked> Constant‑Speed</label>
@@ -513,14 +515,7 @@ function openAddCompressorModal() {
 
     <div id="inverterFields" style="display:none;">
       <fieldset>
-        <legend>Basic Information</legend>
-        <label>Name: <input id="acInvName" type="text" value=""></label>
-        <label>Refrigerant:
-          <select id="acInvRef">
-            <option value="1">R-134a</option>
-            <option value="2" selected>R-600a</option>
-          </select>
-        </label>
+        <legend>Inverter Data</legend>
         <label>Cyl. Volume (cm³): <input id="acInvCyl" type="number" step="any" value="10.17"></label>
       </fieldset>
       <fieldset>
@@ -586,6 +581,7 @@ function openAddCompressorModal() {
   };
 
   document.getElementById('cancelAddCompressor').onclick = () => modal.classList.add('hidden');
+  document.getElementById('closeAddModal').onclick = () => modal.classList.add('hidden');
 
   // Triggering the polynomial solver upon creation
   document.getElementById('fitCompressorBtn').onclick = () => {
@@ -666,6 +662,7 @@ function openEditCompressorModal() {
   if (!contentDiv) {
     contentDiv = document.createElement('div');
     contentDiv.id = 'addCompressorContent';
+    contentDiv.className = 'modal-content'; 
     modal.appendChild(contentDiv);
   }
   loadCompressors();
@@ -694,6 +691,7 @@ function openEditCompressorModal() {
   };
 
   document.getElementById('addCompressorContent').innerHTML = `
+    <span class="close-btn" id="closeEditModal">&times;</span>
     <h2>Edit Compressor</h2>
     <fieldset>
       <legend>Basic Information</legend>
@@ -747,6 +745,7 @@ function openEditCompressorModal() {
   };
 
   document.getElementById('cancelEditCompressor').onclick = () => modal.classList.add('hidden');
+  document.getElementById('closeEditModal').onclick = () => modal.classList.add('hidden');
 
   document.getElementById('fitAndSaveBtn').onclick = () => {
     const errorDiv = document.getElementById('acError');
