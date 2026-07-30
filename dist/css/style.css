@@ -1,317 +1,690 @@
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background: #f8f9fa;
-    color: #333;
-    height: 100vh;
-    overflow: hidden;      /* prevent page-level scrolling */
+/* =========================================================================
+   Refrigerator Volume & Thermal Design — Stylesheet
+   Direction: "instrument bezel" — a dark graphite chrome frame housing
+   light, paper-bright functional surfaces (forms + schematic). The accent
+   blue is a saturated evolution of the canvas ink color (#446688) already
+   used in schematic.js, so the rendered drawing and the UI read as one
+   instrument rather than two disconnected halves.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   0. Type — Space Grotesk (display/legends), Inter (UI/body),
+      JetBrains Mono (every number: inputs, tables, results).
+      Prefer moving this to a <link rel="preconnect"> + <link rel="stylesheet">
+      in index.html <head> for faster first paint; @import works but blocks.
+   ------------------------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* -------------------------------------------------------------------------
+   1. Design tokens
+   ------------------------------------------------------------------------- */
+:root {
+  /* Core palette (named, deliberate — not a template default) */
+  --ink-950: #10131a;   /* darkest chrome: page frame, right panel, table head */
+  --ink-900: #171b24;   /* secondary dark surface */
+  --ink-800: #232936;   /* borders / dividers on dark chrome */
+  --paper-0: #fbfbfd;   /* light functional surface: left panel, modal, canvas mat */
+  --paper-100: #eef1f6; /* recessed surface: nested fieldsets, alt rows */
+  --signal-blue: #4c7df5;   /* primary accent — evolved from canvas ink #446688 */
+  --signal-blue-dim: #3a63c9;
+  --signal-amber: #e8a33d;  /* secondary accent / warnings / "needs recalculation" */
+  --alert-red: #ef4444;     /* errors / destructive actions */
+  --success-green: #22a55e; /* valid / confirmed states */
+
+  /* Text */
+  --text-on-paper: #171b24;
+  --text-on-paper-muted: #5b6472;
+  --text-on-dark: #eef1f6;
+  --text-on-dark-muted: #9aa4b5;
+
+  /* Borders */
+  --border-on-paper: #e0e4ea;
+  --border-on-dark: #2a3140;
+
+  /* Elevation */
+  --shadow-frame: 0 12px 32px rgba(8, 10, 15, 0.45);
+  --shadow-card: 0 1px 2px rgba(16, 19, 26, 0.05), 0 6px 16px rgba(16, 19, 26, 0.08);
+  --shadow-focus: 0 0 0 3px rgba(76, 125, 245, 0.28);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 120ms var(--ease);
+  --t-base: 200ms var(--ease);
+
+  /* Type */
+  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
 }
 
+/* -------------------------------------------------------------------------
+   2. Reset / base
+   ------------------------------------------------------------------------- */
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  margin: 0;
+  padding: 0;
+  background: var(--ink-950);
+  color: var(--text-on-paper);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+  margin: 4px 0 2px;
+  color: var(--text-on-paper);
+}
+
+.left-panel > p {
+  margin: 0 0 14px;
+  color: var(--text-on-paper-muted);
+  font-size: 13px;
+}
+
+/* Thin, quiet scrollbars everywhere they're needed */
+.left-panel, .modal-content, .thermo-results-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-on-paper) transparent;
+}
+.left-panel::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar,
+.thermo-results-panel::-webkit-scrollbar { width: 8px; }
+.left-panel::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb,
+.thermo-results-panel::-webkit-scrollbar-thumb {
+  background: var(--border-on-paper);
+  border-radius: 8px;
+}
+.left-panel::-webkit-scrollbar-thumb:hover { background: #c8cedb; }
+
+/* -------------------------------------------------------------------------
+   3. Layout — dark frame, light paper panels
+   ------------------------------------------------------------------------- */
 .page {
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--ink-950);
 }
 
 .left-panel {
-  flex: 0 0 450px;           /* initial width; overridden by JS */
+  flex: 0 0 450px;
   overflow-y: auto;
-  padding: 10px 15px;
+  padding: 16px 20px 40px;
   box-sizing: border-box;
+  background: var(--paper-0);
+  box-shadow: var(--shadow-frame);
+  position: relative;
+  z-index: 1;
 }
 
 .splitter {
-  flex: 0 0 5px;
-  background: #ccc;
+  flex: 0 0 6px;
+  background: var(--ink-950);
   cursor: col-resize;
   user-select: none;
+  position: relative;
+}
+.splitter::before {
+  /* grip affordance — three dots, drawn without extra markup */
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 3px;
+  background: var(--border-on-dark);
+  box-shadow: 0 -9px 0 var(--border-on-dark), 0 9px 0 var(--border-on-dark);
+  transition: background var(--t-fast), box-shadow var(--t-fast);
+}
+.splitter:hover::before,
+.splitter:active::before {
+  background: var(--signal-blue);
+  box-shadow: 0 -9px 0 var(--signal-blue), 0 9px 0 var(--signal-blue);
 }
 
 .right-panel {
   flex: 1 1 auto;
   display: flex;
   flex-direction: row;
-  gap: 10px;
-  padding: 15px;
+  gap: 14px;
+  padding: 18px;
   overflow: hidden;
+  background: var(--ink-950);
+  position: relative;
 }
 
+/* Canvas = the "lit screen" set into the dark bezel */
+canvas,
 .right-panel canvas {
+  max-width: 100%;
+  max-height: 100%;
   flex: 0 0 auto;
-  border: 1px solid #ddd;
-  background: #fff;
-}
-canvas {
-    max-width: 100%;
-    max-height: 100%;
-    border: 1px solid #ddd;
-    background: #fff;
+  border: 1px solid var(--border-on-dark);
+  border-radius: var(--radius-md);
+  background: var(--paper-0);
+  box-shadow: var(--shadow-card);
 }
 
-fieldset {
-    margin-bottom: 8px;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    padding: 6px 10px;
+/* -------------------------------------------------------------------------
+   4. Tabs — underline style, shared between main nav and settings modal
+   ------------------------------------------------------------------------- */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border-on-paper);
 }
 
-legend {
-    font-weight: bold;
-    padding: 0 5px;
-    font-size: 14px;
+.tab {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 9px 16px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-on-paper-muted);
+  cursor: pointer;
+  border-radius: 0;
+  margin: 0 0 -1px;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.tab:hover { color: var(--text-on-paper); }
+.tab.active {
+  color: var(--signal-blue-dim);
+  border-bottom-color: var(--signal-blue);
 }
 
-label {
-    display: inline-block;
-    margin: 3px 8px 3px 0;
-    font-size: 13px;
-}
+.tab-panel { display: block; }
+.tab-panel.hidden { display: none; }
 
-input[type="number"] {
-    width: 70px;
-    font-size: 13px;
-    padding: 2px;
+/* Settings modal tabs — compact variant of the same idea */
+.settings-tabs { margin-bottom: 12px; border-bottom: 1px solid var(--border-on-paper); }
+.stab {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 7px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-on-paper-muted);
+  cursor: pointer;
+  border-radius: 0;
+  margin: 0 0 -1px;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.stab:hover { color: var(--text-on-paper); }
+.stab.active { color: var(--signal-blue-dim); border-bottom-color: var(--signal-blue); }
+.stab-panel { padding: 12px 0 4px; }
+.stab-panel.hidden { display: none; }
+
+/* -------------------------------------------------------------------------
+   5. Sticky toolbar & buttons — role-based hierarchy
+   ------------------------------------------------------------------------- */
+.sticky-buttons {
+  position: sticky;
+  top: -16px;
+  margin: -16px -20px 14px;
+  padding: 12px 20px;
+  background: var(--ink-950);
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(8, 10, 15, 0.25);
 }
 
 button {
-    margin: 4px 8px 4px 0;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 13px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0;
+  padding: 7px 14px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-on-paper);
+  background: var(--paper-0);
+  color: var(--text-on-paper);
+  transition: background var(--t-fast), border-color var(--t-fast),
+              transform var(--t-fast), box-shadow var(--t-fast);
+}
+button:hover { border-color: #c8cedb; background: var(--paper-100); }
+button:active { transform: translateY(1px); }
+
+/* Toolbar buttons default to a "control deck" look on the dark strip */
+.sticky-buttons button {
+  background: var(--ink-900);
+  border-color: var(--border-on-dark);
+  color: var(--text-on-dark);
+}
+.sticky-buttons button:hover { background: #262d3c; border-color: #343d51; }
+
+/* Primary actions */
+#calculateBtn, #thermoRunBtn, #inverterRunBtn, #fitCompressorBtn,
+#settingsSave, #saveThermalSettings {
+  background: var(--signal-blue);
+  border-color: var(--signal-blue);
+  color: #fff;
+}
+#calculateBtn:hover, #thermoRunBtn:hover, #inverterRunBtn:hover, #fitCompressorBtn:hover,
+#settingsSave:hover, #saveThermalSettings:hover {
+  background: var(--signal-blue-dim);
+  border-color: var(--signal-blue-dim);
 }
 
-#results p {
-    font-weight: bold;
-    margin: 5px 0;
-    font-size: 14px;
+/* Destructive actions */
+#resetAllBtn, #settingsReset, #thermoDeleteCompressorBtn {
+  background: transparent;
+  border-color: var(--alert-red);
+  color: var(--alert-red);
+}
+.sticky-buttons #resetAllBtn { background: transparent; }
+#resetAllBtn:hover, #settingsReset:hover, #thermoDeleteCompressorBtn:hover {
+  background: var(--alert-red);
+  color: #fff;
 }
 
-.error { color: red; }
-.warning { color: orange; }
-#messages { margin-top: 5px; font-size: 13px; }
+/* Ghost / icon-style small actions inline in fieldsets */
+#settingsBtn, #thermoAdvancedBtn, #inverterAdvancedBtn {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-on-paper-muted);
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+#settingsBtn:hover, #thermoAdvancedBtn:hover, #inverterAdvancedBtn:hover {
+  background: var(--paper-100);
+  color: var(--text-on-paper);
+}
+.sticky-buttons #settingsBtn { color: var(--text-on-dark-muted); }
+.sticky-buttons #settingsBtn:hover { background: #262d3c; color: var(--text-on-dark); }
+
+/* -------------------------------------------------------------------------
+   6. Fieldsets, legends, labels, inputs
+   ------------------------------------------------------------------------- */
+fieldset {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-on-paper);
+  border-radius: var(--radius-md);
+  padding: 12px 14px 10px;
+  background: var(--paper-0);
+}
+
+legend {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-on-paper-muted);
+  padding: 0 6px;
+}
+
+/* Nested fieldsets, demoted a level regardless of container —
+   fixes the gap where only .verticalSubContainer used to get this. */
+fieldset fieldset {
+  background: var(--paper-100);
+  border-color: #dfe3ea;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 10px 12px 8px;
+}
+fieldset fieldset legend {
+  font-size: 10px;
+  color: #7b8494;
+}
+fieldset fieldset fieldset {
+  background: #e6eaf1;
+}
 
 .verticalSubContainer fieldset {
-    margin-left: 10px;
-    border-color: #aaa;
+  margin-left: 10px;
 }
 
-/* Sticky buttons */
-.sticky-buttons {
-    position: sticky;
-    top: 0;
-    background: #f8f9fa;
-    z-index: 10;
-    padding: 6px 0;
-    margin-top: 8px;
+label {
+  display: inline-block;
+  margin: 4px 10px 4px 0;
+  font-size: 12.5px;
+  color: var(--text-on-paper-muted);
+  font-weight: 500;
 }
 
-/* Separator lines between fittings */
-.shelfContainer > div,
-.drawerContainer > div,
-.binContainer > div {
-    border-bottom: 1px dashed #ccc;
-    padding-bottom: 6px;
-    margin-bottom: 6px;
+input[type="number"],
+input[type="text"] {
+  width: 76px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 4px 6px;
+  text-align: right;
+  border: 1px solid var(--border-on-paper);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text-on-paper);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+input[type="text"] { text-align: left; font-family: var(--font-body); width: 160px; }
+
+input[type="number"]:hover,
+input[type="text"]:hover { border-color: #c8cedb; }
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+  outline: none;
+  border-color: var(--signal-blue);
+  box-shadow: var(--shadow-focus);
 }
 
-/* Schematic overlay (dirty indicator) */
-.schematic-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0,0,0,0.7);
-    color: white;
-    padding: 10px 18px;
-    border-radius: 8px;
-    font-weight: bold;
-    font-size: 14px;
-    pointer-events: none;
-    z-index: 20;
+select {
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  padding: 4px 26px 4px 8px;
+  border: 1px solid var(--border-on-paper);
+  border-radius: var(--radius-sm);
+  background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%235b6472'/></svg>") no-repeat right 9px center;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--text-on-paper);
+  cursor: pointer;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
-.schematic-overlay.hidden {
-    display: none;
+select:hover { border-color: #c8cedb; }
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--signal-blue);
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 4px;
+  cursor: pointer;
 }
 
-/* Tooltip */
-.schematic-tooltip {
-    position: absolute;
-    background: rgba(0,0,0,0.85);
-    color: #fff;
-    padding: 6px 10px;
-    border-radius: 4px;
-    font-size: 12px;
-    pointer-events: none;
-    z-index: 30;
-    white-space: pre-line;
-    max-width: 220px;
+input[type="file"] {
+  font-size: 12px;
+  color: var(--text-on-paper-muted);
 }
-.schematic-tooltip.hidden {
-    display: none;
+input[type="file"]::file-selector-button {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 5px 10px;
+  margin-right: 8px;
+  border: 1px solid var(--border-on-paper);
+  border-radius: var(--radius-sm);
+  background: var(--paper-100);
+  color: var(--text-on-paper);
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+input[type="file"]::file-selector-button:hover { background: #dde2ea; }
+
+/* -------------------------------------------------------------------------
+   7. Messages / validation
+   ------------------------------------------------------------------------- */
+.error, .error-msg {
+  color: var(--alert-red);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.error-msg { margin-top: 8px; }
+.warning {
+  color: #b9791f;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+#messages { margin-top: 8px; font-size: 12.5px; }
+#messages ul { margin: 4px 0; padding-left: 18px; }
+
+#messagesFieldset { border-color: var(--signal-amber); background: #fdf6e9; }
+
+/* -------------------------------------------------------------------------
+   8. Results (Volume tab)
+   ------------------------------------------------------------------------- */
+#results p {
+  font-weight: 600;
+  margin: 6px 0;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+#results p span {
+  font-family: var(--font-mono);
+  color: var(--signal-blue-dim);
+  font-weight: 600;
 }
 
-/* ---- Settings Modal ---- */
+/* -------------------------------------------------------------------------
+   9. Modals
+   ------------------------------------------------------------------------- */
 .modal {
   display: block;
   position: fixed;
   z-index: 1000;
-  left: 0;
-  top: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   overflow: auto;
-  background: rgba(0,0,0,0.5);
+  background: rgba(16, 19, 26, 0.62);
+  backdrop-filter: blur(3px);
 }
-.modal.hidden {
-  display: none;
-}
+.modal.hidden { display: none; }
+
 .modal-content {
-  background: #fff;
+  background: var(--paper-0);
   margin: 5% auto;
-  padding: 20px;
-  border-radius: 8px;
+  padding: 24px 24px 20px;
+  border-radius: var(--radius-lg);
   width: 90%;
-  max-width: 500px;
+  max-width: 520px;
   max-height: 80vh;
   overflow-y: auto;
   position: relative;
+  box-shadow: 0 24px 64px rgba(8, 10, 15, 0.5);
+  border-top: 3px solid var(--signal-blue);
+  animation: modalIn var(--t-base);
 }
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 .close-btn {
   position: absolute;
-  right: 15px;
-  top: 10px;
-  font-size: 24px;
-  font-weight: bold;
+  right: 16px;
+  top: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
-  color: #aaa;
+  color: var(--text-on-paper-muted);
+  transition: color var(--t-fast);
 }
-.close-btn:hover { color: #000; }
-.modal h2 { margin-top: 0; }
+.close-btn:hover { color: var(--text-on-paper); }
+
+.modal h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  margin: 0 0 14px;
+  color: var(--text-on-paper);
+}
 .modal fieldset { margin-bottom: 12px; }
 .modal label { display: block; margin: 6px 0; }
-.settings-actions { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-actions button { flex: 1; min-width: 80px; }
-.remove-fitting-btn {
-    background: #e74c3c;
-    color: white;
-    border: none;
-    padding: 2px 8px;
-    font-size: 12px;
-    cursor: pointer;
-    border-radius: 3px;
-    margin-left: 6px;
+
+.settings-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.remove-fitting-btn:hover {
-    background: #c0392b;
+.settings-actions button { flex: 1; min-width: 90px; }
+
+/* -------------------------------------------------------------------------
+   10. Data tables — compressor preview + thermal results
+   ------------------------------------------------------------------------- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  margin-top: 6px;
 }
-/* ---- Thermal analysis results table --------------------------------- */
+.data-table thead tr { background: var(--paper-100); }
+.data-table th, .data-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-on-paper);
+  text-align: right;
+}
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+
 .thermo-results-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    margin-top: 8px;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+  background: var(--paper-0);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
 
 .thermo-results-table thead tr {
-    background: #2c3e50;
-    color: #fff;
+  background: var(--ink-950);
+  color: var(--text-on-dark);
 }
-
 .thermo-results-table thead th {
-    padding: 6px 8px;
-    text-align: left;
-    font-size: 13px;
+  font-family: var(--font-body);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
-/* Section sub-headers (Operating Points / Compressor / Heat Loads / Solver) */
 .thermo-results-table tr.section-header td {
-    background: #ecf0f1;
-    color: #2c3e50;
-    font-weight: bold;
-    padding: 4px 8px;
-    border-top: 1px solid #bdc3c7;
+  background: var(--paper-100);
+  color: var(--signal-blue-dim);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border-on-paper);
+  border-left: 3px solid var(--signal-blue);
 }
 
 .thermo-results-table tbody tr td {
-    padding: 3px 8px;
-    border-bottom: 1px solid #f0f0f0;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--paper-100);
+  font-size: 12.5px;
 }
 
-/* Right-align the value column */
 .thermo-results-table tbody tr td:last-child {
-    text-align: right;
-    font-family: 'Courier New', Courier, monospace;
-    white-space: nowrap;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-on-paper);
 }
 
-/* Alternating row shading within data rows */
 .thermo-results-table tbody tr:not(.section-header):nth-child(even) {
-    background: #f8f9fa;
+  background: #f6f8fb;
 }
 
-#thermoResults {
-    margin-top: 6px;
-}
-/* Tabs for volume/thermal */
-.tab-bar {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
-}
-.tab {
-  padding: 6px 14px;
-  background: #e0e0e0;
-  border: 1px solid #999;
-  cursor: pointer;
-  border-radius: 4px 4px 0 0;
-}
-.tab.active {
-  background: #fff;
-  border-bottom: 1px solid #fff;
-}
-.tab-panel {
-  display: block;
-}
-.tab-panel.hidden {
-  display: none;
-}
+#thermoResults { margin-top: 8px; }
 
-/* Settings tabs */
-.settings-tabs {
-  margin-bottom: 10px;
-}
-.stab {
-  padding: 4px 10px;
-  background: #eee;
-  border: 1px solid #bbb;
-  cursor: pointer;
-  border-radius: 4px 4px 0 0;
-}
-.stab.active {
-  background: #fff;
-  border-bottom: 1px solid #fff;
-  font-weight: bold;
-}
-.stab-panel {
-  padding: 10px 0;
-}
-.stab-panel.hidden { display: none; }
-
-/* Compressor list in settings */
-.compressor-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-.compressor-row select {
-  width: 200px;
-}
 .thermo-results-panel {
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  padding: 10px;
+  padding: 4px 4px 20px;
   box-sizing: border-box;
+}
+.thermo-results-panel.hidden { display: none; }
+
+/* -------------------------------------------------------------------------
+   11. Schematic overlays / tooltip
+   ------------------------------------------------------------------------- */
+.schematic-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(16, 19, 26, 0.88);
+  border: 1px solid var(--signal-amber);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(8, 10, 15, 0.4);
+}
+.schematic-overlay::before { content: "⚠️  "; }
+.schematic-overlay.hidden { display: none; }
+
+.schematic-tooltip {
+  position: absolute;
+  background: var(--ink-950);
+  border-left: 3px solid var(--signal-blue);
+  color: var(--text-on-dark);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 30;
+  white-space: pre-line;
+  max-width: 220px;
+  box-shadow: var(--shadow-card);
+}
+.schematic-tooltip.hidden { display: none; }
+
+/* -------------------------------------------------------------------------
+   12. Accessibility & quality floor
+   ------------------------------------------------------------------------- */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   13. Responsive fallback — stack panels on narrow viewports.
+      Splitter drag (JS-driven width) is desktop-only; hide it here.
+   ------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .page { flex-direction: column; overflow-y: auto; height: auto; min-height: 100vh; }
+  .left-panel { flex: 1 1 auto; width: 100%; }
+  .splitter { display: none; }
+  .right-panel { flex-direction: column; overflow: visible; padding: 14px; }
+  canvas, .right-panel canvas { width: 100%; height: auto; }
 }
