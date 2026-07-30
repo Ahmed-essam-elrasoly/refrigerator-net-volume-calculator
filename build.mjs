@@ -2,42 +2,38 @@ import * as esbuild from 'esbuild';
 import fs from 'fs';
 
 async function buildStandalone() {
-  console.log('Building standalone offline app...');
-
-  // 1. Build the JS bundle in memory (do not write to disk)
   const jsResult = await esbuild.build({
     entryPoints: ['src/js/main.js'],
     bundle: true,
-    write: false, 
+    write: false,
     format: 'iife',
     platform: 'browser',
     target: 'es2020',
-    minify: true, // Minifying keeps the single file size down
+    minify: true,
   });
-  
-  // Extract the bundled JavaScript code
-  const jsCode = jsResult.outputFiles[0].text;
 
-  // 2. Read the CSS file
+  // 1. Escape </script> tags that might exist inside external libraries (like SheetJS)
+  // This prevents the browser HTML parser from closing the tag prematurely.
+  const jsCode = jsResult.outputFiles[0].text.replace(/<\/script>/g, '<\\/script>');
   const cssCode = fs.readFileSync('src/css/style.css', 'utf-8');
 
-  // 3. Read the HTML template
   let html = fs.readFileSync('src/index.html', 'utf-8');
 
-  // 4. Inject CSS and JS directly into the HTML
+  // 2. Inject CSS safely using a replacer function
   html = html.replace(
-    '<link rel="stylesheet" href="css/style.css">',
-    `<style>\n${cssCode}\n</style>`
+    /<link rel="stylesheet" href="css\/style\.css">/,
+    () => `<style>\n${cssCode}\n</style>`
   );
 
+  // 3. Inject JS safely using a replacer function
+  // This prevents String.replace from corrupting minified variables containing "$"
   html = html.replace(
-    '<script type="module" src="js/main.js"></script>',
-    `<script>\n${jsCode}\n</script>`
+    /<script type="module" src="js\/main\.js"><\/script>/,
+    () => `<script>\n${jsCode}\n</script>`
   );
 
-  // 5. Write the final single-file application to your root directory
   fs.writeFileSync('Refrigerator_Calculator.html', html);
-  console.log('✅ Standalone app created: Refrigerator_Calculator.html');
+  console.log('✅ Standalone app created successfully: Refrigerator_Calculator.html');
 }
 
 buildStandalone().catch((err) => {
