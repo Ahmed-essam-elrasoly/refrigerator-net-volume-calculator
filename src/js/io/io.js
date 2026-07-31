@@ -280,6 +280,7 @@ export function resultToCSV(cachedState, configName) {
   
   rows.push(['Operating Points:']);
   rows.push(['Condensing temp TC', fmt(tr.TC)]);
+  rows.push(['Subcool temp Tsubcool', fmt(tr.Tsubcool)]);
   rows.push(['Evaporating temp TE', fmt(tr.TE)]);
   rows.push(['Mixed inlet T1', fmt(evap.T1)]);
   rows.push(['Evap. outlet T2', fmt(tr.T2)]);

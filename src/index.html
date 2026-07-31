@@ -15,21 +15,26 @@
     <!-- LEFT PANEL: Main User Interface & Data Entry                            -->
     <!-- ======================================================================= -->
     <div class="left-panel">
-      <div class="sticky-buttons">
-      <h1>Refrigerator Volume &amp; Thermal Design</h1>
-      <p>Gross &amp; Usable Volume – Concept Design Tool</p>
+      
+      <!-- NEW: Dedicated sticky header for the title and tabs -->
+      <div class="sticky-header">
+        <h1>Refrigerator Volume &amp; Thermal Design</h1>
+        <p>Gross &amp; Usable Volume – Concept Design Tool</p>
 
-      <!-- ─── Navigation Tabs ───────────────────────────────────────────── -->
-      <div class="tab-bar">
-        <button id="tabVolume" class="tab active">Volume</button>
-        <button id="tabThermal" class="tab">Thermal</button>
-        <button id="tabInverter">Inverter</button>
+        <!-- ─── Navigation Tabs ───────────────────────────────────────────── -->
+        <div class="tab-bar">
+          <button id="tabVolume" class="tab active">Volume</button>
+          <button id="tabThermal" class="tab">Thermal</button>
+          <button id="tabInverter" class="tab">Inverter</button>
+        </div>
       </div>
 
       <!-- ─── TAB 1: Volume Calculation Panel ───────────────────────────── -->
+      <!-- We open the panel here, and it remains open to wrap ALL volume fields -->
       <div id="panelVolume" class="tab-panel active">
         
-        <!-- Action Buttons (Sticky at top) -->
+        <!-- Action Buttons wrapped in their own specific container -->
+        <div class="sticky-buttons">
           <button id="settingsBtn">⚙️ Settings</button>
           <button id="calculateBtn">Calculate</button>
           <button id="saveBtn">Save Configuration (JSON)</button>
@@ -39,7 +44,7 @@
           <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
           <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
           <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
-      </div>
+        </div>
 
         <!-- 1. Cabinet Geometry Inputs -->
         <fieldset>
@@ -220,8 +225,7 @@
       <span class="close-btn" id="closeThermalSettings">&times;</span>
       <h2>Advanced Thermal Parameters</h2>
       <fieldset>
-        <legend>Subcool &amp; Discharge</legend>
-        <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+        <legend>Discharge</legend>
         <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
       </fieldset>
       <fieldset>

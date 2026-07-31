@@ -1548,15 +1548,23 @@ function buildComparisonTable(stateA, stateB) {
 }
 
 // ---- Tab Switching ----
+
 // Tab: Volume 
 document.getElementById('tabVolume').addEventListener('click', () => {
+  // Reset all panels
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.classList.add('hidden');
+  });
+  // Activate target panel
+  document.getElementById('panelVolume').classList.add('active');
   document.getElementById('panelVolume').classList.remove('hidden');
-  document.getElementById('panelThermal').classList.add('hidden');
-  document.getElementById('panelInverter').classList.add('hidden');
   
+  // Reset tabs
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabVolume').classList.add('active');
   
+  // Manage side panels/canvases
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1567,13 +1575,20 @@ document.getElementById('tabVolume').addEventListener('click', () => {
 
 // Tab: Thermal 
 document.getElementById('tabThermal').addEventListener('click', () => {
+  // Reset all panels
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.classList.add('hidden');
+  });
+  // Activate target panel
+  document.getElementById('panelThermal').classList.add('active');
   document.getElementById('panelThermal').classList.remove('hidden');
-  document.getElementById('panelVolume').classList.add('hidden');
-  document.getElementById('panelInverter').classList.add('hidden');
   
+  // Reset tabs
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabThermal').classList.add('active');
   
+  // Manage side panels/canvases
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1584,12 +1599,20 @@ document.getElementById('tabThermal').addEventListener('click', () => {
 
 // Tab: Inverter 
 document.getElementById('tabInverter').addEventListener('click', () => {
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  // Reset all panels
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.remove('active');
+    p.classList.add('hidden');
+  });
+  // Activate target panel
+  document.getElementById('panelInverter').classList.add('active');
   document.getElementById('panelInverter').classList.remove('hidden');
   
+  // Reset tabs
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabInverter').classList.add('active');
   
+  // Manage side panels/canvases
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
