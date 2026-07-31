@@ -89,6 +89,7 @@ export function runThermoAnalysis(config) {
     // 4. Structure the physical output payload
     const output = {
       TC: result.TC,
+      Tsubcool: result.Tsubcool,
       T2: result.T2,
       PR: result.PR,
       TE: result.TE,

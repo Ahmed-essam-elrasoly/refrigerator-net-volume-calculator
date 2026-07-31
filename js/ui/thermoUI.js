@@ -197,8 +197,7 @@ function buildThermalModalOnce() {
       </fieldset>
 
       <fieldset>
-        <legend>Subcool &amp; Discharge</legend>
-        <label>Subcool (K): <input type="number" id="thermoSubcool" step="any"></label>
+        <legend>Discharge</legend>
         <label>Discharge temp (°C): <input type="number" id="thermoDiscTemp" step="any"></label>
       </fieldset>
 
@@ -245,7 +244,6 @@ function buildThermalModalOnce() {
     PitchAngle_degree: document.getElementById('PitchAngle_degree'),
     fanInputPower: document.getElementById('thermoFanInputPower'),
     compressorSelect: document.getElementById('thermoCompressorSelect'),
-    subcool: document.getElementById('thermoSubcool'),
     dischargeTemp: document.getElementById('thermoDiscTemp'),
     defHeater: document.getElementById('thermoDefHeater'),
     defOn: document.getElementById('thermoDefOn'),
@@ -306,7 +304,6 @@ function openThermalSettings() {
   thermalModalInputs.PitchAngle_degree.value = fanP.PitchAngle_degree ?? 30;
   thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
-  thermalModalInputs.subcool.value       = thermalAdvanced.subcool;
   thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
   thermalModalInputs.defHeater.value     = thermalAdvanced.defHeater;
   thermalModalInputs.defOn.value         = thermalAdvanced.defOnMin;
@@ -367,7 +364,6 @@ function saveThermalSettings() {
 
   updateSettings(settings);
 
-  thermalAdvanced.subcool       = parseFloat(thermalModalInputs.subcool.value) || SJ54H_COMPONENTS.subcool_K;
   thermalAdvanced.dischargeTemp = parseFloat(thermalModalInputs.dischargeTemp.value) || SJ54H_COMPONENTS.dischargeTemp_C;
   thermalAdvanced.fanInputPower = parseFloat(thermalModalInputs.fanInputPower.value) || SJ54H_COMPONENTS.fan.inputPower_W;
   thermalAdvanced.defHeater     = parseFloat(thermalModalInputs.defHeater.value) || SJ54H_COMPONENTS.electrical.defrostHeater_W;
@@ -1262,6 +1258,7 @@ function displayResults(res, energy, isInverter = false) {
       <tbody>
         <tr class="section-header"><td colspan="2">Operating Points</td></tr>
         <tr><td>Condensing temp TC</td><td>${fmt(res.TC)} °C</td></tr>
+        <tr><td>Subcool temp Tsubcool</td><td>${fmt(res.Tsubcool)}  C</td></tr>
         <tr><td>Evaporating temp TE</td><td>${fmt(res.TE)} °C</td></tr>
         <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>` +
         `${isInverter
