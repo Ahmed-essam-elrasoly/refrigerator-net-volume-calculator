@@ -1,19 +1,17 @@
 /**
  * @file main.js
  * Primary UI Orchestrator for the Refrigerator Volume Calculator.
- * 
  * Binds the DOM, manages dynamic user inputs, constructs the geometric 
  * model required by the calculation engine, and renders outputs (both HTML 
  * textual results and 2D Canvas schematics).
  */
-
 import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
 import { initSettingsModal } from './ui/settingsModal.js';
 import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
-import { traverseAndComputePrecise } from './engine/traversal.js'; // ← new precise engine
+import { traverseAndComputePrecise } from './engine/traversal.js'; // precise engine
 import { roundForDisplay, toCuft, polygonArea } from './engine/calc.js';
 
 // Load settings from localStorage
@@ -31,32 +29,46 @@ const rshowerLInput       = document.getElementById('rshowerL');
 const rshowerGroup        = document.getElementById('rshowerGroup');
 const numCompartmentsInput= document.getElementById('numCompartments');
 const compartmentBuilder  = document.getElementById('compartmentBuilder');
+
 const calculateBtn        = document.getElementById('calculateBtn');
 const saveBtn             = document.getElementById('saveBtn');
 const loadBtn             = document.getElementById('loadBtn');
 const exportBtn           = document.getElementById('exportBtn');
 const messagesDiv         = document.getElementById('messages');
 const messagesFieldset    = document.getElementById('messagesFieldset');
+
 const schematicOverlay    = document.getElementById('schematicOverlay');
 const schematicTooltip    = document.getElementById('schematicTooltip');
+
 const settingsBtn         = document.getElementById('settingsBtn');
 const resetAllBtn         = document.getElementById('resetAllBtn');
+
 const storeSlotABtn       = document.getElementById('storeSlotABtn');
 const storeSlotBBtn       = document.getElementById('storeSlotBBtn');
 const compareSlotsBtn     = document.getElementById('compareSlotsBtn');
 const comparisonModal     = document.getElementById('comparisonModal');
 const closeComparison     = document.getElementById('closeComparison');
 const comparisonContent   = document.getElementById('comparisonContent');
+
 const splitter            = document.getElementById('splitter');
 const leftPanel           = document.querySelector('.left-panel');
 
 // ---- Application State ------------------------------------------------
-let configSlotA = null;
-let configSlotB = null;
 let currentConfig = null;
+let lastCalcState = null; // Caches { config, volumes, thermal }
+
+// Persistent Storage Hydration
+let configSlotA = JSON.parse(localStorage.getItem('refrig_slotA')) || null;
+let configSlotB = JSON.parse(localStorage.getItem('refrig_slotB')) || null;
+
 let dirtySchematic = false;
 let isResizing = false;
 let startX, startWidth;
+
+// Initialize slot buttons based on local storage
+if (configSlotA || configSlotB) {
+  compareSlotsBtn.style.display = 'inline-block';
+}
 
 /**
  * Toggles visibility of the R-Shower input group depending on if a 'fresh' compartment exists.
@@ -78,7 +90,7 @@ document.getElementById('geom-bottom1').addEventListener('input', () => {
   markDirty();
 });
 
-// Splitter logic (unchanged)
+// Splitter logic
 splitter.addEventListener('mousedown', (e) => {
   isResizing = true;
   startX = e.clientX;
@@ -86,12 +98,14 @@ splitter.addEventListener('mousedown', (e) => {
   document.body.style.cursor = 'col-resize';
   document.body.style.userSelect = 'none';
 });
+
 document.addEventListener('mousemove', (e) => {
   if (!isResizing) return;
   const delta = e.clientX - startX;
   const newWidth = Math.max(300, Math.min(800, startWidth + delta));
   leftPanel.style.flex = `0 0 ${newWidth}px`;
 });
+
 document.addEventListener('mouseup', () => {
   isResizing = false;
   document.body.style.cursor = '';
@@ -103,7 +117,6 @@ let currentGeometry = { ...DEFAULT_CABINET };
 
 // ---- Compartment reactive state ---------------------------------------
 let compartmentsData = [];
-
 fillGeometryDefaults();
 
 // Dedicated listeners for geometry fields that affect internal height
@@ -153,10 +166,13 @@ function syncConstraints() {
   const count = compartmentsData.length;
   const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
   const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
+  
   const totalInsulTop = compartmentsData[0].top;
   const totalInsulBottom = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
+  
   let internalH = H - totalInsulTop - totalInsulBottom - (count - 1) * dividerThick;
   if (internalH < 0) internalH = 0;
+  
   if (internalH === 0) {
     compartmentsData[0].height = 0;
     compartmentsData[1] && (compartmentsData[1].height = 0);
@@ -164,16 +180,20 @@ function syncConstraints() {
     compartmentsData[1] && (compartmentsData[1].ratio = 0.5);
     return;
   }
+  
   if (count === 1) {
     compartmentsData[0].height = internalH;
     compartmentsData[0].ratio = 1.0;
     return;
   }
+  
   if (count === 2) {
     compartmentsData[1].top = dividerThick;
   }
+  
   let h0 = compartmentsData[0].height;
   let h1 = compartmentsData[1].height;
+  
   if (h0 === 0 && h1 === 0) {
     const r0 = Math.max(0.1, Math.min(0.9, compartmentsData[0].ratio));
     h0 = internalH * r0;
@@ -191,21 +211,19 @@ function syncConstraints() {
     h1 = Math.max(0.1 * internalH, Math.min(0.9 * internalH, h1));
     h0 = internalH - h1;
   }
+  
   compartmentsData[0].height = h0;
   compartmentsData[1].height = h1;
   compartmentsData[0].ratio = h0 / internalH;
   compartmentsData[1].ratio = h1 / internalH;
-    // Enforce minimum shelf spacing
+  
+  // Enforce minimum shelf spacing
   clampAllShelfCounts();
 }
 
 /**
  * Handles live input changes for compartment fields (Type, Ratio, Height).
  * Enforces min/max ratios and mutually exclusive types (Freezer/Fresh).
- * 
- * @param {number} compIdx - The array index of the compartment.
- * @param {string} field - The property being modified.
- * @param {any} value - The new input value.
  */
 function onCompFieldChange(compIdx, field, value) {
   if (field === 'type') {
@@ -219,10 +237,9 @@ function onCompFieldChange(compIdx, field, value) {
     if (settings.autoCalculate) calculateBtn.click();
     return;
   }
-
   if (isNaN(value)) return;
   compartmentsData[compIdx][field] = value;
-
+  
   if (field === 'height' || field === 'ratio') {
     const count = compartmentsData.length;
     const H = parseFloat(document.getElementById('geom-H')?.value) || 1680;
@@ -230,7 +247,7 @@ function onCompFieldChange(compIdx, field, value) {
     const topInsul = compartmentsData[0].top;
     const bottomInsul = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
     const internalH = H - topInsul - bottomInsul - (count - 1) * dividerThick;
-
+    
     if (count === 1) {
       compartmentsData[0].height = internalH;
       compartmentsData[0].ratio = 1.0;
@@ -255,12 +272,12 @@ function onCompFieldChange(compIdx, field, value) {
       }
     }
   }
-
+  
   if (field === 'type' && compartmentsData.length > 1) {
     const otherIdx = 1 - compIdx;
     compartmentsData[otherIdx].type = value === 'freezer' ? 'fresh' : 'freezer';
   }
-
+  
   syncDisplay();
   if (settings.autoCalculate) calculateBtn.click();
 }
@@ -275,13 +292,16 @@ function syncDisplay() {
     const heightInput = document.getElementById(`comp-${i}-height`);
     const ratioInput  = document.getElementById(`comp-${i}-ratio`);
     const typeSelect  = document.getElementById(`comp-${i}-type`);
+    
     if (heightInput) heightInput.value = d.height.toFixed(1);
     if (ratioInput) {
       ratioInput.value = count === 1 ? 100 : (d.ratio * 100).toFixed(0);
     }
     if (typeSelect) typeSelect.value = d.type;
+    
     const topInput = document.getElementById(`comp-${i}-top`);
     if (topInput) topInput.value = compartmentsData[i].top.toFixed(1);
+    
     const shelfCountInput = document.getElementById(`comp-${i}-shelfCount`);
     if (shelfCountInput) {
       shelfCountInput.value = d.shelfCount;
@@ -295,17 +315,17 @@ function syncDisplay() {
 function buildCompartmentUI() {
   const builder = document.getElementById('compartmentBuilder');
   builder.innerHTML = '';
-
+  
   const count = compartmentsData.length;
   const dividerLabel = document.getElementById('dividerLabel');
   if (dividerLabel) dividerLabel.style.display = count > 1 ? '' : 'none';
-
+  
   for (let i = 0; i < count; i++) {
     const d = compartmentsData[i];
     const ratioMin = count === 1 ? 100 : 10;
     const ratioMax = count === 1 ? 100 : 90;
     const ratioVal = count === 1 ? 100 : Math.round(d.ratio * 100);
-
+    
     const fieldset = document.createElement('fieldset');
     fieldset.innerHTML = `
       <legend>Compartment ${i+1}</legend>
@@ -329,7 +349,7 @@ function buildCompartmentUI() {
     `;
     builder.appendChild(fieldset);
   }
-
+  
   // Attach listeners
   for (let i = 0; i < count; i++) {
     document.getElementById(`comp-${i}-type`).addEventListener('change', (e) => {
@@ -341,48 +361,46 @@ function buildCompartmentUI() {
     document.getElementById(`comp-${i}-ratio`).addEventListener('change', (e) => {
       onCompFieldChange(i, 'ratio', parseFloat(e.target.value) || 10);
     });
+    
     for (const face of ['top','left','right','rear','door']) {
       const el = document.getElementById(`comp-${i}-${face}`);
       if (!el) continue;
       el.addEventListener('input', (e) => {
         compartmentsData[i][face] = parseFloat(e.target.value) || 0;
-        markDirty();   // schematic overlay will reflect “dirty” state
+        markDirty(); 
       });
-
-      // Apply the new value to the rest of the geometry when the user leaves the field.
       el.addEventListener('change', (e) => {
         syncConstraints();
         syncDisplay();
         if (settings.autoCalculate) calculateBtn.click();
       });
     }
+    
     const shelfCountEl = document.getElementById(`comp-${i}-shelfCount`);
     if (shelfCountEl) {
-    shelfCountEl.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value) || 0;
-      const max = getMaxShelvesForCompartment(i);
-      const clamped = Math.min(Math.max(0, val), max);
-      compartmentsData[i].shelfCount = clamped;
-      // Immediately update the input field if clamping occurred
-      if (e.target.value !== String(clamped)) {
-        e.target.value = clamped;
-      }
-      if (settings.autoCalculate) calculateBtn.click();
-    });
+      shelfCountEl.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value) || 0;
+        const max = getMaxShelvesForCompartment(i);
+        const clamped = Math.min(Math.max(0, val), max);
+        compartmentsData[i].shelfCount = clamped;
+        if (e.target.value !== String(clamped)) {
+          e.target.value = clamped;
+        }
+        if (settings.autoCalculate) calculateBtn.click();
+      });
     }
   }
 }
 
 /**
  * World Y coordinate of the top of compartment i (mm).
- * Assumes compartments are stacked vertically with dividers between them.
  */
 function getCompTopWorldY(i) {
-  let y = compartmentsData[0].top;  // top insulation
+  let y = compartmentsData[0].top; 
   for (let j = 0; j < i; j++) {
     y += compartmentsData[j].height;
     if (j < compartmentsData.length - 1) {
-      y += parseFloat(divHorizInput.value) || 20;  // divider thickness
+      y += parseFloat(divHorizInput.value) || 20;
     }
   }
   return y;
@@ -390,20 +408,16 @@ function getCompTopWorldY(i) {
 
 /**
  * Usable shelf height for compartment i (mm), considering the compressor step.
- * 
- * @param {number} i - Compartment index
- * @returns {number} Available height in mm.
  */
 function getUsableHeightForCompartment(i) {
   const H = parseFloat(document.getElementById('geom-H')?.value) || 0;
   const Hb = parseFloat(document.getElementById('geom-Hb')?.value) || 0;
   const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 0;
+  
   const floorRaisedY = H - Hb - bottom1;
-
   const compTopY = getCompTopWorldY(i);
   const fullHeight = compartmentsData[i].height;
-
-  // For the bottom-most compartment, the usable height ends at the raised floor
+  
   if (i === compartmentsData.length - 1) {
     return Math.max(0, Math.min(fullHeight, floorRaisedY - compTopY));
   }
@@ -415,14 +429,11 @@ function getUsableHeightForCompartment(i) {
  */
 function getMaxShelvesForCompartment(i) {
   const usable = getUsableHeightForCompartment(i);
-  // n shelves → n+1 gaps; minimum total height = 150*(n+1)
-  // ⇒ n ≤ floor(usable/150) - 1
   return Math.max(0, Math.floor(usable / 150) - 1);
 }
 
 /**
- * Clamp all compartments’ shelf counts to the calculated maximum.
- * Updates the data model but does NOT refresh the DOM – call syncDisplay() afterwards.
+ * Clamp all compartments shelf counts to the calculated maximum.
  */
 function clampAllShelfCounts() {
   let changed = false;
@@ -460,75 +471,49 @@ function fillGeometryDefaults() {
 
 /**
  * Scrapes all UI inputs to build the final unified geometric definition.
- * Applies logic to distribute wall/divider thicknesses specifically for the 
- * top/bottom configurations.
- * 
- * @returns {Object} The complete `geometry` object mapped to the engine schema.
  */
 export function readGeometryFromPanel() {
   const g = (id) => parseFloat(document.getElementById(id)?.value) || null;
   const comps = compartmentsData;
   const count = comps.length;
   const dividerThick = count > 1 ? parseFloat(divHorizInput.value) || 60 : 0;
-
-  // Determine which compartment is the bottom-most (index = count-1)
   const bottomIdx = count - 1;
-
-  // Global floor thicknesses (these are the exterior stepped floor values)
+  
   const bottom1 = g('geom-bottom1') ?? 40;
   const bottom2 = g('geom-bottom2') ?? 40;
   const bottom3 = g('geom-bottom3') ?? 40;
-
-  // Build walls object with correct bottom thickness per compartment
+  
   const walls = {
     freezer: {
-      top:     0,
-      bottom:  0,
-      left:    0,
-      right:   0,
-      door:    0,
-      rear:    0,
-      bottom1, bottom2, bottom3,   
+      top: 0, bottom: 0, left: 0, right: 0, door: 0, rear: 0,
+      bottom1, bottom2, bottom3, 
     },
     refrigerator: {
-      top:     0,
-      bottom1: bottom1, 
-      bottom2: bottom2, 
-      bottom3: bottom3, 
-      left:    0,
-      right:   0,
-      door:    0,
-      rear:    0,
+      top: 0, bottom1: bottom1, bottom2: bottom2, bottom3: bottom3, 
+      left: 0, right: 0, door: 0, rear: 0,
     }
   };
-
-  // Loop over compartments to fill wall thicknesses
+  
   for (let i = 0; i < count; i++) {
     const comp = comps[i];
     const isTopMost = (i === 0);
     const isBottomMost = (i === bottomIdx);
-
     const wallKey = comp.type === 'fresh' ? 'refrigerator' : 'freezer';
     const w = walls[wallKey];
-
-    // Top insulation: if top most, use own top; else use divider thickness
+    
     w.top = isTopMost ? comp.top : dividerThick;
-
-    // Bottom insulation: if bottom most, use exterior floor thickness (bottom1);
-    // otherwise use divider thickness.
+    
     if (wallKey === 'freezer') {
       w.bottom = isBottomMost ? bottom1 : dividerThick;
-    } else { // refrigerator
+    } else {
       w.bottom1 = isBottomMost ? bottom1 : dividerThick;
     }
-
-    // Side walls: use the compartment's own values (they are the same for all)
     w.left  = comp.left;
     w.right = comp.right;
     w.door  = comp.door;
     w.rear  = comp.rear;
   }
-
+  
   return {
     H: g('geom-H') ?? DEFAULT_CABINET.H,
     W: g('geom-W') ?? DEFAULT_CABINET.W,
@@ -574,7 +559,7 @@ function getEffectiveThicknesses() {
   const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
   const bottom2 = parseFloat(document.getElementById('geom-bottom2')?.value) || 40;
   const bottom3 = parseFloat(document.getElementById('geom-bottom3')?.value) || 40;
-
+  
   return {
     top:    topComp.top,
     bottom: Math.max(bottom1, bottom2, bottom3),
@@ -595,14 +580,13 @@ function markDirty() {
 }
 
 document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', markDirty));
-
 numCompartmentsInput.addEventListener('input', () => {
   markDirty();
   initCompartments();
 });
 
 // ======================================================================
-//  NEW: Precise calculation using per-compartment geometry
+// NEW: Precise calculation using per-compartment geometry
 // ======================================================================
 
 export function buildLayoutNodeForPrecise() {
@@ -628,7 +612,6 @@ export function buildLayoutNodeForPrecise() {
       }
     });
   }
-
   return {
     nodeType: 'horizontal',
     id: 'root',
@@ -654,11 +637,8 @@ function computeObstacleVolumes(geometry) {
   const comps = geometry._compartments || compartmentsData;
   const special = geometry.special || {};
   const obs = geometry.obstacles || {};
-
-  // Snapshot-safe divider thickness — fixes the pre-existing bug where this
-  // read live divHorizInput.value even for stored Slot A/B geometries.
+  
   const dividerThick = geometry.dividerThickness ?? (parseFloat(divHorizInput.value) || 20);
-
   const evapDepth = obs.evapDepth ?? (parseFloat(evapDepthInput.value) || 85);
   const ctrlH = obs.ctrlBoxH ?? (parseFloat(ctrlBoxHInput.value) || 150);
   const ctrlW = obs.ctrlBoxW ?? (parseFloat(ctrlBoxWInput.value) || 500);
@@ -666,76 +646,69 @@ function computeObstacleVolumes(geometry) {
   const rshowerH = obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 700);
   const rshowerW = obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 500);
   const rshowerL = obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 50);
-
+  
   const Hb = parseFloat(document.getElementById('geom-Hb')?.value) || 0;
   const bottom1 = parseFloat(document.getElementById('geom-bottom1')?.value) || 40;
   const floorRaisedY = geometry.H - Hb - bottom1;
-
-  // ---- Evaporator (freezer compartment), clamped to compressor-step floor ----
+  
+  // Evaporator (freezer compartment)
   const freezerIdx = comps.findIndex(c => c.type === 'freezer');
   const freezerComp = freezerIdx >= 0 ? comps[freezerIdx] : comps[0];
   const freezerIsBottommost = comps.length === 1 || freezerIdx === comps.length - 1;
-
   const freezerTopWorld = getCompTopWorldYFor(comps, freezerIdx >= 0 ? freezerIdx : 0, dividerThick);
-
   const fHeight = freezerIsBottommost
     ? Math.max(0, Math.min(freezerComp.height, floorRaisedY - freezerTopWorld))
     : freezerComp.height;
-
   const fInnerW = geometry.W - freezerComp.left - freezerComp.right;
   const evapVolMm3 = evapDepth * fHeight * fInnerW;
-
-  // ---- Control box / R-shower (fresh compartment), clamped to available rear height ----
+  
+  // Control box / R-shower (fresh compartment)
   const freshIdx = comps.findIndex(c => c.type === 'fresh');
   const freshComp = comps[freshIdx >= 0 ? freshIdx : 0];
   const isTopFreezer = freshIdx > 0;
-
   const freshTopWorld = getCompTopWorldYFor(comps, freshIdx >= 0 ? freshIdx : 0, dividerThick);
-
+  
   const availableRearH = isTopFreezer
     ? Math.max(0, Math.min(freshComp.height, floorRaisedY - freshTopWorld))
     : freshComp.height;
-
   const effectiveCtrlH = Math.min(ctrlH, availableRearH);
   const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
-
+  
   const ctrlVolMm3 = effectiveCtrlH * ctrlW * ctrlL;
   const rshowerVolMm3 = effectiveRShowerH * rshowerW * rshowerL;
-  // (duplicate unclamped `rshowerVolMm3` line removed — was the crash-causing bug)
-
-  // ---- Rails (two per shelf) ----
+  
+  // Rails and Dikes
   const railH = special.railHeight || 0;
   const railW = special.railWidth || 0;
   const railDepthPct = (special.railDepthPct || 0) / 100;
   let totalRailMm3 = 0;
-
-  // ---- Dikes (door bevels) ----
+  
   const dikeH = special.doorDikeHeight || 0;
   const dikeBaseW = special.doorDikeBaseWidth || 0;
   const dikeTopW = special.doorDikeTopWidth || 0;
   const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
   let totalDikeMm3 = 0;
-
+  
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i];
     const shelfCount = c.shelfCount || 0;
     const innerW = geometry.W - c.left - c.right;
     const innerD = geometry.D - c.rear;
-
+    
     const railVol = railH * railW * railDepthPct * innerD * shelfCount * 2;
     totalRailMm3 += railVol;
-
+    
     const perimeter = 2 * (innerW + c.height);
     const dikeVol = dikeArea * perimeter;
     totalDikeMm3 += dikeVol;
   }
-
+  
   const railsL = totalRailMm3 * settings.mm3ToL;
   const dikesL = totalDikeMm3 * settings.mm3ToL;
   const evapL = evapVolMm3 * settings.mm3ToL;
   const ctrlLiters = ctrlVolMm3 * settings.mm3ToL;
   const rshowerLiters = rshowerVolMm3 * settings.mm3ToL;
-
+  
   return {
     evaporator: evapL,
     controlBox: ctrlLiters,
@@ -747,52 +720,49 @@ function computeObstacleVolumes(geometry) {
   };
 }
 
-
 export function exportvolume(leaves, geometry){
   const comps = compartmentsData;
-  const special = geometry.special || {}; // Ensure special is defined for the loop
-
+  const special = geometry.special || {};
   const perCompRailsDikesL = comps.map(c => {
     const shelfCount = c.shelfCount || 0;
     const innerW = geometry.W - c.left - c.right;
     const innerD = geometry.D - c.rear;
+    
     const railH = special.railHeight || 0;
     const railW = special.railWidth || 0;
     const railDepthPct = (special.railDepthPct || 0) / 100;
     const railsVol = railH * railW * railDepthPct * innerD * shelfCount * 2 * settings.mm3ToL;
-
+    
     const dikeH = special.doorDikeHeight || 0;
     const dikeBaseW = special.doorDikeBaseWidth || 0;
     const dikeTopW = special.doorDikeTopWidth || 0;
     const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+    
     const perimeter = 2 * (innerW + c.height);
     const dikesVol = dikeArea * perimeter * settings.mm3ToL;
-
+    
     return railsVol + dikesVol;
   });
-
+  
   const adjustedLeaves = leaves.map((leaf, idx) => ({
     ...leaf,
     gross: Math.max(0, leaf.gross - perCompRailsDikesL[idx]),
   }));
-
+  
   const freezerIdx = comps.findIndex(c => c.type === 'freezer');
   const freshIdx   = comps.findIndex(c => c.type === 'fresh');
-
+  
   const freezerGross = freezerIdx >= 0 ? adjustedLeaves[freezerIdx]?.gross : null;
   const freshGross   = freshIdx >= 0 ? adjustedLeaves[freshIdx]?.gross : null;
-
-  // --- ADD THIS LINE TO FIX THE ERROR ---
+  
   const obstacles = computeObstacleVolumes(geometry);
-
   const freezerTotal = freezerGross != null
     ? Math.max(0, freezerGross - (obstacles.evaporator || 0))
     : null;
-
   const freshTotal = freshGross != null
     ? Math.max(0, freshGross - (obstacles.controlBox || 0) - (obstacles.rshower || 0))
     : null;
-
+    
   return {
     freezerGross: freezerGross,
     freezerTotal: freezerTotal,
@@ -800,147 +770,130 @@ export function exportvolume(leaves, geometry){
     freshTotal: freshTotal,
   };
 }
+
 /**
  * Submits computed volumes to the UI table.
- * Applies obstacle subtractions to transform precise gross into display gross and total volumes.
- * 
- * @param {Array<Object>} leaves - Raw gross calculation results per compartment.
- * @param {Object} geometry - The full geometry used for the obstacle calculation.
  */
 function displayPreciseResults(leaves, geometry) {
-  // 1. Compute adjusted gross per leaf (subtract rails+dikes)
   const comps = compartmentsData;
   const special = geometry.special || {};
-
   const perCompRailsDikesL = comps.map(c => {
     const shelfCount = c.shelfCount || 0;
     const innerW = geometry.W - c.left - c.right;
     const innerD = geometry.D - c.rear;
+    
     const railH = special.railHeight || 0;
     const railW = special.railWidth || 0;
     const railDepthPct = (special.railDepthPct || 0) / 100;
     const railsVol = railH * railW * railDepthPct * innerD * shelfCount * 2 * settings.mm3ToL;
-
+    
     const dikeH = special.doorDikeHeight || 0;
     const dikeBaseW = special.doorDikeBaseWidth || 0;
     const dikeTopW = special.doorDikeTopWidth || 0;
     const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+    
     const perimeter = 2 * (innerW + c.height);
     const dikesVol = dikeArea * perimeter * settings.mm3ToL;
-
+    
     return railsVol + dikesVol;
   });
-
+  
   const adjustedLeaves = leaves.map((leaf, idx) => ({
     ...leaf,
     gross: Math.max(0, leaf.gross - perCompRailsDikesL[idx]),
   }));
-
+  
   const grossL = adjustedLeaves.reduce((sum, l) => sum + l.gross, 0);
   const grossCuft = grossL * settings.lToCuft;
-
+  
   const obstacles = computeObstacleVolumes(geometry);
   const totalL = Math.max(0, grossL - obstacles.evaporator - obstacles.controlBox - obstacles.rshower);
   const totalCuft = totalL * settings.lToCuft;
-
-  // Update combined results
+  
   document.getElementById('grossVol').textContent      = roundForDisplay(grossL, 'L');
   document.getElementById('grossVolCuft').textContent  = roundForDisplay(grossCuft, 'cuft');
   document.getElementById('totalVol').textContent      = roundForDisplay(totalL, 'L');
   document.getElementById('totalVolCuft').textContent  = roundForDisplay(totalCuft, 'cuft');
-
-  // ---- Per‑compartment volumes (using compartmentsData types) ----
+  
   const getDisplay = (val, unit) => (val != null && !isNaN(val)) ? roundForDisplay(val, unit) : '--';
   const getCuft = (val) => (val != null && !isNaN(val)) ? roundForDisplay(val * settings.lToCuft, 'cuft') : '--';
-
+  
   const freezerIdx = comps.findIndex(c => c.type === 'freezer');
   const freshIdx   = comps.findIndex(c => c.type === 'fresh');
-
+  
   const freezerGross = freezerIdx >= 0 ? adjustedLeaves[freezerIdx]?.gross : null;
   const freshGross   = freshIdx >= 0 ? adjustedLeaves[freshIdx]?.gross : null;
-
+  
   const freezerTotal = freezerGross != null
     ? Math.max(0, freezerGross - (obstacles.evaporator || 0))
     : null;
-
   const freshTotal = freshGross != null
     ? Math.max(0, freshGross - (obstacles.controlBox || 0) - (obstacles.rshower || 0))
     : null;
-
+    
   document.getElementById('freezerGrossVol').textContent      = getDisplay(freezerGross, 'L');
   document.getElementById('freezerGrossVolCuft').textContent  = getCuft(freezerGross);
   document.getElementById('freezerTotalVol').textContent      = getDisplay(freezerTotal, 'L');
   document.getElementById('freezerTotalVolCuft').textContent  = getCuft(freezerTotal);
+  
   document.getElementById('fridgeGrossVol').textContent       = getDisplay(freshGross, 'L');
   document.getElementById('fridgeGrossVolCuft').textContent   = getCuft(freshGross);
   document.getElementById('fridgeTotalVol').textContent       = getDisplay(freshTotal, 'L');
   document.getElementById('fridgeTotalVolCuft').textContent   = getCuft(freshTotal);
 
-// ---- PU Estimation ----
+  // PU Estimation
   let fdoorPUVolL = 0, rdoorPUVolL = 0;
-  let totalDikesL = 0; 
+  let totalDikesL = 0;
+  let doorStartY = 0;
+  let yOffset = comps[0].top || 0;
   
-  // Variables to track vertical world coordinates for the doors
-  let doorStartY = 0; // First door starts at the very top of the exterior cabinet
-  let yOffset = comps[0].top || 0; // Tracks the inner cavity Y-coordinate
-
   for (let i = 0; i < comps.length; i++) {
     const c = comps[i];
     const innerW = geometry.W - c.left - c.right;
     const doorThick = c.door || 0;
-    // 1. Calculate the true outer height of the door panel
+    
     let doorEndY;
     if (i === comps.length - 1) {
-      // The bottom-most door extends to the absolute floor of the cabinet
       doorEndY = geometry.H;
     } else {
-      // Upper doors end at the midpoint of the divider, minus half the door gap
       const compBottomY = yOffset + c.height;
       const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
       doorEndY = dividerMidpoint - (geometry.doorGap / 2);
     }
-
     const outerDoorHeight = doorEndY - doorStartY;
-    // 2. Door Base Volume uses the full exterior width and outer door height
     const baseVol = doorThick * geometry.W * outerDoorHeight * settings.mm3ToL;
     
-    // 3. Dike volume uses the internal cavity dimensions (c.height and innerW)
     const dikeH = special.doorDikeHeight || 0;
     const dikeBaseW = special.doorDikeBaseWidth || 0;
     const dikeTopW = special.doorDikeTopWidth || 0;
     const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
     const perimeter = 2 * (innerW + c.height);
     const dikeVolL = dikeArea * perimeter * settings.mm3ToL;
-    totalDikesL += dikeVolL; 
+    totalDikesL += dikeVolL;
+    
     const totalDoorVol = baseVol + dikeVolL;
     if (c.type === 'freezer') fdoorPUVolL = totalDoorVol;
     else if (c.type === 'fresh') rdoorPUVolL = totalDoorVol;
-    // 4. Prepare coordinates for the next door (if any)
+    
     if (i < comps.length - 1) {
       const compBottomY = yOffset + c.height;
       const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
-      // Next door starts below the gap
       doorStartY = dividerMidpoint + (geometry.doorGap / 2);
-      // Advance inner cavity tracker past the divider
-      yOffset = compBottomY + geometry.dividerThickness; 
+      yOffset = compBottomY + geometry.dividerThickness;
     }
   }
-
+  
   const extVolMm3 = geometry.H * geometry.W * geometry.D;
   const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
   const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
-  
-  // 5. Subtract totalDikesL so it is strictly credited to the door, not the cabinet
   const cabPUVolL = extVolL - grossL - totalDikesL;
-
+  
   document.getElementById('cabpuVol').textContent      = roundForDisplay(cabPUVolL, 'L');
   document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(cabPUVolL * settings.lToCuft, 'cuft');
   document.getElementById('cabpuweight').textContent   = roundForDisplay(cabPUVolL * 32 / 1000, 'kg');
-
   document.getElementById('fdoorpuVol').textContent    = roundForDisplay(fdoorPUVolL, 'L');
   document.getElementById('fdoorpuVolCuft').textContent = roundForDisplay(fdoorPUVolL * settings.lToCuft, 'cuft');
   document.getElementById('fdoorpuweight').textContent = roundForDisplay(fdoorPUVolL * 32 / 1000, 'kg');
-
   document.getElementById('rdoorpuVol').textContent    = roundForDisplay(rdoorPUVolL, 'L');
   document.getElementById('rdoorpuVolCuft').textContent = roundForDisplay(rdoorPUVolL * settings.lToCuft, 'cuft');
   document.getElementById('rdoorpuweight').textContent = roundForDisplay(rdoorPUVolL * 32 / 1000, 'kg');
@@ -948,15 +901,12 @@ function displayPreciseResults(leaves, geometry) {
 
 /**
  * Triggers the canvas rendering tools based on the current calculation state.
- * 
- * @param {Object} config - The active configuration to render.
- * @param {Array<Object>} leaves - Evaluated compartment nodes.
  */
 function drawSchematics(config, leaves) {
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   if (!frontCanvas || !sideCanvas || !leaves) return;
-
+  
   const rightPanel = document.querySelector('.right-panel');
   const panelHeight = rightPanel.clientHeight - 30;
   const panelWidth  = rightPanel.clientWidth - 20;
@@ -964,32 +914,29 @@ function drawSchematics(config, leaves) {
   sideCanvas.height  = panelHeight;
   frontCanvas.width  = panelWidth / 2 - 5;
   sideCanvas.width   = panelWidth / 2 - 5;
-
+  
   const effectiveWalls = getEffectiveThicknesses();
   const fittings = extractFittingsFromLayout(config.cabinet.layout);
-  
   const geom = config.cabinet.geometry || currentGeometry;
   const obs = geom.obstacles || {};
-  const rw = geom.walls?.refrigerator || {};  const H = geom.H, D = geom.D;
+  const H = geom.H, D = geom.D;
   const eff = effectiveWalls;
+  
   const innerTopY = eff.top;
   const innerBottomY = H - Math.max(
     parseFloat(document.getElementById('geom-bottom1')?.value) || 40,
     parseFloat(document.getElementById('geom-bottom2')?.value) || 40,
     parseFloat(document.getElementById('geom-bottom3')?.value) || 40
   );
+  
   const shelfCounts = compartmentsData.map(c => c.shelfCount || 2);
-
+  
   const drawOptions = {
     dividerThickness: compartmentsData.length > 1 ? parseFloat(divHorizInput.value) || 20 : 0,
     compHeights: compartmentsData.map(c => c.height),
     doorGap: parseFloat(document.getElementById('geom-doorGap')?.value) || 10,
     compartments: compartmentsData.map(c => ({
-      left: c.left,
-      right: c.right,
-      rear: c.rear,
-          door: c.door      // ← add this
-
+      left: c.left, right: c.right, rear: c.rear, door: c.door
     })),
     fittings,
     shelfCounts,
@@ -1014,65 +961,63 @@ function drawSchematics(config, leaves) {
     ctrlBoxL:  obs.ctrlBoxL ?? (parseFloat(ctrlBoxLInput.value) || 0),
     rshowerH:  obs.rshowerH ?? (parseFloat(rshowerHInput.value) || 0),
     rshowerW:  obs.rshowerW ?? (parseFloat(rshowerWInput.value) || 0),
-    rshowerL:  obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 0),    compartmentTypes: compartmentsData.map(c => c.type),
+    rshowerL:  obs.rshowerL ?? (parseFloat(rshowerLInput.value) || 0),
+    compartmentTypes: compartmentsData.map(c => c.type),
     numCompartments: compartmentsData.length
   };
+  
   drawFrontView(frontCanvas, currentGeometry, effectiveWalls, config.cabinet.layout, leaves, drawOptions);
   drawSideView(sideCanvas, currentGeometry, effectiveWalls, drawOptions);
+  
   dirtySchematic = false;
   schematicOverlay.classList.add('hidden');
 }
 
 // ---- Calculate button -------------------------------------------------
 calculateBtn.addEventListener('click', () => {
-  // Read geometry from panel
   currentGeometry = readGeometryFromPanel();
-
-  // Build layout node
   const layout = buildLayoutNodeForPrecise();
-
-  // Build a dummy config for schematics only (drawing still uses old config structure)
+  
   const existingMeta = currentConfig?.meta || { 
     name: 'UI Config', 
     createdAt: new Date().toISOString() 
   };
-
-  const configForDrawing = {
+  
+  currentConfig = {
     schemaVersion: '2.0',
-    meta: { 
-      ...existingMeta, 
-      updatedAt: new Date().toISOString() 
-    },
-    cabinet: {
-      geometry: currentGeometry,
-      layout: layout
-    },
+    meta: { ...existingMeta, updatedAt: new Date().toISOString() },
+    cabinet: { geometry: currentGeometry, layout: layout },
     thermal: getThermalState()
   };
-  currentConfig = configForDrawing;  storeSlotABtn.style.display = 'inline-block';
-  storeSlotBBtn.style.display = 'inline-block';
-  compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
 
-  // Run precise volume calculation
   const { leaves, errors, warnings } = traverseAndComputePrecise(layout, currentGeometry);
-
-  // Display messages if any
-  const allMessages = [...(errors||[]).map(e => `<p class="error">❌ ${e.message}</p>`),
-                       ...(warnings||[]).map(w => `<p class="warning">⚠️ ${w.message}</p>`)];
+  
+  const allMessages = [...(errors||[]).map(e => `<p class="error">  ${e.message}</p>`), 
+                       ...(warnings||[]).map(w => `<p class="warning">  ${w.message}</p>`)];
+  
   if (allMessages.length) {
     messagesDiv.innerHTML = allMessages.join('');
     messagesFieldset.style.display = 'block';
   } else {
     messagesFieldset.style.display = 'none';
   }
-
+  
   if (leaves && leaves.length > 0) {
-    // Display volumes (gross, net, PU)
+    // Generate the calculation cache state
+    const grossL = leaves.reduce((sum, l) => sum + l.gross, 0);
+    lastCalcState = {
+      config: currentConfig,
+      volumes: { leaves, errors, warnings, totals: { gross: grossL } },
+      thermal: null // This will be assigned externally when thermo calculation completes
+    };
+
+    storeSlotABtn.style.display = 'inline-block';
+    storeSlotBBtn.style.display = 'inline-block';
+    compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
+
     displayPreciseResults(leaves, currentGeometry);
-    // Draw schematics (use the leaves array, but drawing doesn't require per-compartment volumes)
-    drawSchematics(configForDrawing, leaves);
+    drawSchematics(currentConfig, leaves);
   } else {
-    // Clear results if no leaves
     document.getElementById('grossVol').textContent = '--';
     document.getElementById('totalVol').textContent = '--';
   }
@@ -1104,7 +1049,7 @@ function populateUIFromConfig(config) {
     const el = document.getElementById(id);
     if (el && val != null) el.value = val;
   };
-
+  
   const geometry = config.cabinet?.geometry;
   if (geometry) {
     set('geom-H',          geometry.H);
@@ -1121,7 +1066,6 @@ function populateUIFromConfig(config) {
       set('geom-bottom2', rw.bottom2);
       set('geom-bottom3', rw.bottom3);
     }
-
     const savedComps = geometry._compartments;
     if (savedComps?.length > 0) {
       numCompartmentsInput.value = savedComps.length;
@@ -1129,7 +1073,6 @@ function populateUIFromConfig(config) {
         ...c,
         shelfCount: c.shelfCount ?? 0,
       }));
-
       const layout = config.cabinet.layout;
       if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
         divHorizInput.value = layout.dividers[0].thickness ?? 20;
@@ -1137,8 +1080,8 @@ function populateUIFromConfig(config) {
     } else {
       initCompartments();
     }
-
     currentGeometry = { ...geometry };
+    
     if (geometry.special) {
       set('geom-railHeight',   geometry.special.railHeight);
       set('geom-railWidth',    geometry.special.railWidth);
@@ -1185,12 +1128,13 @@ function populateUIFromConfig(config) {
     initCompartments();
     currentGeometry = { ...DEFAULT_CABINET };
   } else {
-    console.warn('populateUIFromConfig: unrecognised config structure — UI not restored.');
+    console.warn('populateUIFromConfig: unrecognised config structure UI not restored.');
     return;
   }
+  
   if (config.thermal) {
-      setThermalState(config.thermal);
-    }
+    setThermalState(config.thermal);
+  }
   buildCompartmentUI();
   updateRShowerVisibility();
   syncConstraints();
@@ -1198,12 +1142,16 @@ function populateUIFromConfig(config) {
 }
 
 // ---- Save / Load / Export ---------------------------------------------
+
+// Decoupled Save
 saveBtn.addEventListener('click', () => {
   if (!currentConfig) { alert('Calculate first'); return; }
   currentConfig.thermal = getThermalState();
+  // downloadConfigJSON now handles the filename prompt internally
   downloadConfigJSON(currentConfig, currentConfig.meta.name);
 });
 
+// Decoupled File Load
 loadBtn.addEventListener('click', () => {
   const input = document.createElement('input');
   input.type = 'file';
@@ -1214,38 +1162,24 @@ loadBtn.addEventListener('click', () => {
     try {
       const config = await loadConfigFromFile(file);
       currentConfig = config;
-      storeSlotABtn.style.display = 'inline-block';
-      storeSlotBBtn.style.display = 'inline-block';
-      compareSlotsBtn.style.display = (configSlotA || configSlotB) ? 'inline-block' : 'none';
-
-      populateUIFromConfig(config);
-
-      // Recalculate with new precise method
-      calculateBtn.click();
+      populateUIFromConfig(config); // Sync UI inputs silently
+      alert('Configuration loaded successfully. Press Calculate to evaluate.');
     } catch (err) {
-      alert('Error: ' + err.message);
+      alert(`Initialization Error: ${err.message}`);
     }
   };
   input.click();
 });
 
+// State-Driven Export
 exportBtn.addEventListener('click', () => {
-  if (!currentConfig) { alert('Calculate first'); return; }
-  const geometry = currentConfig.cabinet.geometry;
-  const layout = currentConfig.cabinet.layout;
-  const { leaves, errors, warnings } = traverseAndComputePrecise(layout, geometry);
-  if (errors.length) {
-    alert('Errors in calculation: ' + errors.map(e => e.message).join('; '));
-    return;
+  if (!lastCalcState) { 
+    alert('No computational state found. Calculate first.'); 
+    return; 
   }
-  // Build a result object compatible with the CSV exporter
-  const result = {
-    leaves: leaves.map(l => ({ leafId: l.leafId, gross: l.gross })),
-    totals: { gross: leaves.reduce((sum, l) => sum + l.gross, 0) },
-    warnings: warnings,
-  };
-  downloadResultsCSV(result, currentConfig.meta.name);
+  downloadResultsCSV(lastCalcState, currentConfig.meta.name);
 });
+
 
 // ---- Settings Modal --------------------------------------------------
 initSettingsModal();
@@ -1253,29 +1187,26 @@ initSettingsModal();
 // ---- Reset All ---------------------------------------------------------
 resetAllBtn.addEventListener('click', () => {
   if (!confirm('Reset all fields to default values and clear results?')) return;
-
   currentGeometry = { ...DEFAULT_CABINET };
   fillGeometryDefaults();
   divHorizInput.value = 20;
   numCompartmentsInput.value = 2;
   initCompartments();
-
   document.getElementById('grossVol').textContent      = '--';
   document.getElementById('grossVolCuft').textContent  = '--';
   document.getElementById('totalVol').textContent      = '--';
   document.getElementById('totalVolCuft').textContent  = '--';
-
   messagesDiv.innerHTML = '';
   messagesFieldset.style.display = 'none';
-
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
   if (frontCanvas) frontCanvas.getContext('2d').clearRect(0, 0, frontCanvas.width, frontCanvas.height);
   if (sideCanvas) sideCanvas.getContext('2d').clearRect(0, 0, sideCanvas.width, sideCanvas.height);
-
   schematicOverlay.classList.add('hidden');
   dirtySchematic = false;
   currentConfig = null;
+  lastCalcState = null;
+  
   const defaultFanParam = {
     tipDiam_mm: 220,
     fanRPM: 2200,
@@ -1285,23 +1216,19 @@ resetAllBtn.addEventListener('click', () => {
   const defaultEvap = {
     width_mm: 460,
     depth_mm: 60,
-    // … keep other evap fields from DEFAULTS …
   };
   settings.fanParam = defaultFanParam;
   settings.evaporator = defaultEvap;
   updateSettings(settings);
-
-  // Re-run calculation if needed
   if (settings.autoCalculate) calculateBtn.click();
 });
 
-// ---- Auto‑calculate & settings change handler ------------------------
+// ---- Auto calculate & settings change handler ------------------------
 document.addEventListener('input', (e) => {
   if (settings.autoCalculate && e.target.closest('.left-panel')) {
     calculateBtn.click();
   }
 });
-
 document.addEventListener('settings-changed', () => {
   if (settings.autoCalculate && currentConfig) {
     calculateBtn.click();
@@ -1312,36 +1239,27 @@ document.addEventListener('settings-changed', () => {
 
 // ---- Slot storage & comparison -----------------------------------------
 storeSlotABtn.addEventListener('click', () => {
-  if (!currentConfig) return;
-  configSlotA = JSON.parse(JSON.stringify(currentConfig));
-  alert('Configuration stored in Slot A.');
+  if (!lastCalcState) return;
+  configSlotA = JSON.parse(JSON.stringify(lastCalcState));
+  localStorage.setItem('refrig_slotA', JSON.stringify(configSlotA));
+  alert('State committed to Slot A.');
   compareSlotsBtn.style.display = 'inline-block';
 });
 
 storeSlotBBtn.addEventListener('click', () => {
-  if (!currentConfig) return;
-  configSlotB = JSON.parse(JSON.stringify(currentConfig));
-  alert('Configuration stored in Slot B.');
+  if (!lastCalcState) return;
+  configSlotB = JSON.parse(JSON.stringify(lastCalcState));
+  localStorage.setItem('refrig_slotB', JSON.stringify(configSlotB));
+  alert('State committed to Slot B.');
   compareSlotsBtn.style.display = 'inline-block';
 });
 
 compareSlotsBtn.addEventListener('click', () => {
   if (!configSlotA && !configSlotB) {
-    alert('No stored configurations to compare.');
+    alert('No stored states to compare.');
     return;
   }
-  let resultA = null, resultB = null;
-  if (configSlotA) {
-    const geomA = configSlotA.cabinet.geometry;
-    const layoutA = configSlotA.cabinet.layout;
-    resultA = traverseAndComputePrecise(layoutA, geomA);
-  }
-  if (configSlotB) {
-    const geomB = configSlotB.cabinet.geometry;
-    const layoutB = configSlotB.cabinet.layout;
-    resultB = traverseAndComputePrecise(layoutB, geomB);
-  }
-  buildComparisonTable(resultA, resultB);
+  buildComparisonTable(configSlotA, configSlotB);
   comparisonModal.classList.remove('hidden');
 });
 
@@ -1349,67 +1267,296 @@ closeComparison.addEventListener('click', () => { comparisonModal.classList.add(
 window.addEventListener('click', (e) => { if (e.target === comparisonModal) comparisonModal.classList.add('hidden'); });
 
 /**
- * Builds and renders the HTML table for side-by-side slot comparison.
- * 
- * @param {Object} resultA - Volume calculations from Slot A.
- * @param {Object} resultB - Volume calculations from Slot B.
+ * Builds and renders the HTML table for side-by-side slot comparison encompassing volumes and thermal limits.
  */
-function buildComparisonTable(resultA, resultB) {
-  if (!resultA && !resultB) { comparisonContent.innerHTML = '<p>No configurations stored.</p>'; return; }
-  const obstaclesA = resultA ? computeObstacleVolumes(configSlotA.cabinet.geometry) : { totalAll: 0 };
-  const obstaclesB = resultB ? computeObstacleVolumes(configSlotB.cabinet.geometry) : { totalAll: 0 };
+/**
+ * Builds and renders the HTML table for side-by-side slot comparison encompassing volumes, thermal limits, and energy.
+ */
+function buildComparisonTable(stateA, stateB) {
+  if (!stateA && !stateB) {
+    comparisonContent.innerHTML = '<p>No states stored.</p>';
+    return;
+  }
 
-  const fmtTotals = (leaves, obstacles) => {
-    if (!leaves) return { gross:'-', total:'-', grossCuft:'-', totalCuft:'-' };
-    const gross = leaves.reduce((s,l) => s + l.gross, 0);
-    const total = Math.max(0, gross - obstacles.totalAll);
+  // Helper to re-calculate all PU/Geometric volumes locally (Matches CSV logic)
+  const getExt = (state) => {
+    if (!state || !state.config || !state.config.cabinet.geometry) return null;
+    
+    const geometry = state.config.cabinet.geometry;
+    const leaves = state.volumes?.leaves || [];
+    const comps = geometry._compartments || [];
+    const special = geometry.special || {};
+    const mm3ToL = 1e-6;
+
+    // Rail and Dike volumes
+    const perCompRailsDikesL = comps.map(c => {
+      const shelfCount = c.shelfCount || 0;
+      const innerW = geometry.W - c.left - c.right;
+      const innerD = geometry.D - c.rear;
+
+      const railH = special.railHeight || 0;
+      const railW = special.railWidth || 0;
+      const railDepthPct = (special.railDepthPct || 0) / 100;
+      const railsVol = railH * railW * railDepthPct * innerD * shelfCount * 2 * mm3ToL;
+
+      const dikeH = special.doorDikeHeight || 0;
+      const dikeBaseW = special.doorDikeBaseWidth || 0;
+      const dikeTopW = special.doorDikeTopWidth || 0;
+      const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+
+      const perimeter = 2 * (innerW + c.height);
+      const dikesVol = dikeArea * perimeter * mm3ToL;
+
+      return railsVol + dikesVol;
+    });
+
+    const adjustedLeaves = leaves.map((leaf, idx) => ({
+      ...leaf,
+      gross: Math.max(0, leaf.gross - (perCompRailsDikesL[idx] || 0)),
+    }));
+
+    const freezerIdx = comps.findIndex(c => c.type === 'freezer');
+    const freshIdx = comps.findIndex(c => c.type === 'fresh');
+    const freezerGross = freezerIdx >= 0 ? adjustedLeaves[freezerIdx]?.gross : 0;
+    const freshGross = freshIdx >= 0 ? adjustedLeaves[freshIdx]?.gross : 0;
+    const grossVolume = adjustedLeaves.reduce((sum, l) => sum + (l.gross || 0), 0);
+
+    const obs = geometry.obstacles || {};
+    const dividerThick = geometry.dividerThickness ?? 20;
+    const evapDepth = obs.evapDepth ?? 85;
+    const ctrlH = obs.ctrlBoxH ?? 150;
+    const ctrlW = obs.ctrlBoxW ?? 500;
+    const ctrlL = obs.ctrlBoxL ?? 100;
+    const rshowerH = obs.rshowerH ?? 700;
+    const rshowerW = obs.rshowerW ?? 500;
+    const rshowerL = obs.rshowerL ?? 50;
+
+    const Hb = geometry.Hb || 0;
+    const bottom1 = geometry.walls?.freezer?.bottom1 ?? geometry.walls?.refrigerator?.bottom1 ?? 40;
+    const floorRaisedY = geometry.H - Hb - bottom1;
+
+    const getCompTopWorldYFor = (compsList, idx, divThick) => {
+      let y = compsList[0]?.top || 0;
+      for (let i = 0; i < idx; i++) {
+        y += compsList[i].height;
+        if (i < compsList.length - 1) y += divThick;
+      }
+      return y;
+    };
+
+    const freezerComp = freezerIdx >= 0 ? comps[freezerIdx] : comps[0];
+    const freezerIsBottommost = comps.length === 1 || freezerIdx === comps.length - 1;
+    const freezerTopWorld = getCompTopWorldYFor(comps, freezerIdx >= 0 ? freezerIdx : 0, dividerThick);
+    const fHeight = freezerIsBottommost && freezerComp ? Math.max(0, Math.min(freezerComp.height, floorRaisedY - freezerTopWorld)) : (freezerComp?.height || 0);
+    const fInnerW = freezerComp ? (geometry.W - freezerComp.left - freezerComp.right) : 0;
+    const evaporatorL = (evapDepth * fHeight * fInnerW) * mm3ToL;
+
+    const freshComp = comps[freshIdx >= 0 ? freshIdx : 0];
+    const isTopFreezer = freshIdx > 0;
+    const freshTopWorld = getCompTopWorldYFor(comps, freshIdx >= 0 ? freshIdx : 0, dividerThick);
+    const availableRearH = isTopFreezer && freshComp ? Math.max(0, Math.min(freshComp.height, floorRaisedY - freshTopWorld)) : (freshComp?.height || 0);
+    const effectiveCtrlH = Math.min(ctrlH, availableRearH);
+    const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
+
+    const controlBoxL = (effectiveCtrlH * ctrlW * ctrlL) * mm3ToL;
+    const rshowerLiters = (effectiveRShowerH * rshowerW * rshowerL) * mm3ToL;
+
+    const freezerTotal = Math.max(0, freezerGross - evaporatorL);
+    const freshTotal = Math.max(0, freshGross - controlBoxL - rshowerLiters);
+    const totalVolume = freezerTotal + freshTotal;
+
+    let fdoorPUVolL = 0, rdoorPUVolL = 0, totalDikesL = 0;
+    let doorStartY = 0;
+    let yOffset = comps[0]?.top || 0;
+
+    for (let i = 0; i < comps.length; i++) {
+      const c = comps[i];
+      const innerW = geometry.W - c.left - c.right;
+      const doorThick = c.door || 0;
+
+      let doorEndY;
+      if (i === comps.length - 1) {
+        doorEndY = geometry.H;
+      } else {
+        const compBottomY = yOffset + c.height;
+        const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
+        doorEndY = dividerMidpoint - (geometry.doorGap / 2);
+      }
+
+      const outerDoorHeight = doorEndY - doorStartY;
+      const baseVol = doorThick * geometry.W * outerDoorHeight * mm3ToL;
+
+      const dikeH = special.doorDikeHeight || 0;
+      const dikeBaseW = special.doorDikeBaseWidth || 0;
+      const dikeTopW = special.doorDikeTopWidth || 0;
+      const dikeArea = (dikeBaseW + dikeTopW) / 2 * dikeH;
+      const perimeter = 2 * (innerW + c.height);
+      const dikeVolL = dikeArea * perimeter * mm3ToL;
+
+      totalDikesL += dikeVolL;
+
+      const totalDoorVol = baseVol + dikeVolL;
+      if (c.type === 'freezer') fdoorPUVolL = totalDoorVol;
+      else if (c.type === 'fresh') rdoorPUVolL = totalDoorVol;
+
+      if (i < comps.length - 1) {
+        const compBottomY = yOffset + c.height;
+        const dividerMidpoint = compBottomY + (geometry.dividerThickness / 2);
+        doorStartY = dividerMidpoint + (geometry.doorGap / 2);
+        yOffset = compBottomY + geometry.dividerThickness;
+      }
+    }
+
+    const extVolMm3 = geometry.H * geometry.W * geometry.D;
+    const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
+    const extVolL = (extVolMm3 - cutoutVolMm3) * mm3ToL;
+    const cabPUVolL = extVolL - grossVolume - totalDikesL;
+
     return {
-      gross: roundForDisplay(gross, 'L'),
-      total: roundForDisplay(total, 'L'),
-      grossCuft: roundForDisplay(gross * settings.lToCuft, 'cuft'),
-      totalCuft: roundForDisplay(total * settings.lToCuft, 'cuft'),
+      freezerGross, freshGross, grossVolume,
+      freezerTotal, freshTotal, totalVolume,
+      cabPUVolL, fdoorPUVolL, rdoorPUVolL,
+      cabPUweight: cabPUVolL * 32 / 1000,
+      fdoorPUweight: fdoorPUVolL * 32 / 1000,
+      rdoorPUweight: rdoorPUVolL * 32 / 1000
     };
   };
-  const tA = fmtTotals(resultA?.leaves, obstaclesA);
-  const tB = fmtTotals(resultB?.leaves, obstaclesB);
 
-  let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <thead><tr><th></th><th colspan="2">Slot A</th><th colspan="2">Slot B</th></tr>
-      <tr><th></th><th>Litres</th><th>cu.ft.</th><th>Litres</th><th>cu.ft.</th></tr></thead>
-      <tbody>
-      <tr><td><strong>Gross</strong></td><td>${tA.gross}</td><td>${tA.grossCuft}</td><td>${tB.gross}</td><td>${tB.grossCuft}</td></tr>
-      <tr><td><strong>Total</strong></td><td>${tA.total}</td><td>${tA.totalCuft}</td><td>${tB.total}</td><td>${tB.totalCuft}</td></tr>
-      </tbody></table>`;
+  const getRank = (state, ext) => {
+    if (!state || !ext) return { r27: '-', r29: '-', r31: '-' };
+    const TF = state.config.fixedTemps?.TF ?? -18;
+    const monthlyE = state.thermal?.energy?.EnergyConsumption_kWhMonth ?? 0;
+    if (monthlyE === 0) return { r27: '-', r29: '-', r31: '-' };
 
-  if (resultA?.leaves?.length > 0 && resultB?.leaves?.length > 0) {
-    html += `<h3>Per‑Compartment Breakdown (Gross)</h3>`;
-    const maxLeaves = Math.max(resultA.leaves.length, resultB.leaves.length);
-    html += `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse;">
-      <tr><th>Compartment</th><th>Slot A</th><th>Slot B</th></tr>`;
-    for (let i = 0; i < maxLeaves; i++) {
-      const leafA = resultA.leaves[i], leafB = resultB.leaves[i];
-      const gA = leafA ? roundForDisplay(leafA.gross, 'L') : '-';
-      const gB = leafB ? roundForDisplay(leafB.gross, 'L') : '-';
-      html += `<tr><td>Comp ${i+1}</td><td>${gA}</td><td>${gB}</td></tr>`;
-    }
-    html += `</table>`;
-  }
+    const AV = (ext.freezerTotal * (25 - TF) / 21) + ext.freshTotal;
+    const ES_27 = AV * 0.57 + (800 * 0.9);
+    const ES_29 = AV * 0.57 + (800 * 0.8);
+    const ES_31 = AV * 0.57 + (800 * 0.6);
+    
+    const IEE_27 = (monthlyE * 12) / ES_27;
+    const IEE_29 = (monthlyE * 12) / ES_29;
+    const IEE_31 = (monthlyE * 12) / ES_31;
+
+    const rankStr = (iee) => {
+      if (!iee || isNaN(iee)) return 'OUT OF RANKING';
+      if (iee <= 0.45) return 'A';
+      if (iee <= 0.55) return 'B';
+      if (iee <= 0.65) return 'C';
+      if (iee <= 0.75) return 'D';
+      return 'OUT OF RANKING';
+    };
+    return { r27: rankStr(IEE_27), r29: rankStr(IEE_29), r31: rankStr(IEE_31) };
+  };
+
+  // Extract Data Architectures
+  const extA = getExt(stateA);
+  const extB = getExt(stateB);
+  const ranksA = getRank(stateA, extA);
+  const ranksB = getRank(stateB, extB);
+
+  const tA = stateA?.thermal?.results || {};
+  const tB = stateB?.thermal?.results || {};
+  const cA = tA.compressor || {};
+  const cB = tB.compressor || {};
+  const hA = tA.heatLoads || {};
+  const hB = tB.heatLoads || {};
+  const evA = tA.evapDetails || {};
+  const evB = tB.evapDetails || {};
+  const enA = stateA?.thermal?.energy || {};
+  const enB = stateB?.thermal?.energy || {};
+
+  const fmt = (val, dec = 2) => val != null && !isNaN(val) ? Number(val).toFixed(dec) : '-';
+  const fmt0 = (val) => val != null && !isNaN(val) ? Number(val).toFixed(0) : '-';
+
+  const row = (label, valA, valB) => `<tr><td style="text-align:left;">${label}</td><td>${valA}</td><td>${valB}</td></tr>`;
+  const head = (label) => `<tr><td colspan="3" style="font-weight:bold; background:#eaeaea; text-align:left;">${label}</td></tr>`;
+
+  let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse; font-size:13px; text-align:right;">
+    <thead>
+      <tr style="background:#f4f4f4;"><th style="text-align:left;">Metric</th><th style="text-align:right;">Slot A</th><th style="text-align:right;">Slot B</th></tr>
+    </thead>
+    <tbody>`;
+
+  html += head('Gross Volume');
+  html += row('Freezer Gross (L)', fmt(extA?.freezerGross), fmt(extB?.freezerGross));
+  html += row('Fresh Gross (L)', fmt(extA?.freshGross), fmt(extB?.freshGross));
+  html += row('Gross Volume (L)', fmt(extA?.grossVolume), fmt(extB?.grossVolume));
+
+  html += head('Total Volume');
+  html += row('Freezer Total (L)', fmt(extA?.freezerTotal), fmt(extB?.freezerTotal));
+  html += row('Fresh Total (L)', fmt(extA?.freshTotal), fmt(extB?.freshTotal));
+  html += row('Total Volume (L)', fmt(extA?.totalVolume), fmt(extB?.totalVolume));
+
+  html += head('PU Volume Estimation');
+  html += row('Estimated Cabinet PU Vol (L)', fmt(extA?.cabPUVolL), fmt(extB?.cabPUVolL));
+  html += row('Estimated F-Door PU Vol (L)', fmt(extA?.fdoorPUVolL), fmt(extB?.fdoorPUVolL));
+  html += row('Estimated R-Door PU Vol (L)', fmt(extA?.rdoorPUVolL), fmt(extB?.rdoorPUVolL));
+
+  html += head('PU Weight Estimation');
+  html += row('Estimated Cabinet PU Wt (kg)', fmt(extA?.cabPUweight), fmt(extB?.cabPUweight));
+  html += row('Estimated F-Door PU Wt (kg)', fmt(extA?.fdoorPUweight), fmt(extB?.fdoorPUweight));
+  html += row('Estimated R-Door PU Wt (kg)', fmt(extA?.rdoorPUweight), fmt(extB?.rdoorPUweight));
+
+  html += head('Operating Points');
+  html += row('Condensing temp TC (C)', fmt(tA.TC), fmt(tB.TC));
+  html += row('Evaporating temp TE (C)', fmt(tA.TE), fmt(tB.TE));
+  html += row('Mixed inlet T1 (C)', fmt(evA.T1), fmt(evB.T1));
+  html += row('Evap. outlet T2 (C)', fmt(tA.T2), fmt(tB.T2));
+  html += row('Fan out Temp T3 (C)', fmt(tA.T3), fmt(tB.T3));
+  html += row('Running Ratio PR', fmt(tA.PR), fmt(tB.PR));
+
+  html += head('Compressor Details');
+  html += row('Evap. pressure Pe (bar)', fmt(cA.Pe), fmt(cB.Pe));
+  html += row('Cond. pressure Pc (bar)', fmt(cA.Pc), fmt(cB.Pc));
+  html += row('Vol. efficiency ηv', fmt(cA.etaV), fmt(cB.etaV));
+  html += row('Cooling capacity (W)', fmt(cA.coolingCapacity), fmt(cB.coolingCapacity));
+  html += row('Input power (W)', fmt(cA.inputPower), fmt(cB.inputPower));
+  html += row('COP', fmt(cA.COP), fmt(cB.COP));
+  html += row('Required Compressor RPM', fmt0(tA.RPM), fmt0(tB.RPM));
+  html += row('Mass flow (kg/h)', fmt(cA.massFlow), fmt(cB.massFlow));
+
+  html += head('Energy Consumption');
+  html += row('Daily energy (kWh)', fmt(enA.EnergyConsumption_kWhDay, 4), fmt(enB.EnergyConsumption_kWhDay, 4));
+  html += row('Monthly energy (kWh)', fmt(enA.EnergyConsumption_kWhMonth), fmt(enB.EnergyConsumption_kWhMonth));
+  html += row('Rank_27', ranksA.r27, ranksB.r27);
+  html += row('Rank_29', ranksA.r29, ranksB.r29);
+  html += row('Rank_31', ranksA.r31, ranksB.r31);
+
+  html += head('Heat Loads (W)');
+  html += row('QF — Freezer compartment', fmt(hA.QF), fmt(hB.QF));
+  html += row('QR — Refrigerator compartment', fmt(hA.QR), fmt(hB.QR));
+  html += row('QEV — Evaporator total', fmt(hA.QEV), fmt(hB.QEV));
+  html += row('Fan load', fmt(hA.fanLoad), fmt(hB.fanLoad));
+  html += row('Defrost load', fmt(hA.defrostLoad), fmt(hB.defrostLoad));
+  html += row('Total load', fmt(hA.totalLoad), fmt(hB.totalLoad));
+
+  html += head('Airflow');
+  html += row('Calculated Fan Air Speed (m/s)', fmt(tA.fanAirSpeed), fmt(tB.fanAirSpeed));
+  html += row('Calculated airflow (m³/h)', fmt(tA.fanAirflow), fmt(tB.fanAirflow));
+  html += row('Freezer flow (MF)', fmt(tA.MF), fmt(tB.MF));
+  html += row('Refrigerator flow (MR)', fmt(tA.MR), fmt(tB.MR));
+
+  html += head('Evaporator Performance');
+  html += row('Surface area (m²)', fmt(evA.area, 4), fmt(evB.area, 4));
+  html += row('Air speed (m/s)', fmt(evA.v, 3), fmt(evB.v, 3));
+  html += row('Heat transfer coeff α', fmt(evA.alpha), fmt(evB.alpha));
+  html += row('LMTD', fmt(evA.LMTD), fmt(evB.LMTD));
+  html += row('Evap. capacity (calculated)', fmt(evA.Qevap), fmt(evB.Qevap));
+
+  html += `</tbody></table>`;
   comparisonContent.innerHTML = html;
 }
 
 // ---- Tab Switching ----
-// ── Tab: Volume ──────────────────────────────────────
+// Tab: Volume 
 document.getElementById('tabVolume').addEventListener('click', () => {
-  // Show volume panel, hide thermal and inverter panels
   document.getElementById('panelVolume').classList.remove('hidden');
   document.getElementById('panelThermal').classList.add('hidden');
   document.getElementById('panelInverter').classList.add('hidden');
-
-  // Update active tab button styling
+  
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabVolume').classList.add('active');
-
-  // Show schematics, hide thermo results panel
+  
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1418,16 +1565,15 @@ document.getElementById('tabVolume').addEventListener('click', () => {
   if (sideCanvas)  sideCanvas.style.display  = '';
 });
 
-// ── Tab: Thermal ─────────────────────────────────────
+// Tab: Thermal 
 document.getElementById('tabThermal').addEventListener('click', () => {
   document.getElementById('panelThermal').classList.remove('hidden');
   document.getElementById('panelVolume').classList.add('hidden');
   document.getElementById('panelInverter').classList.add('hidden');
-
+  
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabThermal').classList.add('active');
-
-  // Show thermo results panel, hide schematics
+  
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1436,17 +1582,14 @@ document.getElementById('tabThermal').addEventListener('click', () => {
   if (sideCanvas)  sideCanvas.style.display = 'none';
 });
 
-// ── Tab: Inverter ────────────────────────────────────
+// Tab: Inverter 
 document.getElementById('tabInverter').addEventListener('click', () => {
-  // Hide all tab panels, then show inverter panel
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   document.getElementById('panelInverter').classList.remove('hidden');
-
-  // Update active tab style
+  
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('tabInverter').classList.add('active');
-
-  // Inverter shares the same results display as Thermal – show it, hide schematics
+  
   const thermoRight = document.getElementById('thermoRightPanel');
   const frontCanvas = document.getElementById('schematicFront');
   const sideCanvas  = document.getElementById('schematicSide');
@@ -1468,3 +1611,10 @@ enableCoordinateTooltip(
   () => readGeometryFromPanel()
 );
 updateRShowerVisibility();
+
+// Allow external scripts to attach thermal evaluations to the cached state
+export function setLastCalcThermalState(thermalResults, energyResults) {
+  if (lastCalcState) {
+    lastCalcState.thermal = { results: thermalResults, energy: energyResults };
+  }
+}

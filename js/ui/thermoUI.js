@@ -12,6 +12,7 @@ import { traverseAndComputePrecise } from '../engine/traversal.js'; // ← new p
 import { exportvolume, readGeometryFromPanel, buildLayoutNodeForPrecise } from '../main.js';
 import { toThermalFormat } from '../engine/geometry.js';
 import { SJ54H_COMPONENTS } from '../engine/thermo/defaultComponents.js';
+import { setLastCalcThermalState } from '../main.js';
 import {
   loadCompressors,
   getCompressorList,
@@ -958,6 +959,7 @@ function handleRun() {
   result.results.configLabel =
     (comps && comps.length === 1 ? `Single ${comps[0].type}` :
      freezerPosition === 'top' ? 'Top Freezer' : 'Bottom Freezer');
+  setLastCalcThermalState(result.results, energy);
   displayResults(result.results, energy);
   if (result.warnings.length) showWarnings(result.warnings);
 }
@@ -1081,6 +1083,7 @@ let energy = null;
   }
   if (evapDetails) result.results.evapDetails = evapDetails;
   result.results.configLabel = (freezerPos === 'top' ? 'Top Freezer' : 'Bottom Freezer') + ' (Inverter)';
+  setLastCalcThermalState(result.results, energy);
   displayResults(result.results, energy, true);
 }
 

@@ -15,6 +15,7 @@
     <!-- LEFT PANEL: Main User Interface & Data Entry                            -->
     <!-- ======================================================================= -->
     <div class="left-panel">
+      <div class="sticky-buttons">
       <h1>Refrigerator Volume &amp; Thermal Design</h1>
       <p>Gross &amp; Usable Volume – Concept Design Tool</p>
 
@@ -29,7 +30,6 @@
       <div id="panelVolume" class="tab-panel active">
         
         <!-- Action Buttons (Sticky at top) -->
-        <div class="sticky-buttons">
           <button id="settingsBtn">⚙️ Settings</button>
           <button id="calculateBtn">Calculate</button>
           <button id="saveBtn">Save Configuration (JSON)</button>
@@ -39,7 +39,7 @@
           <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
           <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
           <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
-        </div>
+      </div>
 
         <!-- 1. Cabinet Geometry Inputs -->
         <fieldset>
@@ -150,7 +150,7 @@
 
       <!-- ─── TAB 2: Thermal Panel ──────────────────────────────────────── -->
       <!-- Populated dynamically by js/ui/thermoUI.js -> initThermoUI() -->
-      <div id="panelThermal" class="tab-panel"></div>
+      <div id="panelThermal" class="tab-panel hidden"></div>
 
       <!-- ─── TAB 3: Inverter Panel ─────────────────────────────────────── -->
       <!-- Populated dynamically by js/ui/thermoUI.js -> initThermoUI() -->
