@@ -183,8 +183,6 @@ function buildThermalModalOnce() {
         <legend>Fan Parameters</legend>
         <label>Tip Diameter (mm): <input id="tipDiam_mm" type="number" step="any"></label>
         <label>RPM: <input id="fanRPM" type="number" step="any"></label>
-        <label>Hub Diameter (mm): <input id="hubDiam_mm" type="number" step="any"></label>
-        <label>Pitch Angle (°): <input id="PitchAngle_degree" type="number" step="any"></label>
         <label>Input power (W): <input type="number" id="thermoFanInputPower" step="any" min="0"></label>
       </fieldset>
 
@@ -240,8 +238,6 @@ function buildThermalModalOnce() {
     evapSidePlateNo: document.getElementById('evapSidePlateNo'),
     tipDiam_mm: document.getElementById('tipDiam_mm'),
     fanRPM: document.getElementById('fanRPM'),
-    hubDiam_mm: document.getElementById('hubDiam_mm'),
-    PitchAngle_degree: document.getElementById('PitchAngle_degree'),
     fanInputPower: document.getElementById('thermoFanInputPower'),
     compressorSelect: document.getElementById('thermoCompressorSelect'),
     dischargeTemp: document.getElementById('thermoDiscTemp'),
@@ -300,8 +296,6 @@ function openThermalSettings() {
   const fanP = settings.fanParam || {};
   thermalModalInputs.tipDiam_mm.value  = fanP.tipDiam_mm ?? 110;
   thermalModalInputs.fanRPM.value   = fanP.fanRPM ?? 2200;
-  thermalModalInputs.hubDiam_mm.value = fanP.hubDiam_mm ?? 45.6;
-  thermalModalInputs.PitchAngle_degree.value = fanP.PitchAngle_degree ?? 30;
   thermalModalInputs.fanInputPower.value = thermalAdvanced.fanInputPower;
 
   thermalModalInputs.dischargeTemp.value = thermalAdvanced.dischargeTemp;
@@ -358,8 +352,6 @@ function saveThermalSettings() {
   settings.fanParam = {
     tipDiam_mm:  parseFloat(thermalModalInputs.tipDiam_mm.value),
     fanRPM:   parseFloat(thermalModalInputs.fanRPM.value),
-    hubDiam_mm: parseFloat(thermalModalInputs.hubDiam_mm.value),
-    PitchAngle_degree: parseFloat(thermalModalInputs.PitchAngle_degree.value),
   };
 
   updateSettings(settings);
@@ -1247,6 +1239,8 @@ function displayResults(res, energy, isInverter = false) {
   const fanAirflow_m3h = res.fanAirflow !== undefined ? res.fanAirflow : 0;
   const fanAirflow_CFM = fanAirflow_m3h * 0.588578;
   const fanAirSpeed = res.fanAirSpeed;
+  const FreezerFlowRatio = res.MF !== undefined && res.MR !== undefined ? (100*res.MF / (res.MF + res.MR)) : '—';
+  const RefrigeratorFlowRatio = res.MF !== undefined && res.MR !== undefined ? (100*res.MR / (res.MF + res.MR)) : '—';
 
   const configLabel = res.configLabel || 'Unknown';
   const totalLoad = res.heatLoads?.totalLoad ?? '—';
@@ -1260,7 +1254,10 @@ function displayResults(res, energy, isInverter = false) {
         <tr><td>Condensing temp TC</td><td>${fmt(res.TC)} °C</td></tr>
         <tr><td>Subcool temp Tsubcool</td><td>${fmt(res.Tsubcool)}  C</td></tr>
         <tr><td>Evaporating temp TE</td><td>${fmt(res.TE)} °C</td></tr>
-        <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>` +
+        <tr><td>Suction temp Tsuc [fixed]</td><td>30 °C</td></tr>
+        <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
+        <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>
+        <tr><td>T3</td><td>${fmt(res.T3, 2)} C</td></tr>` +
         `${isInverter
           ? `<tr><td>Running Ratio PR (fixed)</td><td>${fmtP(res.PR)}</td></tr>` +
             `<tr><td>Required Compressor RPM</td><td>${res.RPM !== undefined ? fmt(res.RPM, 0) : '—'} rpm</td></tr>`
@@ -1295,9 +1292,8 @@ function displayResults(res, energy, isInverter = false) {
         <tr class="section-header"><td colspan="2">Fan Airflow</td></tr>
         <tr><td>Calculated Fan Air Speed</td><td>${fmt(fanAirSpeed, 1)}  m/s</td></tr>
         <tr><td>Calculated airflow</td><td>${fmt(fanAirflow_CFM, 1)} CFM (${fmt(fanAirflow_m3h, 1)} m³/h)</td></tr>
-        <tr><td>Freezer flow (MF)</td><td>${fmt(res.MF, 2)} m³/h</td></tr>
-        <tr><td>Refrigerator flow (MR)</td><td>${fmt(res.MR, 2)} m³/h</td></tr>
-        <tr><td>t3</td><td>${fmt(res.T3, 2)} C</td></tr>
+        <tr><td>Freezer flow (MF)</td><td>${fmt(res.MF, 2)} m³/h [${fmt(FreezerFlowRatio, 2)}%]</td></tr>
+        <tr><td>Refrigerator flow (MR)</td><td>${fmt(res.MR, 2)} m³/h [${fmt(RefrigeratorFlowRatio, 2)}%]</td></tr>
         ${
           res.evapDetails ? `
           <tr class="section-header"><td colspan="2">Evaporator Performance</td></tr>
@@ -1305,7 +1301,6 @@ function displayResults(res, energy, isInverter = false) {
           <tr><td>Air speed</td><td>${fmt(res.evapDetails.v, 3)} m/s</td></tr>
           <tr><td>Heat transfer coeff α</td><td>${fmt(res.evapDetails.alpha, 2)} W/(m²·K)</td></tr>
           <tr><td>LMTD</td><td>${fmt(res.evapDetails.LMTD, 2)} °C</td></tr>
-          <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
           <tr><td>Evap. capacity (calculated)</td><td>${fmt(res.evapDetails.Qevap, 2)} W</td></tr>
           ` : ''
         }
