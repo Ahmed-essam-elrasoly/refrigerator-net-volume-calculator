@@ -16,8 +16,16 @@
     <!-- ======================================================================= -->
     <div class="left-panel">
       <div class="sticky-header">
-        <h1>Volume &amp; Thermal Calculator</h1>
-        <p>Gross &amp; Usable Volume Design Tool</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h1>Volume &amp; Thermal Calculator</h1>
+            <p>Gross &amp; Usable Volume Design Tool</p>
+          </div>
+          <!-- Global Graph Button -->
+          <button id="openGraphBtn" style="background: var(--success-green); color: var(--bg-base); border-color: var(--success-green); margin-top: 10px;">
+            Parametric Graph
+          </button>
+        </div>
         <div class="tab-bar">
           <button id="tabVolume" class="tab active">Volume</button>
           <button id="tabThermal" class="tab">Thermal</button>
@@ -246,10 +254,66 @@
     </div>
   </div>
 
+  <!-- Parametric Graph Modal -->
+  <div id="graphModal" class="modal hidden">
+    <div class="modal-content" style="width: 90vw; max-width: 1200px; height: 85vh; display: flex; flex-direction: column; resize: both; overflow: hidden;">
+      <span class="close-btn" id="closeGraphModal">&times;</span>
+      <h2 style="flex: 0 0 auto; margin-bottom: 16px;">Parametric Analysis</h2>
+      
+      <div style="flex: 1; display: flex; flex-direction: row; gap: 20px; min-height: 0;">
+        
+<!-- Chart Container (Left) -->
+      <div style="width: 65%; min-width: 300px; max-width: 95%; resize: horizontal; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 16px; background: var(--bg-base); display: flex; flex-direction: column;">
+        <div style="flex: 1; position: relative; width: 100%; min-height: 0;">
+          <!-- CHANGED: Added max-width: 100% !important and removed the borders/backgrounds forced by global CSS -->
+          <canvas id="parametricChart" style="max-width: 100% !important; border: none !important; background: transparent !important;"></canvas>
+        </div>
+      </div>
+
+        <!-- Controls Container (Right) -->
+        <!-- CHANGED: Added flex: 1 so the controls shrink/grow dynamically when the graph is resized -->
+        <div class="graph-controls" style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 4px;">
+          
+          <!-- X-Axis Configuration -->
+          <fieldset style="margin: 0;">
+            <legend>Independent Variable (X-Axis)</legend>
+            <label style="display: flex; flex-direction: column; align-items: flex-start; margin-bottom: 12px; gap: 4px;">
+              Variable: 
+              <select id="graphXVar" style="width: 100%;"></select>
+            </label>
+            <div style="display: flex; gap: 8px;">
+              <label style="display: flex; flex-direction: column; align-items: flex-start; flex: 1; gap: 4px; margin: 0;">
+                Min: <input type="number" id="graphMin" value="10" step="any" style="width: 100%;">
+              </label>
+              <label style="display: flex; flex-direction: column; align-items: flex-start; flex: 1; gap: 4px; margin: 0;">
+                Max: <input type="number" id="graphMax" value="50" step="any" style="width: 100%;">
+              </label>
+              <label style="display: flex; flex-direction: column; align-items: flex-start; flex: 1; gap: 4px; margin: 0;">
+                Step: <input type="number" id="graphStep" value="5" step="any" style="width: 100%;">
+              </label>
+            </div>
+          </fieldset>
+
+          <!-- Y-Axis Checklist -->
+          <fieldset style="flex: 1; margin: 0; display: flex; flex-direction: column; min-height: 150px;">
+            <legend>Dependent Variables (Y-Axis)</legend>
+            <div id="graphYChecklist" class="checklist-container">
+              <!-- Populated dynamically -->
+            </div>
+          </fieldset>
+          
+          <button id="generateGraphBtn" style="height: 40px; flex: 0 0 auto;">Generate Graph</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
   <!-- ======================================================================= -->
   <!-- APPLICATION ENTRY POINT                                                 -->
   <!-- ======================================================================= -->
   <script type="module" src="js/main.js"></script>
 
+  <!-- Local Vendor Library -->
+  <script src="src\js\lib\chart.umd.js"></script>
 </body>
 </html>

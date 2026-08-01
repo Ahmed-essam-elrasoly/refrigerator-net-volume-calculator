@@ -284,3 +284,29 @@ select {
 .thermo-results-panel.hidden {
   display: none;
 }
+/* --- Graph Modal Specifics --- */
+.checklist-container {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.checklist-container label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.checklist-container input[type="checkbox"] {
+  accent-color: var(--accent-blue);
+  cursor: pointer;
+}
