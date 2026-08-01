@@ -8,7 +8,6 @@
 import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
-import { initSettingsModal } from './ui/settingsModal.js';
 import { initGraphModal } from './ui/graphUI.js'; // <-- ADD THIS
 import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
@@ -41,7 +40,6 @@ const messagesFieldset    = document.getElementById('messagesFieldset');
 const schematicOverlay    = document.getElementById('schematicOverlay');
 const schematicTooltip    = document.getElementById('schematicTooltip');
 
-const settingsBtn         = document.getElementById('settingsBtn');
 const resetAllBtn         = document.getElementById('resetAllBtn');
 
 const storeSlotABtn       = document.getElementById('storeSlotABtn');
@@ -135,6 +133,22 @@ divHorizInput.addEventListener('input', () => {
   markDirty();
 });
 
+const divHasPUInput = document.getElementById('divHasPU');
+const divPUPctInput = document.getElementById('divPUPct');
+
+if (divHasPUInput) {
+  divHasPUInput.addEventListener('change', (e) => {
+    const pctLabel = document.getElementById('dividerPUPctLabel');
+    if (pctLabel) {
+      pctLabel.style.display = e.target.checked ? '' : 'none';
+    }
+    markDirty();
+  });
+}
+
+if (divPUPctInput) {
+  divPUPctInput.addEventListener('input', markDirty);
+}
 initCompartments();
 
 /**
@@ -235,7 +249,6 @@ function onCompFieldChange(compIdx, field, value) {
       updateRShowerVisibility();
     }
     syncDisplay();
-    if (settings.autoCalculate) calculateBtn.click();
     return;
   }
   if (isNaN(value)) return;
@@ -280,7 +293,6 @@ function onCompFieldChange(compIdx, field, value) {
   }
   
   syncDisplay();
-  if (settings.autoCalculate) calculateBtn.click();
 }
 
 /**
@@ -319,7 +331,14 @@ function buildCompartmentUI() {
   
   const count = compartmentsData.length;
   const dividerLabel = document.getElementById('dividerLabel');
+  const dividerPULabel = document.getElementById('dividerPULabel');
+  const dividerPUPctLabel = document.getElementById('dividerPUPctLabel');
+  
   if (dividerLabel) dividerLabel.style.display = count > 1 ? '' : 'none';
+  if (dividerPULabel) dividerPULabel.style.display = count > 1 ? '' : 'none';
+  if (dividerPUPctLabel) {
+    dividerPUPctLabel.style.display = (count > 1 && document.getElementById('divHasPU')?.checked) ? '' : 'none';
+  }
   
   for (let i = 0; i < count; i++) {
     const d = compartmentsData[i];
@@ -373,7 +392,6 @@ function buildCompartmentUI() {
       el.addEventListener('change', (e) => {
         syncConstraints();
         syncDisplay();
-        if (settings.autoCalculate) calculateBtn.click();
       });
     }
     
@@ -387,7 +405,6 @@ function buildCompartmentUI() {
         if (e.target.value !== String(clamped)) {
           e.target.value = clamped;
         }
-        if (settings.autoCalculate) calculateBtn.click();
       });
     }
   }
@@ -529,6 +546,8 @@ export function readGeometryFromPanel() {
     Hr: comps.find(c => c.type === 'fresh')?.height || 0,
     walls,
     dividerThickness: dividerThick, 
+    dividerHasPU: document.getElementById('divHasPU')?.checked || false,
+    dividerPUPct: parseFloat(document.getElementById('divPUPct')?.value) || 85, 
     special: {
       railHeight:    g('geom-railHeight')    ?? 20,
       railWidth:     g('geom-railWidth')     ?? 10,
@@ -887,7 +906,16 @@ function displayPreciseResults(leaves, geometry) {
   const extVolMm3 = geometry.H * geometry.W * geometry.D;
   const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
   const extVolL = (extVolMm3 - cutoutVolMm3) * settings.mm3ToL;
-  const cabPUVolL = extVolL - grossL - totalDikesL;
+
+  let dividerPUVolL = 0;
+  if (geometry.dividerHasPU && comps.length > 1) {
+    const topComp = comps[0];
+    const innerW = geometry.W - topComp.left - topComp.right;
+    const innerD = geometry.D - topComp.rear;
+    dividerPUVolL = (geometry.dividerThickness * innerW * innerD * (geometry.dividerPUPct / 100)) * settings.mm3ToL;
+  }
+  
+  const cabPUVolL = extVolL - grossL - totalDikesL + dividerPUVolL;
   
   document.getElementById('cabpuVol').textContent      = roundForDisplay(cabPUVolL, 'L');
   document.getElementById('cabpuVolCuft').textContent  = roundForDisplay(cabPUVolL * settings.lToCuft, 'cuft');
@@ -1078,6 +1106,14 @@ function populateUIFromConfig(config) {
       if (layout?.nodeType === 'horizontal' && layout.dividers?.length > 0) {
         divHorizInput.value = layout.dividers[0].thickness ?? 20;
       }
+      const divHasPUInput = document.getElementById('divHasPU');
+      const divPUPctInput = document.getElementById('divPUPct');
+      if (divHasPUInput) {
+        divHasPUInput.checked = geometry.dividerHasPU || false;
+      }
+      if (divPUPctInput && geometry.dividerPUPct !== undefined) {
+        divPUPctInput.value = geometry.dividerPUPct;
+      }
     } else {
       initCompartments();
     }
@@ -1182,8 +1218,6 @@ exportBtn.addEventListener('click', () => {
 });
 
 
-// ---- Settings Modal --------------------------------------------------
-initSettingsModal();
 
 // ---- Graph Modal -----------------------------------------------------
 initGraphModal();
@@ -1224,22 +1258,8 @@ resetAllBtn.addEventListener('click', () => {
   settings.fanParam = defaultFanParam;
   settings.evaporator = defaultEvap;
   updateSettings(settings);
-  if (settings.autoCalculate) calculateBtn.click();
 });
 
-// ---- Auto calculate & settings change handler ------------------------
-document.addEventListener('input', (e) => {
-  if (settings.autoCalculate && e.target.closest('.left-panel')) {
-    calculateBtn.click();
-  }
-});
-document.addEventListener('settings-changed', () => {
-  if (settings.autoCalculate && currentConfig) {
-    calculateBtn.click();
-  } else {
-    markDirty();
-  }
-});
 
 // ---- Slot storage & comparison -----------------------------------------
 storeSlotABtn.addEventListener('click', () => {
@@ -1424,7 +1444,16 @@ function buildComparisonTable(stateA, stateB) {
     const extVolMm3 = geometry.H * geometry.W * geometry.D;
     const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
     const extVolL = (extVolMm3 - cutoutVolMm3) * mm3ToL;
-    const cabPUVolL = extVolL - grossVolume - totalDikesL;
+    
+    let dividerPUVolL = 0;
+    if (geometry.dividerHasPU && comps.length > 1) {
+      const topComp = comps[0];
+      const innerW = geometry.W - topComp.left - topComp.right;
+      const innerD = geometry.D - topComp.rear;
+      dividerPUVolL = (geometry.dividerThickness * innerW * innerD * (geometry.dividerPUPct / 100)) * mm3ToL;
+    }
+    
+    const cabPUVolL = extVolL - grossVolume - totalDikesL + dividerPUVolL;
 
     return {
       freezerGross, freshGross, grossVolume,
@@ -1645,11 +1674,11 @@ initThermoUI({
 });
 
 // Coordinate tooltip
-enableCoordinateTooltip(
+/**enableCoordinateTooltip(
   document.getElementById('schematicFront'),
   document.getElementById('schematicSide'),
   () => readGeometryFromPanel()
-);
+);*/
 updateRShowerVisibility();
 
 // Allow external scripts to attach thermal evaluations to the cached state
