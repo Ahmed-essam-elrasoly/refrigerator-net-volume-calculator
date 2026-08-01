@@ -4,13 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Refrigerator Net Storage Volume Calculator</title>
-  
   <!-- Global Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
-  </head>
+</head>
 <body>
   <div class="page">
-    
+
     <!-- ======================================================================= -->
     <!-- LEFT PANEL: Main User Interface & Data Entry                            -->
     <!-- ======================================================================= -->
@@ -52,11 +51,9 @@
           <label>Height H (mm): <input type="number" id="geom-H" step="any"></label>
           <label>Width W (mm): <input type="number" id="geom-W" step="any"></label>
           <label>Depth D (mm): <input type="number" id="geom-D" step="any"></label><br>
-
           <label>Bottom step Hb (mm): <input type="number" id="geom-Hb" step="any"></label>
           <label>Db1 (mm): <input type="number" id="geom-Db1" step="any"></label>
           <label>Db2 (mm): <input type="number" id="geom-Db2" step="any"></label><br>
-
           <label>Packing pos (mm): <input type="number" id="geom-packingPos" step="any"></label>
           <label>Door gap (mm): <input type="number" id="geom-doorGap" step="any"></label><br>
 
@@ -83,7 +80,7 @@
         <!-- 2. Compartment Stack Definitions -->
         <fieldset>
           <legend>Compartments</legend>
-          <label>Number of compartments (1–2):
+          <label>Number of compartments (1-2): 
             <input type="number" id="numCompartments" min="1" max="2" value="2" required>
           </label>
           <label id="dividerLabel">Partition Divider Thickness (mm):
@@ -103,14 +100,14 @@
         <fieldset>
           <legend>Total Volume Elements</legend>
           <label>Evaporator area Depth (mm): <input type="number" id="evapDepth" value="85" step="any" min="0"></label>
-          
+
           <fieldset>
             <legend>Control Box</legend>
             <label>Height (mm): <input type="number" id="ctrlBoxH" value="150" step="any" min="0"></label>
             <label>Width (mm): <input type="number" id="ctrlBoxW" value="500" step="any" min="0"></label>
             <label>Length (mm): <input type="number" id="ctrlBoxL" value="100" step="any" min="0"></label>
           </fieldset>
-          
+
           <fieldset id="rshowerGroup">
             <legend>R-Shower</legend>
             <label>Height (mm): <input type="number" id="rshowerH" value="700" step="any" min="0"></label>
@@ -130,7 +127,7 @@
               <p>Fresh Gross: <span id="fridgeGrossVol">--</span> L (<span id="fridgeGrossVolCuft">--</span> cu.ft.)</p>
               <p>Gross Volume: <span id="grossVol">--</span> L (<span id="grossVolCuft">--</span> cu. ft.)</p>
             </fieldset>
-            
+
             <!-- Usable / Total Volumes -->
             <fieldset>
               <legend>Total Volume</legend>
@@ -138,7 +135,7 @@
               <p>Fresh Total: <span id="fridgeTotalVol">--</span> L (<span id="fridgeTotalVolCuft">--</span> cu.ft.)</p>
               <p>Total Volume: <span id="totalVol">--</span> L (<span id="totalVolCuft">--</span> cu. ft.)</p>
             </fieldset>
-            
+
             <!-- Polyurethane (PU) Estimations -->
             <fieldset>
               <legend>PU Estimation</legend>
@@ -151,7 +148,7 @@
             </fieldset>
           </div>
         </fieldset>
-
+        
         <!-- Engine Validation Messages -->
         <fieldset id="messagesFieldset" style="display:none;">
           <legend>Messages</legend>
@@ -159,22 +156,20 @@
         </fieldset>
       </div>
 
-      <!-- ─── TAB 2: Thermal Panel ──────────────────────────────────────── -->
+      <!--   TAB 2: Thermal Panel   -->
       <!-- Populated dynamically by js/ui/thermoUI.js -> initThermoUI() -->
       <div id="panelThermal" class="tab-panel hidden"></div>
 
-      <!-- ─── TAB 3: Inverter Panel ─────────────────────────────────────── -->
+      <!--   TAB 3: Inverter Panel   -->
       <!-- Populated dynamically by js/ui/thermoUI.js -> initThermoUI() -->
       <div id="panelInverter" class="tab-panel hidden"></div>
-
+      
     </div> <!-- CLOSE left-panel -->
-
 
     <!-- ======================================================================= -->
     <!-- DRAGGABLE SPLITTER BAR                                                  -->
     <!-- ======================================================================= -->
     <div class="splitter" id="splitter"></div>
-
 
     <!-- ======================================================================= -->
     <!-- RIGHT PANEL: Visual Schematics & Thermal Results                        -->
@@ -183,26 +178,25 @@
       <!-- 2D Schematic rendering targets -->
       <canvas id="schematicFront"></canvas>
       <canvas id="schematicSide"></canvas>
-      
+
       <!-- Overlays -->
-      <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated – click Calculate</div>
+      <div id="schematicOverlay" class="schematic-overlay hidden">Schematic not updated &mdash; click Calculate</div>
       <div id="schematicTooltip" class="schematic-tooltip hidden"></div>
-      
+
       <!-- Thermal solver output table target -->
       <div id="thermoRightPanel" class="thermo-results-panel hidden"></div>
     </div>
   </div> <!-- CLOSE .page -->
 
-
   <!-- ======================================================================= -->
-  <!-- MODAL DIALOGS (Hidden by default)                                         -->
+  <!-- MODAL DIALOGS (Hidden by default)                                       -->
   <!-- ======================================================================= -->
-
+  
   <!-- 1. Slot Comparison Modal -->
   <div id="comparisonModal" class="modal hidden">
     <div class="modal-content">
       <span class="close-btn" id="closeComparison">&times;</span>
-      <h2>Side‑by‑Side Comparison</h2>
+      <h2>Side-by-Side Comparison</h2>
       <div id="comparisonContent"></div>
     </div>
   </div>
@@ -226,7 +220,7 @@
         <label>On time (min/24h): <input type="number" id="thermoDefOn" step="any"></label>
       </fieldset>
       <div class="settings-actions">
-        <button id="saveThermalSettings">Save & Close</button>
+        <button id="saveThermalSettings">Save &amp; Close</button>
       </div>
     </div>
   </div>
@@ -241,26 +235,22 @@
     </div>
   </div>
 
-  <!-- Parametric Graph Modal -->
+  <!-- 4. Parametric Graph Modal -->
   <div id="graphModal" class="modal hidden">
     <div class="modal-content" style="width: 90vw; max-width: 1200px; height: 85vh; display: flex; flex-direction: column; resize: both; overflow: hidden;">
       <span class="close-btn" id="closeGraphModal">&times;</span>
       <h2 style="flex: 0 0 auto; margin-bottom: 16px;">Parametric Analysis</h2>
-      
+
       <div style="flex: 1; display: flex; flex-direction: row; gap: 20px; min-height: 0;">
-        
-<!-- Chart Container (Left) -->
-      <div style="width: 65%; min-width: 300px; max-width: 95%; resize: horizontal; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 16px; background: var(--bg-base); display: flex; flex-direction: column;">
-        <div style="flex: 1; position: relative; width: 100%; min-height: 0;">
-          <!-- CHANGED: Added max-width: 100% !important and removed the borders/backgrounds forced by global CSS -->
-          <canvas id="parametricChart" style="max-width: 100% !important; border: none !important; background: transparent !important;"></canvas>
+        <!-- Chart Container (Left) -->
+        <div style="width: 65%; min-width: 300px; max-width: 95%; resize: horizontal; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 16px; background: var(--bg-base); display: flex; flex-direction: column;">
+          <div style="flex: 1; position: relative; width: 100%; min-height: 0;">
+            <canvas id="parametricChart" style="max-width: 100% !important; border: none !important; background: transparent !important;"></canvas>
+          </div>
         </div>
-      </div>
 
         <!-- Controls Container (Right) -->
-        <!-- CHANGED: Added flex: 1 so the controls shrink/grow dynamically when the graph is resized -->
         <div class="graph-controls" style="flex: 1; min-width: 250px; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 4px;">
-          
           <!-- X-Axis Configuration -->
           <fieldset style="margin: 0;">
             <legend>Independent Variable (X-Axis)</legend>
@@ -288,19 +278,18 @@
               <!-- Populated dynamically -->
             </div>
           </fieldset>
-          
+
           <button id="generateGraphBtn" style="height: 40px; flex: 0 0 auto;">Generate Graph</button>
         </div>
-
       </div>
     </div>
   </div>
+
   <!-- ======================================================================= -->
   <!-- APPLICATION ENTRY POINT                                                 -->
   <!-- ======================================================================= -->
   <script type="module" src="js/main.js"></script>
-
   <!-- Local Vendor Library -->
-  <script src="src\js\lib\chart.umd.js"></script>
+  <script src="src/js/lib/chart.umd.js"></script>
 </body>
 </html>
