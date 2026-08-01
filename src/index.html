@@ -15,35 +15,28 @@
     <!-- LEFT PANEL: Main User Interface & Data Entry                            -->
     <!-- ======================================================================= -->
     <div class="left-panel">
-      
-      <!-- NEW: Dedicated sticky header for the title and tabs -->
       <div class="sticky-header">
-        <h1>Refrigerator Volume &amp; Thermal Design</h1>
-        <p>Gross &amp; Usable Volume – Concept Design Tool</p>
-
-        <!-- ─── Navigation Tabs ───────────────────────────────────────────── -->
+        <h1>Volume &amp; Thermal Calculator</h1>
+        <p>Gross &amp; Usable Volume Design Tool</p>
         <div class="tab-bar">
           <button id="tabVolume" class="tab active">Volume</button>
           <button id="tabThermal" class="tab">Thermal</button>
           <button id="tabInverter" class="tab">Inverter</button>
         </div>
       </div>
-
-      <!-- ─── TAB 1: Volume Calculation Panel ───────────────────────────── -->
-      <!-- We open the panel here, and it remains open to wrap ALL volume fields -->
+      
       <div id="panelVolume" class="tab-panel active">
-        
-        <!-- Action Buttons wrapped in their own specific container -->
+        <!-- Action buttons inside panelVolume now respect the sticky CSS definition seamlessly -->
         <div class="sticky-buttons">
-          <button id="settingsBtn">⚙️ Settings</button>
           <button id="calculateBtn">Calculate</button>
-          <button id="saveBtn">Save Configuration (JSON)</button>
-          <button id="loadBtn">Load Configuration (JSON)</button>
-          <button id="exportBtn">Export Results (CSV)</button>
-          <button id="resetAllBtn">🔄 Reset All</button>
-          <button id="storeSlotABtn" style="display:none;">Store in Slot A</button>
-          <button id="storeSlotBBtn" style="display:none;">Store in Slot B</button>
-          <button id="compareSlotsBtn" style="display:none;">Compare Slots</button>
+          <button id="settingsBtn">Settings</button>
+          <button id="saveBtn">Save JSON</button>
+          <button id="loadBtn">Load JSON</button>
+          <button id="exportBtn">Export CSV</button>
+          <button id="storeSlotABtn" style="display:none;">Store Slot A</button>
+          <button id="storeSlotBBtn" style="display:none;">Store Slot B</button>
+          <button id="compareSlotsBtn" style="display:none;">Compare</button>
+          <button id="resetAllBtn">Reset All</button>
         </div>
 
         <!-- 1. Cabinet Geometry Inputs -->

@@ -2,36 +2,57 @@
  * @file schematic.js
  * Renders the 2D CAD-like representations of the refrigerator configuration.
  * Maps abstract geometric boundaries and user inputs directly onto an HTML5 Canvas.
+ * Refined with a unified, WCAG AAA-compliant dark theme for technical clarity.
  */
 
+export const DRAW_THEME = {
+  // Line & Text colors
+  color: '#7AB3FF',          // Dimensions / Primary lines (Accent Blue)
+  strokePrimary: '#4C5970',  // Structural outlines (Border Hover)
+  strokeMuted: '#333C4D',    // Inner shelves / minor details (Border Default)
+  text: '#F0F3F7',           // Text labels
+  textMuted: '#AEB7C5',      // Secondary text labels
+  
+  // Fill colors (Dark mode native)
+  bgCanvas: '#141923',       // Matches var(--bg-surface)
+  bgInsulation: '#0D1118',   // Matches var(--bg-recessed)
+  bgFresh: '#1A212D',        // Slightly elevated for fresh food compartment
+  bgFreezer: '#1E293B',      // Cooler tone for freezer compartment
+  bgObstacle: 'rgba(51, 60, 77, 0.6)', // Obstacles/Control boxes
+  bgDoor: 'rgba(122, 179, 255, 0.12)', // Doors and dikes fill
+  
+  // Highlighting
+  alert: '#FF9E9E',          // Evaporator / Errors
+  warning: '#FCD34D',        // Control Box accents
+  
+  // Metrics
+  lineWidth: 1,
+  arrowSize: 5,
+  font: '12px "Inter", sans-serif',
+  fontMono: '11px "JetBrains Mono", monospace'
+};
 
 /**
  * Draw a dimension line with extension lines, arrows, and label.
  * Styled to mimic standard CAD drafting representations.
- * 
- * @param {CanvasRenderingContext2D} ctx - The active canvas context.
- * @param {number} x1 - Start X coordinate in pixels.
- * @param {number} y1 - Start Y coordinate in pixels.
- * @param {number} x2 - End X coordinate in pixels.
- * @param {number} y2 - End Y coordinate in pixels.
- * @param {number} offset - Pixel offset perpendicular to the line to draw the dimension.
- * @param {string} label - The text label (e.g., '150mm').
- * @param {Object} options - Aesthetic overrides.
  */
-export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
-  color = DRAW_THEME.color,
-  lineWidth = DRAW_THEME.lineWidth,
-  arrowSize = DRAW_THEME.arrowSize,
-  font = DRAW_THEME.font,
-  textOffsetX = 0,
-  textOffsetY = 0,
-  drawExtLines = true,
-  bgColor = DRAW_THEME.bgColor,
-} = {}) {
+export function drawDim(ctx, x1, y1, x2, y2, offset, label, options = {}) {
+  const {
+    color = DRAW_THEME.color,
+    lineWidth = DRAW_THEME.lineWidth,
+    arrowSize = DRAW_THEME.arrowSize,
+    font = DRAW_THEME.fontMono,
+    textOffsetX = 0,
+    textOffsetY = 0,
+    drawExtLines = true,
+    bgColor = DRAW_THEME.bgCanvas,
+  } = options;
+
   const dx = x2 - x1;
   const dy = y2 - y1;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len === 0) return;
+
   const nx = -dy / len;
   const ny =  dx / len;
 
@@ -84,7 +105,6 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   if (label) {
     const midX = (p1x + p2x) / 2 + textOffsetX;
     const midY = (p1y + p2y) / 2 + textOffsetY;
-
     ctx.translate(midX, midY);
 
     // Keep text upright
@@ -92,25 +112,26 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
     if (textAngle > Math.PI / 2 + 0.01) textAngle -= Math.PI;
     else if (textAngle < -Math.PI / 2 + 0.01) textAngle += Math.PI;
     if (Math.abs(textAngle - Math.PI / 2) < 0.01) textAngle = -Math.PI / 2;
-
+    
     ctx.rotate(textAngle);
     ctx.font = font;
+    
     const metrics = ctx.measureText(label);
     const tw = metrics.width;
-    const th = 10; // Approx font height
+    const th = 12; // Approx font height
     const padX = 4;
     const padY = 2;
-
+    
     ctx.fillStyle = bgColor;
     ctx.beginPath();
     if (ctx.roundRect) {
-      ctx.roundRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2, 3);
+      ctx.roundRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2, 2);
     } else {
       ctx.fillRect(-tw / 2 - padX, -th / 2 - padY, tw + padX * 2, th + padY * 2);
     }
     ctx.fill();
-
-    ctx.fillStyle = color;
+    
+    ctx.fillStyle = DRAW_THEME.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(label, 0, 0);
@@ -118,26 +139,23 @@ export function drawDim(ctx, x1, y1, x2, y2, offset, label, {
   ctx.restore();
 }
 
-export const DRAW_THEME = {
-  color: '#4c7df5',
-  lineWidth: 1,
-  arrowSize: 5,
-  font: '11px "Segoe UI", Arial, sans-serif',
-  bgColor: '#ffffff',
-  textGap: 0,
-};
-
+/**
+ * Helper to draw internal obstacles consistently.
+ */
+function drawBox(ctx, x, y, w, h, label, color) {
+  ctx.fillStyle = DRAW_THEME.bgObstacle;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = DRAW_THEME.text;
+  ctx.font = DRAW_THEME.fontMono;
+  ctx.textAlign = 'center';
+  ctx.fillText(label, x + w / 2, y + h / 2 + 4);
+}
 
 /**
  * Renders the 2D front-facing elevation of the refrigerator.
- * Displays compartment heights, widths, dividers, and fixed obstacles.
- * 
- * @param {HTMLCanvasElement} canvas - Target rendering canvas.
- * @param {Object} geometry - The full cabinet geometry configuration.
- * @param {Object} effectiveWalls - Computed thickest boundary constraints.
- * @param {Object} layout - Node layout for compartment traversal.
- * @param {Array} leaves - Calculated compartment node data.
- * @param {Object} options - Visualization and obstacle metadata.
  */
 export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, options = {}) {
   const ctx = canvas.getContext('2d');
@@ -167,11 +185,14 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   const drawH = canvas.height - PAD.top - PAD.bottom;
   const scale = Math.min(drawW / W, drawH / H);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Clear canvas to native dark
+  ctx.fillStyle = DRAW_THEME.bgCanvas;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
   ctx.save();
   ctx.translate(PAD.left, PAD.top);
 
-  // Per‑compartment inner boundaries
+  // Per compartment inner boundaries
   const innerLeft  = compartments.map(c => c.left);
   const innerRight = compartments.map(c => W - c.right);
   const intTop     = effectiveWalls.top;
@@ -187,7 +208,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     const h = compHeights[i];
     const leftX  = innerLeft[i]  * scale;
     const rightX = innerRight[i] * scale;
-
     if (i === 0) {
       ctx.moveTo(leftX, y * scale);
     } else {
@@ -199,7 +219,7 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
   }
   ctx.lineTo(innerLeft[compHeights.length - 1] * scale, y * scale);
   ctx.closePath();
-  ctx.fillStyle = '#f0f0f0';
+  ctx.fillStyle = DRAW_THEME.bgInsulation;
   ctx.fill();
 
   // Draw individual compartments
@@ -211,22 +231,26 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
     const rightX = innerRight[i] * scale;
     const compY = y * scale;
     const compH = h * scale;
-
-    ctx.fillStyle = i === 0 ? '#e8f0e8' : '#ffffff';
+    
+    ctx.fillStyle = types[i] === 'freezer' ? DRAW_THEME.bgFreezer : DRAW_THEME.bgFresh;
     ctx.fillRect(leftX, compY, rightX - leftX, compH);
-    ctx.strokeStyle = '#999';
+    ctx.strokeStyle = DRAW_THEME.strokePrimary;
+    ctx.lineWidth = 1;
     ctx.strokeRect(leftX, compY, rightX - leftX, compH);
-    ctx.fillStyle = '#000'; ctx.font = '12px Arial';
-    if (types[i]) ctx.fillText(types[i], leftX + 4, compY + 16);
-
+    
+    ctx.fillStyle = DRAW_THEME.text;
+    ctx.font = DRAW_THEME.font;
+    ctx.textAlign = 'left';
+    if (types[i]) ctx.fillText(types[i].toUpperCase(), leftX + 8, compY + 20);
+    
     y += h;
-
+    
     if (i < compHeights.length - 1 && dividerThickness > 0) {
       const dividerY = y * scale;
       const dividerH = dividerThickness * scale;
-      ctx.fillStyle = '#aaa';
+      ctx.fillStyle = DRAW_THEME.bgInsulation;
       ctx.fillRect(leftX, dividerY, rightX - leftX, dividerH);
-      ctx.strokeStyle = '#666';
+      ctx.strokeStyle = DRAW_THEME.strokeMuted;
       ctx.strokeRect(leftX, dividerY, rightX - leftX, dividerH);
       y += dividerThickness;
     }
@@ -239,7 +263,6 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
       const n = shelfCounts[i] || 0;
       const compH = compHeights[i];
       const compY = yOffset * scale;
-
       if (n > 0) {
         let usableH = compH;
         if (i === compHeights.length - 1) {
@@ -248,33 +271,34 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
         const spacing = (usableH * scale) / (n + 1);
         for (let s = 1; s <= n; s++) {
           const shelfYpx = compY + spacing * s;
+          
           ctx.beginPath();
           ctx.moveTo(innerLeft[i] * scale, shelfYpx);
           ctx.lineTo(innerRight[i] * scale, shelfYpx);
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = '#666';
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = DRAW_THEME.strokeMuted;
           ctx.stroke();
-
+          
           const railW = railWidth * scale;
           const railH = railHeight * scale;
           const leftRailX = innerLeft[i] * scale;
-          ctx.fillStyle = '#aaa';
-          ctx.fillRect(leftRailX, shelfYpx, railW, railH);
-          ctx.strokeStyle = '#333';
-          ctx.strokeRect(leftRailX, shelfYpx, railW, railH);
-
           const rightRailX = innerRight[i] * scale - railW;
+          
+          ctx.fillStyle = DRAW_THEME.bgInsulation;
+          ctx.strokeStyle = DRAW_THEME.strokePrimary;
+          
+          ctx.fillRect(leftRailX, shelfYpx, railW, railH);
+          ctx.strokeRect(leftRailX, shelfYpx, railW, railH);
+          
           ctx.fillRect(rightRailX, shelfYpx, railW, railH);
           ctx.strokeRect(rightRailX, shelfYpx, railW, railH);
         }
       }
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
-  }
-  else if (fittings && leaves) {
+  } else if (fittings && leaves) {
     const internalWidth = W - effectiveWalls.left - effectiveWalls.right;
     let yOffset = effectiveWalls.top;
-
     for (let i = 0; i < compHeights.length; i++) {
       const compH = compHeights[i];
       const fittingsForLeaf = fittings.find(f => f.leafId === leaves[i]?.leafId);
@@ -282,21 +306,20 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
         yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
         continue;
       }
-
+      
       const compY = yOffset * scale;
       const compHeightPx = compH * scale;
-
+      
       const shelfCount = fittingsForLeaf.shelves.length;
       if (shelfCount > 0) {
         const shelfGap = compHeightPx / (shelfCount + 1);
         for (let s = 0; s < shelfCount; s++) {
           const yy = compY + shelfGap * (s + 1);
-          ctx.fillStyle = '#bbbbbb';
-          ctx.fillRect((effectiveWalls.left + 10) * scale, yy - 1,
-                       (internalWidth - 20) * scale, 3);
+          ctx.fillStyle = DRAW_THEME.strokeMuted;
+          ctx.fillRect((effectiveWalls.left + 10) * scale, yy - 1, (internalWidth - 20) * scale, 2);
         }
       }
-
+      
       const drawerCount = fittingsForLeaf.drawers.length;
       if (drawerCount > 0) {
         const drawerWidth = internalWidth * 0.8 * scale;
@@ -305,68 +328,63 @@ export function drawFrontView(canvas, geometry, effectiveWalls, layout, leaves, 
         for (let d = 0; d < drawerCount; d++) {
           const yy = compY + drawerGap * (d + 1) + drawerHeight * d;
           const xx = (effectiveWalls.left + (internalWidth - drawerWidth / scale) / 2) * scale;
-          ctx.strokeStyle = '#555';
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = DRAW_THEME.strokeMuted;
+          ctx.lineWidth = 1.5;
           ctx.strokeRect(xx, yy, drawerWidth, drawerHeight);
-          ctx.fillStyle = '#e0e0e0';
+          ctx.fillStyle = DRAW_THEME.bgInsulation;
           ctx.fillRect(xx, yy, drawerWidth, drawerHeight);
         }
       }
-
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
   }
 
- // ─── Control Box & R‑Shower ───
+  // Control Box & R Shower
   let freshIdx = -1;
   if (numCompartments === 1) {
     freshIdx = 0;
   } else {
     freshIdx = compartmentTypes.findIndex(t => t === 'fresh');
   }
-
-  let freshTopY = 0, freshHeight = 0;
-if (freshIdx >= 0) {
-    // Re-declare the missing layout variables
-    const compartmentHeight = freshHeight;
-    const freshCompTop = freshTopY;
-    const freshCompBottom = freshTopY + compartmentHeight;
-
-    const placeAtTop = (numCompartments === 1) || (freshIdx > 0); 
+  
+  if (freshIdx >= 0 && compHeights[freshIdx]) {
+    let freshTopY = intTop;
+    for (let i = 0; i < freshIdx; i++) {
+        freshTopY += compHeights[i] + dividerThickness;
+    }
+    const freshHeight = compHeights[freshIdx];
+    const placeAtTop = (numCompartments === 1) || (freshIdx > 0);
     
     const availableRearH = placeAtTop 
-      ? Math.max(0, Math.min(compartmentHeight, floorRaisedY - freshTopY))
-      : compartmentHeight;
-
+      ? Math.max(0, Math.min(freshHeight, floorRaisedY - freshTopY))
+      : freshHeight;
+      
     const effectiveCtrlH = Math.min(ctrlBoxH, availableRearH);
     const effectiveRShowerH = Math.max(0, Math.min(rshowerH, availableRearH - effectiveCtrlH));
-
+    
     const ctrlBoxW_px = ctrlBoxW * scale;
     const rshowerW_px = rshowerW * scale;
     const ctrlBoxH_px = effectiveCtrlH * scale;
     const rshowerH_px = effectiveRShowerH * scale;
-
-    let currentY = placeAtTop ? freshCompTop * scale : freshCompBottom * scale;
-
+    
+    let currentY = placeAtTop ? freshTopY * scale : (freshTopY + freshHeight) * scale;
+    
     if (effectiveCtrlH > 0 && ctrlBoxW > 0) {
       const ctrlBoxY = placeAtTop ? currentY : currentY - ctrlBoxH_px;
       const ctrlBoxX = (W / 2 - ctrlBoxW / 2) * scale;
-      drawBox(ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px,
-              'Ctrl Box', 'rgba(255, 200, 0, 0.3)', '#aa6600');
-      
+      drawBox(ctx, ctrlBoxX, ctrlBoxY, ctrlBoxW_px, ctrlBoxH_px, 'Ctrl Box', DRAW_THEME.warning);
       currentY = placeAtTop ? ctrlBoxY + ctrlBoxH_px : ctrlBoxY;
     }
-
+    
     if (effectiveRShowerH > 0 && rshowerW > 0) {
       const rshowerY = placeAtTop ? currentY : currentY - rshowerH_px;
       const rshowerX = (W / 2 - rshowerW / 2) * scale;
-      drawBox(rshowerX, rshowerY, rshowerW_px, rshowerH_px,
-              'R-Shower', 'rgba(0, 200, 255, 0.3)', '#0066aa');
+      drawBox(ctx, rshowerX, rshowerY, rshowerW_px, rshowerH_px, 'R-Shower', DRAW_THEME.color);
     }
   }
 
   // Outer cabinet stroke
-  ctx.strokeStyle = '#333';
+  ctx.strokeStyle = DRAW_THEME.strokePrimary;
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, W * scale, H * scale);
 
@@ -383,9 +401,9 @@ if (freshIdx >= 0) {
     if (i < compHeights.length - 1) yAcc += dividerThickness;
   }
   if (compIdx === -1) compIdx = compHeights.length - 1;
-
+  
   ctx.save();
-  ctx.strokeStyle = '#e67e22';
+  ctx.strokeStyle = DRAW_THEME.warning;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(innerLeft[compIdx] * scale, hbY);
@@ -406,23 +424,17 @@ if (freshIdx >= 0) {
       y = dividerBottom;
     }
   }
-
+  
   drawDim(ctx, 0, H * scale, W * scale, H * scale, 30, `W: ${W.toFixed(0)}`);
   drawDim(ctx, 0, 0, innerLeft[0] * scale, 0, -20, `tLeft: ${compartments[0].left.toFixed(0)}`);
   drawDim(ctx, innerRight[0] * scale, 0, W * scale, 0, -20, `tRight: ${compartments[0].right.toFixed(0)}`);
-
+  
   ctx.restore();
 }
-
 
 /**
  * Renders the 2D side-profile elevation of the refrigerator.
  * Recreates the compressor step geometry (Hb, Db1, Db2) and cross-sectional volumes.
- * 
- * @param {HTMLCanvasElement} canvas - Target rendering canvas.
- * @param {Object} geometry - The full cabinet geometry configuration.
- * @param {Object} effectiveWalls - Computed thickest boundary constraints.
- * @param {Object} options - Visualization and obstacle metadata.
  */
 export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const ctx = canvas.getContext('2d');
@@ -459,7 +471,6 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const tRbottom1 = walls.refrigerator.bottom1;
   const tRbottom2 = walls.refrigerator.bottom2;
   const tRbottom3 = walls.refrigerator.bottom3;
-
   const compRear = compartments.map(c => c.rear);
 
   const PAD = { left: 60, top: 40, right: 60, bottom: 40 };
@@ -467,7 +478,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const drawH = canvas.height - PAD.top - PAD.bottom;
   const scale = Math.min(drawW / D, drawH / H);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Clear canvas to native dark
+  ctx.fillStyle = DRAW_THEME.bgCanvas;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
   ctx.save();
   ctx.translate(PAD.left, PAD.top);
 
@@ -481,26 +495,23 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   const yTopCB = H - Hb;
   const xBottomCB = Db2;
   const yBottomCB = H;
-
+  
   const cbDx = xBottomCB - xTopCB;
   const cbDy = yBottomCB - yTopCB;
   const cbLen = Math.sqrt(cbDx * cbDx + cbDy * cbDy);
-
+  
   let slopeStartX = Db1;
   let slopeEndX = Db2;
   let nx = 1, ny = 0;
-
+  
   if (cbLen > 0) {
     nx = cbDy / cbLen;
     ny = -cbDx / cbLen;
-
     const px = xTopCB + nx * tRbottom2;
     const py = yTopCB + ny * tRbottom2;
-
     if (cbDy !== 0) {
       const tStart = (floorRaisedY - py) / cbDy;
       slopeStartX = px + cbDx * tStart;
-
       const tEnd = (floorLowerY - py) / cbDy;
       slopeEndX = px + cbDx * tEnd;
     } else {
@@ -511,11 +522,12 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
   // Insulation bands and internal cavities
   if (compHeights.length === 1) {
-    ctx.fillStyle = '#f0f0f0';
+    ctx.fillStyle = DRAW_THEME.bgInsulation;
     ctx.fillRect(0, innerTop * scale, D * scale, (H - innerTop) * scale);
-
+    
     const topRearX = compRear[0] * scale;
     const topY = innerTop * scale;
+    
     ctx.beginPath();
     ctx.moveTo(topRearX, topY);
     ctx.lineTo(innerDoor * scale, topY);
@@ -524,18 +536,18 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
     ctx.lineTo(topRearX, floorRaisedY * scale);
     ctx.closePath();
-    ctx.fillStyle = '#ffffff';
+    
+    ctx.fillStyle = compartmentTypes[0] === 'freezer' ? DRAW_THEME.bgFreezer : DRAW_THEME.bgFresh;
     ctx.fill();
-    ctx.strokeStyle = '#0066cc';
+    ctx.strokeStyle = DRAW_THEME.strokePrimary;
     ctx.lineWidth = 1.5;
     ctx.stroke();
-
   } else if (compHeights.length === 2) {
     const topH = compHeights[0];
     const topRearX = compRear[0] * scale;
     const topY = innerTop * scale;
     const topCompH = topH * scale;
-
+    
     ctx.beginPath();
     ctx.rect(0, 0, D * scale, topY + topCompH);
     ctx.moveTo(topRearX, topCompH);
@@ -543,26 +555,26 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.lineTo(innerDoor * scale, topY + topCompH);
     ctx.lineTo(topRearX, topY + topCompH);
     ctx.closePath();
-    ctx.fillStyle = '#f0f0f0';
+    ctx.fillStyle = DRAW_THEME.bgInsulation;
     ctx.fill();
-
+    
     ctx.beginPath();
     ctx.rect(topRearX, topY, innerDoor * scale - topRearX, topCompH);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = compartmentTypes[0] === 'freezer' ? DRAW_THEME.bgFreezer : DRAW_THEME.bgFresh;
     ctx.fill();
-    ctx.strokeStyle = '#0066cc';
+    ctx.strokeStyle = DRAW_THEME.strokePrimary;
     ctx.stroke();
-
+    
     const bottomH = compHeights[1];
     const bottomRearX = compRear[1] * scale;
     const bottomY = (innerTop + topH + dividerThickness) * scale;
     const bottomCompH = bottomH * scale;
-
+    
     ctx.beginPath();
     ctx.rect(0, bottomY, D * scale, bottomCompH);
-    ctx.fillStyle = '#f0f0f0';
+    ctx.fillStyle = DRAW_THEME.bgInsulation;
     ctx.fill();
-
+    
     ctx.beginPath();
     ctx.moveTo(bottomRearX, bottomY);
     ctx.lineTo(innerDoor * scale, bottomY);
@@ -572,9 +584,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.lineTo(slopeStartX * scale, floorRaisedY * scale);
     ctx.lineTo(bottomRearX, floorRaisedY * scale);
     ctx.closePath();
-    ctx.fillStyle = '#ffffff';
+    
+    ctx.fillStyle = compartmentTypes[1] === 'freezer' ? DRAW_THEME.bgFreezer : DRAW_THEME.bgFresh;
     ctx.fill();
-    ctx.strokeStyle = '#0066cc';
+    ctx.strokeStyle = DRAW_THEME.strokePrimary;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
@@ -586,13 +599,14 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   ctx.lineTo(xTopCB * scale, yTopCB * scale);
   ctx.lineTo(xBottomCB * scale, yBottomCB * scale);
   ctx.closePath();
-  ctx.fillStyle = '#ddd';
+  ctx.fillStyle = DRAW_THEME.bgObstacle;
   ctx.fill();
-  ctx.strokeStyle = '#999';
+  ctx.strokeStyle = DRAW_THEME.strokeMuted;
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#555';
-  ctx.font = 'bold 11px sans-serif';
+  
+  ctx.fillStyle = DRAW_THEME.text;
+  ctx.font = DRAW_THEME.fontMono;
   ctx.fillText('Comp.', 6, yTopCB * scale + 14);
 
   // Divider & doors
@@ -601,24 +615,21 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const dividerY = innerTop + compHeights[0];
     const dividerH = dividerThickness;
     const dividerLeftX = compRear[1] * scale;
-
-    ctx.fillStyle = '#aaa';
-    ctx.fillRect(dividerLeftX, dividerY * scale,
-                 (innerDoor - compRear[1]) * scale, dividerH * scale);
-    ctx.strokeStyle = '#666';
-    ctx.strokeRect(dividerLeftX, dividerY * scale,
-                   (innerDoor - compRear[1]) * scale, dividerH * scale);
-
+    
+    ctx.fillStyle = DRAW_THEME.bgInsulation;
+    ctx.fillRect(dividerLeftX, dividerY * scale, (innerDoor - compRear[1]) * scale, dividerH * scale);
+    ctx.strokeStyle = DRAW_THEME.strokeMuted;
+    ctx.strokeRect(dividerLeftX, dividerY * scale, (innerDoor - compRear[1]) * scale, dividerH * scale);
+    
     const topDoorTop = 0;
     const topDoorBottom = (dividerY + dividerH/2) * scale - (doorGap / 2) * scale;
     const bottomDoorTop = (dividerY + dividerH/2) * scale + (doorGap / 2) * scale;
     const bottomDoorBottom = H * scale;
-
+    
     drawnDoors.push({ top: topDoorTop, bottom: topDoorBottom, compIndex: 0 });
     drawnDoors.push({ top: bottomDoorTop, bottom: bottomDoorBottom, compIndex: 1 });
-
-    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45,
-            `door gap: ${(dividerThickness + doorGap).toFixed(0)}`);
+    
+    drawDim(ctx, D * scale, topDoorBottom, D * scale, bottomDoorTop, -45, `door gap: ${(dividerThickness + doorGap).toFixed(0)}`);
   } else {
     drawnDoors.push({ top: 0, bottom: H * scale, compIndex: 0 });
   }
@@ -629,10 +640,10 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
                           ? compartments[compIdx].door : (effectiveWalls.door || 60);
     const doorLeftX = D * scale;
     const doorWidth = doorThickness * scale;
-
-    ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+    
+    ctx.fillStyle = DRAW_THEME.bgDoor;
     ctx.fillRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
-    ctx.strokeStyle = '#555';
+    ctx.strokeStyle = DRAW_THEME.strokeMuted;
     ctx.strokeRect(doorLeftX, door.top, doorWidth, door.bottom - door.top);
   }
 
@@ -640,20 +651,16 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const compIdx = door.compIndex;
     const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
                           ? compartments[compIdx].door : (effectiveWalls.door || 60);
-
     const doorMidY = (door.top + door.bottom) / 2.5;
-    drawDim(ctx, (D - doorThickness) * scale, doorMidY, D * scale, doorMidY, 0,
-            `tDoor: ${doorThickness.toFixed(0)}`);
+    drawDim(ctx, (D - doorThickness) * scale, doorMidY, D * scale, doorMidY, 0, `tDoor: ${doorThickness.toFixed(0)}`);
   }
-  
+
   for (const door of drawnDoors) {
     const compIdx = door.compIndex;
     const doorThickness = (compartments[compIdx] && compartments[compIdx].door != null)
                           ? compartments[compIdx].door : (effectiveWalls.door || 60);
-
-    const dimX = (D + doorThickness) * scale + 15; 
-    drawDim(ctx, dimX, door.top, dimX, door.bottom, 0,
-            `Door: ${((door.bottom - door.top) / scale).toFixed(0)}`);
+    const dimX = (D + doorThickness) * scale + 15;
+    drawDim(ctx, dimX, door.top, dimX, door.bottom, 0, `Door: ${((door.bottom - door.top) / scale).toFixed(0)}`);
   }
 
   // Door dikes
@@ -663,40 +670,42 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const topW_dike = dikeTopWidth * scale;
     const doorX_dike = innerDoor * scale;
     const leftX_dike = (innerDoor - dikeHeight) * scale;
-
+    
     let yComp = innerTop;
     for (let i = 0; i < compHeights.length; i++) {
       const compTopY = yComp * scale;
       const compBottomY = (yComp + compHeights[i]) * scale;
-
+      
       ctx.beginPath();
       ctx.moveTo(doorX_dike, compTopY);
       ctx.lineTo(doorX_dike, compTopY + baseW_dike);
       ctx.lineTo(leftX_dike, compTopY + (baseW_dike - topW_dike) / 2 + topW_dike);
       ctx.lineTo(leftX_dike, compTopY + (baseW_dike - topW_dike) / 2);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(173, 216, 230, 0.5)';
+      
+      ctx.fillStyle = DRAW_THEME.bgDoor;
       ctx.fill();
-      ctx.strokeStyle = '#555';
+      ctx.strokeStyle = DRAW_THEME.strokeMuted;
       ctx.stroke();
-
+      
       ctx.beginPath();
       ctx.moveTo(doorX_dike, compBottomY - baseW_dike);
       ctx.lineTo(doorX_dike, compBottomY);
       ctx.lineTo(leftX_dike, compBottomY - (baseW_dike - topW_dike) / 2);
       ctx.lineTo(leftX_dike, compBottomY - (baseW_dike + topW_dike) / 2);
       ctx.closePath();
+      
       ctx.fill();
       ctx.stroke();
-
+      
       yComp += compHeights[i];
       if (i < compHeights.length - 1) yComp += dividerThickness;
     }
   }
 
   const isFreezer = (i) => compartmentTypes[i] === 'freezer';
-
   let freshCompIdx = -1, freshTopWorld = 0, freshBottomWorld = 0;
+  
   if (compHeights.length === 1) {
     freshCompIdx = 0;
     freshTopWorld = innerTopY;
@@ -715,7 +724,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     }
   }
 
-// Obstructions (Control box, R-shower)
+  // Obstructions (Control box, R-shower)
   if (freshCompIdx >= 0) {
     const rearX = compRear[freshCompIdx];
     const freshHeight = freshBottomWorld - freshTopWorld;
@@ -723,58 +732,42 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     const isTopFreezer = freshCompIdx > 0;
     const placeAtTop = (compHeights.length === 1) || isTopFreezer;
     
-    // Shift the X coordinate to clear the evaporator wall in a single compartment
     const offsetRearX = (compHeights.length === 1 && evapDepth > 0) ? rearX + evapDepth : rearX;
     
     const availableRearH = placeAtTop 
       ? Math.max(0, Math.min(freshHeight, floorRaisedY - freshTopWorld))
       : freshHeight;
-
+      
     const ctrlBoxH_eff = Math.min(ctrlBoxH, availableRearH);
     const rshowerH_eff = Math.max(0, Math.min(rshowerH, availableRearH - ctrlBoxH_eff));
-
+    
     const drawCtrl = ctrlBoxH_eff > 0 && ctrlBoxL > 0;
     const drawRshower = rshowerH_eff > 0 && rshowerL > 0;
-
+    
     let yCursor = placeAtTop ? freshTopWorld : freshBottomWorld;
-
+    
     if (drawCtrl) {
       const boxTop = placeAtTop ? yCursor : yCursor - ctrlBoxH_eff;
       const boxH = ctrlBoxH_eff * scale;
       const boxW = ctrlBoxL * scale;
-      const boxX = offsetRearX * scale; // Placed at offset
-
-      ctx.fillStyle = 'rgba(255, 200, 0, 0.3)';
-      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-      ctx.strokeStyle = '#aa6600';
-      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Ctrl Box', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
-
+      const boxX = offsetRearX * scale;
+      
+      drawBox(ctx, boxX, boxTop * scale, boxW, boxH, 'Ctrl Box', DRAW_THEME.warning);
+      
       ctrlBoxFrontX = offsetRearX + ctrlBoxL;
       ctrlBoxTop = boxTop;
       ctrlBoxBottom = boxTop + ctrlBoxH_eff;
-      
       yCursor = placeAtTop ? ctrlBoxBottom : boxTop;
     }
-
+    
     if (drawRshower) {
       const boxTop = placeAtTop ? yCursor : yCursor - rshowerH_eff;
       const boxH = rshowerH_eff * scale;
       const boxW = rshowerL * scale;
-      const boxX = offsetRearX * scale; // Placed at offset
-
-      ctx.fillStyle = 'rgba(0, 200, 255, 0.3)';
-      ctx.fillRect(boxX, boxTop * scale, boxW, boxH);
-      ctx.strokeStyle = '#0066aa';
-      ctx.strokeRect(boxX, boxTop * scale, boxW, boxH);
-      ctx.fillStyle = '#333';
-      ctx.font = '9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('R-Shower', boxX + boxW/2, boxTop * scale + boxH/2 + 3);
-
+      const boxX = offsetRearX * scale;
+      
+      drawBox(ctx, boxX, boxTop * scale, boxW, boxH, 'R-Shower', DRAW_THEME.color);
+      
       rshowerFrontX = offsetRearX + rshowerL;
       rshowerTop = boxTop;
       rshowerBottom = boxTop + rshowerH_eff;
@@ -785,8 +778,9 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   if (numCompartments === 1 && evapDepth > 0) {
     const rearX = compRear[0];
     const evapX = (rearX + evapDepth) * scale;
+    
     ctx.save();
-    ctx.strokeStyle = '#cc0000';
+    ctx.strokeStyle = DRAW_THEME.alert;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 3]);
     ctx.beginPath();
@@ -794,8 +788,9 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
     ctx.lineTo(evapX, floorRaisedY * scale);
     ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = '#cc0000';
-    ctx.font = '9px sans-serif';
+    
+    ctx.fillStyle = DRAW_THEME.alert;
+    ctx.font = DRAW_THEME.fontMono;
     ctx.textAlign = 'center';
     ctx.fillText('Evap', evapX, innerTopY * scale + 10);
   } else {
@@ -806,11 +801,13 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
         let compBottomY = yOffset + compHeights[i];
         if (i === compHeights.length - 1) {
           compBottomY = Math.min(compBottomY, floorRaisedY);
-        }          
+        }
+        
         const rearX = compRear[i];
         const evapX = (rearX + evapDepth) * scale;
+        
         ctx.save();
-        ctx.strokeStyle = '#cc0000';
+        ctx.strokeStyle = DRAW_THEME.alert;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([5, 3]);
         ctx.beginPath();
@@ -818,9 +815,9 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
         ctx.lineTo(evapX, compBottomY * scale);
         ctx.stroke();
         ctx.restore();
-
-        ctx.fillStyle = '#cc0000';
-        ctx.font = '9px sans-serif';
+        
+        ctx.fillStyle = DRAW_THEME.alert;
+        ctx.font = DRAW_THEME.fontMono;
         ctx.textAlign = 'center';
         ctx.fillText('Evap', evapX, compTopY * scale + 10);
       }
@@ -836,20 +833,19 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       const n = shelfCounts[i] || 0;
       const compH = compHeights[i];
       const compY = yOffset * scale;
-
+      
       if (n > 0) {
         let usableH = compH;
         if (i === compHeights.length - 1) {
           usableH = Math.min(compH, floorRaisedY - yOffset);
         }
-
+        
         const spacingWorld = usableH / (n + 1);
         for (let s = 1; s <= n; s++) {
           const shelfYWorld = yOffset + s * spacingWorld;
           const shelfYpx = compY + s * spacingWorld * scale;
-
           let startXWorld = compRear[i];
-
+          
           if (evapDepth > 0 && (numCompartments === 1 || isFreezer(i))) {
             startXWorld = Math.max(startXWorld, compRear[i] + evapDepth);
           }
@@ -859,38 +855,37 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
           if (rshowerTop != null && shelfYWorld >= rshowerTop && shelfYWorld <= rshowerBottom) {
             startXWorld = Math.max(startXWorld, rshowerFrontX);
           }
-
+          
           startXWorld = Math.min(startXWorld, doorX);
-
+          
           ctx.beginPath();
           ctx.moveTo(startXWorld * scale, shelfYpx);
           ctx.lineTo(doorX * scale, shelfYpx);
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = '#666';
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = DRAW_THEME.strokeMuted;
           ctx.stroke();
-
+          
           const railStartXWorld = (evapDepth > 0 && (numCompartments === 1 || isFreezer(i)))
             ? compRear[i] + evapDepth
             : compRear[i];
-
+            
           const usableDepthWorld = doorX - railStartXWorld;
           const railDepthPx = (railDepthPct / 100) * usableDepthWorld * scale;
           const railH = railHeight * scale;
           const railY = shelfYpx;
-
-          ctx.fillStyle = '#aaa';
+          
+          ctx.fillStyle = DRAW_THEME.bgInsulation;
           ctx.fillRect(railStartXWorld * scale, railY, railDepthPx, railH);
-          ctx.strokeStyle = '#333';
+          ctx.strokeStyle = DRAW_THEME.strokePrimary;
           ctx.strokeRect(railStartXWorld * scale, railY, railDepthPx, railH);
         }
       }
-
       yOffset += compH + (i < compHeights.length - 1 ? dividerThickness : 0);
     }
   }
 
   // Outer cabinet stroke
-  ctx.strokeStyle = '#333';
+  ctx.strokeStyle = DRAW_THEME.strokePrimary;
   ctx.lineWidth = 2;
   ctx.strokeRect(0, 0, D * scale, H * scale);
 
@@ -899,12 +894,11 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
   drawDim(ctx, 0, H * scale, 0, (floorRaisedY+tRbottom1) * scale, -35, `Hb: ${Hb.toFixed(0)}`);
   drawDim(ctx, 0, yTopCB * scale, xTopCB * scale, yTopCB * scale, -15, `Db1: ${Db1.toFixed(0)}`);
   drawDim(ctx, 0, yBottomCB * scale, xBottomCB * scale, yBottomCB * scale, -15, `Db2: ${Db2.toFixed(0)}`);
-  
   drawDim(ctx, 0, 0, D * scale, 0, -25, `D: ${D.toFixed(0)}`);
-
+  
   const topMidX = (compRear[0] + innerDoor) / 2 * scale;
   drawDim(ctx, topMidX, 0, topMidX, innerTop * scale, 0, `tTop: ${tTop.toFixed(0)}`);
-
+  
   for (let i = 0; i < compHeights.length; i++) {
     if (i === 0 || compRear[i] !== compRear[i-1]) {
       let compY = innerTop;
@@ -917,7 +911,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
 
   const botMidX = (slopeEndX + innerDoor) / 2.5 * scale;
   drawDim(ctx, botMidX, floorLowerY * scale, botMidX, H * scale, 0, `tRb3: ${tRbottom3.toFixed(0)}`);
-
+  
   const midCbX = (xTopCB + xBottomCB) / 2;
   const midCbY = (yTopCB + yBottomCB) / 2;
   const inPX = midCbX + nx * tRbottom2;
@@ -931,7 +925,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
              ? compartments[idx].door : (effectiveWalls.door || 60);
     })
   );
-
+  
   const compHeightDimX = (D + maxActualDoor) * scale + 40; 
   if (compHeights.length === 2) {
     let yPos = innerTop;
@@ -942,35 +936,32 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
       if (idx === 0 && dividerThickness > 0) yPos += dividerThickness;
     });
   } else if (compHeights.length === 1) {
-    drawDim(ctx, compHeightDimX, innerTop * scale, compHeightDimX, (innerTop + compHeights[0]) * scale, 0,
-            `h: ${compHeights[0].toFixed(0)}`);
+    drawDim(ctx, compHeightDimX, innerTop * scale, compHeightDimX, (innerTop + compHeights[0]) * scale, 0, `h: ${compHeights[0].toFixed(0)}`);
   }
+  
+  ctx.restore();
 }
 
 /**
- * Binds mouse events to the canvases to display real-world coordinates on hover/click.
+ * Binds mouse events to the canvases to display real-world coordinates on hover.
  * Maps canvas pixel space back to real-world millimeters.
- * 
- * @param {HTMLCanvasElement} frontCanvas - The front view canvas element.
- * @param {HTMLCanvasElement} sideCanvas - The side view canvas element.
- * @param {Function} getGeometryFn - Function returning current cabinet geometry.
  */
 export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
   const tooltip = document.getElementById('schematicTooltip');
-
-  function handleClick(canvas, isFront) {
-    canvas.addEventListener('click', (e) => {
+  
+  function handleMouseMove(canvas, isFront) {
+    canvas.addEventListener('mousemove', (e) => {
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
-
       const pixelX = (e.clientX - rect.left) * scaleX;
       const pixelY = (e.clientY - rect.top) * scaleY;
-
       const geometry = getGeometryFn();
+      
       if (!geometry) return;
-
+      
       let worldX, worldY;
+      
       if (isFront) {
         const PAD = { left: 50, top: 40, right: 40, bottom: 40 };
         const drawW = canvas.width - PAD.left - PAD.right;
@@ -987,13 +978,23 @@ export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) 
         worldY = (pixelY - PAD.top) / scale;
       }
 
+      // Hide tooltip if coordinates are outside of the cabinet boundaries
+      if (worldX < 0 || worldX > (isFront ? geometry.W : geometry.D) || worldY < 0 || worldY > geometry.H) {
+        tooltip.classList.add('hidden');
+        return;
+      }
+
       tooltip.classList.remove('hidden');
-      tooltip.style.left = (e.clientX + 10) + 'px';
-      tooltip.style.top = (e.clientY - 30) + 'px';
-      tooltip.textContent = `X: ${worldX.toFixed(1)} mm, Y: ${worldY.toFixed(1)} mm`;
+      tooltip.style.left = (e.clientX + 16) + 'px';
+      tooltip.style.top = (e.clientY + 16) + 'px';
+      tooltip.textContent = `X: ${worldX.toFixed(1)} mm\nY: ${worldY.toFixed(1)} mm`;
+    });
+    
+    canvas.addEventListener('mouseleave', () => {
+      tooltip.classList.add('hidden');
     });
   }
-
-  handleClick(frontCanvas, true);
-  handleClick(sideCanvas, false);
+  
+  if (frontCanvas) handleMouseMove(frontCanvas, true);
+  if (sideCanvas) handleMouseMove(sideCanvas, false);
 }
