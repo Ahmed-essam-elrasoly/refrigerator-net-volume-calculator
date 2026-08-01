@@ -9,6 +9,7 @@ import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
 import { initSettingsModal } from './ui/settingsModal.js';
+import { initGraphModal } from './ui/graphUI.js'; // <-- ADD THIS
 import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 import { traverseAndComputePrecise } from './engine/traversal.js'; // precise engine
@@ -1183,6 +1184,9 @@ exportBtn.addEventListener('click', () => {
 
 // ---- Settings Modal --------------------------------------------------
 initSettingsModal();
+
+// ---- Graph Modal -----------------------------------------------------
+initGraphModal();
 
 // ---- Reset All ---------------------------------------------------------
 resetAllBtn.addEventListener('click', () => {
