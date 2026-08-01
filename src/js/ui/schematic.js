@@ -946,7 +946,7 @@ export function drawSideView(canvas, geometry, effectiveWalls, options = {}) {
  * Binds mouse events to the canvases to display real-world coordinates on hover.
  * Maps canvas pixel space back to real-world millimeters.
  */
-export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
+/**export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) {
   const tooltip = document.getElementById('schematicTooltip');
   
   function handleMouseMove(canvas, isFront) {
@@ -997,4 +997,4 @@ export function enableCoordinateTooltip(frontCanvas, sideCanvas, getGeometryFn) 
   
   if (frontCanvas) handleMouseMove(frontCanvas, true);
   if (sideCanvas) handleMouseMove(sideCanvas, false);
-}
+}*/

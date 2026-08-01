@@ -274,29 +274,28 @@ function runParametricSweep(domain) {
     return;
   }
 
-  // 1. Snapshot original state & suppress auto-calc
+  // 1. Snapshot original state
   const originalValue = inputConfig.get();
-  const originalAutoCalc = settings.autoCalculate;
-  settings.autoCalculate = false; 
   const graphData = [];
 
-  // 2. Execution Loop
-  for (let x = min; x <= max; x += step) {
-    inputConfig.set(x);
-    dict.trigger(); // Trigger calculation
+  try {
+    // 2. Execution Loop
+    for (let x = min; x <= max; x += step) {
+      inputConfig.set(x);
+      dict.trigger(); // Trigger calculation
 
-    const dataPoint = { x: x };
-    selectedOutputs.forEach(out => {
-      dataPoint[out.id] = out.extract();
-    });
-    
-    graphData.push(dataPoint);
+      const dataPoint = { x: x };
+      selectedOutputs.forEach(out => {
+        dataPoint[out.id] = out.extract();
+      });
+      
+      graphData.push(dataPoint);
+    }
+  } finally {
+    // 3. Guaranteed state restoration (runs even if the loop throws an error)
+    inputConfig.set(originalValue);
+    dict.trigger(); 
   }
-
-  // 3. Restore original state
-  inputConfig.set(originalValue);
-  settings.autoCalculate = originalAutoCalc;
-  dict.trigger(); // Run one last time to reset UI tables
 
   // 4. Render the Graph
   renderChart(graphData, selectedOutputs, document.getElementById('graphXVar').options[document.getElementById('graphXVar').selectedIndex].text);
