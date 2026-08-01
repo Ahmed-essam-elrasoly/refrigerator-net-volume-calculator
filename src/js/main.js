@@ -1240,17 +1240,27 @@ document.addEventListener('settings-changed', () => {
 // ---- Slot storage & comparison -----------------------------------------
 storeSlotABtn.addEventListener('click', () => {
   if (!lastCalcState) return;
+  const suggestedName = currentConfig?.meta?.name || 'Config A';
+  const slotName = prompt('Enter a name for Slot A:', suggestedName);
+  if (slotName === null) return; // Stop if the user clicks Cancel
+
   configSlotA = JSON.parse(JSON.stringify(lastCalcState));
+  configSlotA.slotName = slotName; // Inject the custom name into the state
   localStorage.setItem('refrig_slotA', JSON.stringify(configSlotA));
-  alert('State committed to Slot A.');
+  alert(`State committed to Slot A as "${slotName}".`);
   compareSlotsBtn.style.display = 'inline-block';
 });
 
 storeSlotBBtn.addEventListener('click', () => {
   if (!lastCalcState) return;
+  const suggestedName = currentConfig?.meta?.name || 'Config B';
+  const slotName = prompt('Enter a name for Slot B:', suggestedName);
+  if (slotName === null) return; // Stop if the user clicks Cancel
+
   configSlotB = JSON.parse(JSON.stringify(lastCalcState));
+  configSlotB.slotName = slotName; // Inject the custom name into the state
   localStorage.setItem('refrig_slotB', JSON.stringify(configSlotB));
-  alert('State committed to Slot B.');
+  alert(`State committed to Slot B as "${slotName}".`);
   compareSlotsBtn.style.display = 'inline-block';
 });
 
@@ -1468,12 +1478,15 @@ function buildComparisonTable(stateA, stateB) {
   const fmt = (val, dec = 2) => val != null && !isNaN(val) ? Number(val).toFixed(dec) : '-';
   const fmt0 = (val) => val != null && !isNaN(val) ? Number(val).toFixed(0) : '-';
 
-  const row = (label, valA, valB) => `<tr><td style="text-align:left;">${label}</td><td>${valA}</td><td>${valB}</td></tr>`;
-  const head = (label) => `<tr><td colspan="3" style="font-weight:bold; background:#eaeaea; text-align:left;">${label}</td></tr>`;
+  // Extract custom names, falling back to defaults if none exist
+  const nameA = stateA?.slotName || 'Slot A';
+  const nameB = stateB?.slotName || 'Slot B';
 
-  let html = `<table border="1" cellspacing="0" cellpadding="5" style="width:100%; border-collapse: collapse; font-size:13px; text-align:right;">
+  const row = (label, valA, valB) => `<tr><td>${label}</td><td style="font-family: var(--font-mono); text-align: right;">${valA}</td><td style="font-family: var(--font-mono); text-align: right;">${valB}</td></tr>`;
+  const head = (label) => `<tr class="section-header"><td colspan="3">${label}</td></tr>`;
+  let html = `<table class="thermo-results-table">
     <thead>
-      <tr style="background:#f4f4f4;"><th style="text-align:left;">Metric</th><th style="text-align:right;">Slot A</th><th style="text-align:right;">Slot B</th></tr>
+      <tr><th>Metric</th><th style="text-align:right;">${nameA}</th><th style="text-align:right;">${nameB}</th></tr>
     </thead>
     <tbody>`;
 

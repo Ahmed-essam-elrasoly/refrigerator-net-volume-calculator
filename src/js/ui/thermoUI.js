@@ -1282,7 +1282,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
         <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
         <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
-        <tr><td>energy Rank</td><td>Rank_27 = ${Rank_27} <br> Rank_29 = ${Rank_29} <br> Rank_31 = ${Rank_31}</td>/td></tr>
+        <tr><td>energy Rank</td><td>Rank_27 = ${Rank_27} <br> Rank_29 = ${Rank_29} <br> Rank_31 = ${Rank_31}</td></tr>
 
         <tr class="section-header"><td colspan="2">Heat Loads (W)</td></tr>
         <tr><td>QF — Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>
