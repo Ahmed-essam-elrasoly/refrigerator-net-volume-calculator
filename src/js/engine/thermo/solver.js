@@ -26,12 +26,13 @@ function getRefrigerantIndex(name) {
 }
 
 // Bisection method to find Temperature from Liquid Enthalpy
-function getTemperatureFromLiquidEnthalpy(h_target, prop) {
+function getTemperatureFromLiquidEnthalpy(h_target, prop, pressure) {
   let low = -100;
   let high = 150;
   for (let i = 0; i < 50; i++) {
     let mid = (low + high) / 2;
-    if (prop.liquidEnthalpy(mid) < h_target) {
+    // Update to pass pressure to your external library
+    if (prop.liquidEnthalpy(mid, pressure) < h_target) {
       low = mid;
     } else {
       high = mid;
@@ -194,7 +195,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
  */
 function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
   const { tol = 1e-4, maxIter = 100, dx = 1e-3 } = innerOpts;
-  const { Damp = 1.0 } = electrical;
+  const { Damp = .6 } = electrical;
   const PIPEPITCH = { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm };
   const refIndex = getRefrigerantIndex(refrigerant);
   const isInverterMode = compParams.isInverter && fixedPR !== undefined;
@@ -208,7 +209,7 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     if (innerOpts.forcePR !== undefined) bounds[1] = [innerOpts.forcePR, innerOpts.forcePR];
     initialGuess = [innerOpts.initialT2 ?? -21.25, innerOpts.forcePR ?? innerOpts.initialPR ?? 0.59];
   }
-  let convergedTE = TE, convergedTsubcool = TC - subcool; 
+  let convergedTE = TE, convergedTsubcool = 10; 
 
   const F = (vars) => {
     const T2 = vars[0], secondVar = vars[1];
@@ -255,28 +256,58 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
     const prop = getRefrigerantProperties(refIndex);
     const hGas_TE = prop.gasEnthalpy(calculated_TE + KELVIN_OFFSET, comp.Pe);
     
-    // 1. Condenser exit state
-    const T_cond_exit = TC - subcool;
+    // 1. Condenser exit state (Dynamically Calculated Subcooling)
+    // Call the condenser model to get total heat rejection capacity at current TC
+    const current_QCout = calcQCout(
+        geom, TC, fixedTemps.T0, fixedTemps.TF, fixedTemps.TR, PR, 
+        { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm }, 
+        freezerPos, condenserConfig.backCondenserEfficiency
+    );
+
+    // Estimate total condenser thermal conductance (UA) in W/K
+    const deltaT_cond = Math.max(1, TC - fixedTemps.T0);
+    const UA_cond_total = current_QCout.QCout / deltaT_cond;
+
+    // Assume liquid accumulates in the bottom ~4% of the condenser area
+    const liquid_fraction = 0.04; 
+    const UA_subcool = liquid_fraction * UA_cond_total;
+
+    // Calculate heat capacity rate of the liquid refrigerant (W/K)
+    // cp_liq (kJ/kg*K) = enthalpy(TC) - enthalpy(TC-1)
+    const cp_liq_kJ = prop.liquidEnthalpy(TC) - prop.liquidEnthalpy(TC - 1); 
+    const m_dot_cp_W_K = (comp.massFlow / 3600) * (cp_liq_kJ * 1000); 
+
+    // Calculate physical subcooling using an energy balance relation
+    let condenser_subcool = 0;
+    if (m_dot_cp_W_K > 0) {
+        // Q_sub = m_dot_cp * dT_sub = UA_sub * (deltaT_cond - dT_sub/2)
+        condenser_subcool = (UA_subcool * deltaT_cond) / (m_dot_cp_W_K + 0.5 * UA_subcool);
+    }
+
+    // Constrain to realistic physical bounds (prevent subcooling below ambient)
+    condenser_subcool = Math.max(0, Math.min(condenser_subcool, deltaT_cond - 0.5));
+
+    const T_cond_exit = TC - condenser_subcool;
     const h_liq_cond_exit = prop.liquidEnthalpy(T_cond_exit);
-    
+
     // 2. SLHX Energy Balance
-    const T_suction_actual = Math.min(30, T_cond_exit); // Suction gas cannot be hotter than liquid source
-    const h_suc_out = prop.gasEnthalpy(T_suction_actual + KELVIN_OFFSET, comp.Pe);
     const h_suc_in = hGas_TE;
-    
-    // Calculate liquid enthalpy after giving heat to suction gas
-    const slhx_heat_exchange = Math.max(0, h_suc_out - h_suc_in);
+    const T_suction_max = T_cond_exit;
+    const h_suc_max = prop.gasEnthalpy(T_suction_max + KELVIN_OFFSET, comp.Pe);
+
+    const slhx_effectiveness = 0.80; 
+    const slhx_heat_exchange = slhx_effectiveness * Math.max(0, h_suc_max - h_suc_in);
+    const h_suc_out = h_suc_in + slhx_heat_exchange;
+
     let h_liq_exp_in = h_liq_cond_exit - slhx_heat_exchange;
-    
-    // Guard: Cannot cool liquid below evaporating temperature
-    const h_liq_min = prop.liquidEnthalpy(calculated_TE);
-    if (h_liq_exp_in < h_liq_min) h_liq_exp_in = h_liq_min;
-    
+    if (h_liq_exp_in < prop.liquidEnthalpy(calculated_TE)) {
+        h_liq_exp_in = prop.liquidEnthalpy(calculated_TE);
+    }
+
     // 3. Calculate Actual Physical Capacity
-    comp.QCompressor = (comp.massFlow * (hGas_TE - h_liq_exp_in)) / 3.6;
-    convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop);
-    // ---------------------------------------------------
-    
+    comp.QCompressor = (comp.massFlow * (h_suc_out - h_liq_exp_in)) / 3.6;
+    convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop, comp.Pc);
+
     const f1 = loads.QF - MF * CV * (fixedTemps.TF - T3) * PR;
     const f2 = totalHeat_W - comp.QCompressor * PR;
 
@@ -323,17 +354,44 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
 // --- RE-APPLY THERMODYNAMIC CAPACITY TO FINAL OUTPUT ---
   const prop = getRefrigerantProperties(refIndex);
   const hGas_TE = prop.gasEnthalpy(convergedTE + KELVIN_OFFSET, comp.Pe);
-  const T_cond_exit = TC - subcool;
+
+  // Dynamically Calculate Subcooling for Final Output
+  const current_QCout = calcQCout(
+      geom, TC, fixedTemps.T0, fixedTemps.TF, fixedTemps.TR, fPR, 
+      { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm }, 
+      freezerPos, condenserConfig.backCondenserEfficiency
+  );
+  const deltaT_cond = Math.max(1, TC - fixedTemps.T0);
+  const UA_cond_total = current_QCout.QCout / deltaT_cond;
+  const UA_subcool = 0.04 * UA_cond_total;
+  const cp_liq_kJ = prop.liquidEnthalpy(TC) - prop.liquidEnthalpy(TC - 1);
+  const m_dot_cp_W_K = (comp.massFlow / 3600) * (cp_liq_kJ * 1000);
+
+  let condenser_subcool = 0;
+  if (m_dot_cp_W_K > 0) {
+      condenser_subcool = (UA_subcool * deltaT_cond) / (m_dot_cp_W_K + 0.5 * UA_subcool);
+  }
+  condenser_subcool = Math.max(0, Math.min(condenser_subcool, deltaT_cond - 0.5));
+
+  const T_cond_exit = TC - condenser_subcool;
   const h_liq_cond_exit = prop.liquidEnthalpy(T_cond_exit);
-  const T_suction_actual = Math.min(30, T_cond_exit); 
-  const h_suc_out = prop.gasEnthalpy(T_suction_actual + KELVIN_OFFSET, comp.Pe);
+
+  // SLHX
   const h_suc_in = hGas_TE;
-  
-  let h_liq_exp_in = h_liq_cond_exit - Math.max(0, h_suc_out - h_suc_in);
-  if (h_liq_exp_in < prop.liquidEnthalpy(convergedTE)) h_liq_exp_in = prop.liquidEnthalpy(convergedTE);
-  
-  comp.QCompressor = (comp.massFlow * (hGas_TE - h_liq_exp_in)) / 3.6;
-  convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop);
+  const T_suction_max = T_cond_exit;
+  const h_suc_max = prop.gasEnthalpy(T_suction_max + KELVIN_OFFSET, comp.Pe);
+
+  const slhx_effectiveness = 0.80;
+  const slhx_heat_exchange = slhx_effectiveness * Math.max(0, h_suc_max - h_suc_in);
+  const h_suc_out = h_suc_in + slhx_heat_exchange;
+
+  let h_liq_exp_in = h_liq_cond_exit - slhx_heat_exchange;
+  if (h_liq_exp_in < prop.liquidEnthalpy(convergedTE)) {
+      h_liq_exp_in = prop.liquidEnthalpy(convergedTE);
+  }
+
+  comp.QCompressor = (comp.massFlow * (h_suc_out - h_liq_exp_in)) / 3.6;
+  convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop, comp.Pc);
   // -------------------------------------------------------
 
   const fT3 = fT2 + loads.QEV / (Flow_m3h * CV * fPR);
@@ -458,7 +516,7 @@ function createFailure(TC, errorMsg, inner = {}) {
  */
 export function solveThermalSystem(config, TE_override = null) {
   const { 
-    geom, compParams, condenserConfig, refrigerant, subcool, dischargeTemp, 
+    geom, compParams, condenserConfig, refrigerant,  dischargeTemp, 
     fixedTemps, fan, electrical, evapGeom, freezerPosition = 'top', 
     TC0 = 45, tolOuter = 0.001, maxIterOuter = 50, innerOptions = {} 
   } = config;
@@ -471,13 +529,13 @@ export function solveThermalSystem(config, TE_override = null) {
   const fixedPR = config.inverterPR;
   const prop = getRefrigerantProperties(getRefrigerantIndex(refrigerant));
 
-  let TC = TC0, totalInner = 0, prevF3, prevTC, prevInner = null;
+  let TC = fixedTemps.T0, totalInner = 0, prevF3, prevTC, prevInner = null;
 
   for (let iter = 0; iter < maxIterOuter; iter++) {
     if (TC < fixedTemps.T0) TC = fixedTemps.T0 + 2;
     if (TC > 90) TC = 90;
 
-    let inner = solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom);
+    let inner = solveInner(TC, geom, compParams, refrigerant, undefined, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom);
 
     if (!inner.converged) {
       if (inner.error?.includes('undersized')) return createFailure(TC, 'Compressor undersized.', inner);
@@ -491,20 +549,22 @@ export function solveThermalSystem(config, TE_override = null) {
     const QCout = calcQCout(geom, TC, fixedTemps.T0, fixedTemps.TF, fixedTemps.TR, inner.PR, { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm }, freezerPosition, condenserConfig.backCondenserEfficiency);
     const compOuter = evaluateCompressorSafely(TE, TC, getRefrigerantIndex(refrigerant), compParams, inner.RPM);
     
-    const h_cond_exit = prop.liquidEnthalpy(TC - subcool);
+    const h_cond_exit = prop.liquidEnthalpy(inner.Tsubcool);
     const h_discharge = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, prop.satPressure(TC + KELVIN_OFFSET));
-    const F3 = QCout.QCout - (compOuter.massFlow * (h_discharge - h_cond_exit) / 3.6);
+    const F3 = QCout.QCout - (compOuter.massFlow * (h_discharge - h_cond_exit) / 3.6) * inner.PR;
      if (Math.abs(F3) < tolOuter) return { TC, T2: inner.T2, PR: inner.PR, T3: inner.T3, RPM: inner.RPM, TE, Pe: inner.compressor.Pe, Pc: inner.compressor.Pc, Tsubcool: inner.Tsubcool, converged: true, warnings: inner.warning ? [inner.warning] : [], outerIterations: iter + 1, innerTotalIterations: totalInner, heatLoads: inner.heatLoads, compressor: { ...inner.compressor }, MR: inner.MR, MF: inner.MF, fan, electrical };
+      console.log(`F3=${F3.toFixed(2)}`);
 
     let innerPert = null;
-    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
+    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, undefined, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
 
     if (innerPert?.converged) {
       const compOuter_pert = evaluateCompressorSafely(TE, TC + 0.001, getRefrigerantIndex(refrigerant), compParams, (fixedPR !== undefined) ? innerPert.RPM : undefined);
       const QCout_pert = calcQCout(geom, TC + 0.001, fixedTemps.T0, fixedTemps.TF, fixedTemps.TR, innerPert.PR, { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm }, freezerPosition, condenserConfig.backCondenserEfficiency);
-      const h_cond_exit_pert = prop.liquidEnthalpy(TC + 0.001 - subcool);
+      const h_cond_exit_pert = prop.liquidEnthalpy(innerPert.Tsubcool);
       const h_discharge_pert = prop.gasEnthalpy(dischargeTemp + KELVIN_OFFSET, prop.satPressure(TC + 0.001 + KELVIN_OFFSET));
-      const F3_pert = QCout_pert.QCout - (compOuter_pert.massFlow * (h_discharge_pert - h_cond_exit_pert) / 3.6);
+      const F3_pert = QCout_pert.QCout - (compOuter_pert.massFlow * (h_discharge_pert - h_cond_exit_pert) / 3.6) * innerPert.PR;
+      console.log(`F3_pert=${F3_pert.toFixed(2)}`);
       TC -= Math.max(-5, Math.min(5, F3 / ((F3_pert - F3) / 0.001)));
     } else {
       if (prevF3 !== undefined && prevTC !== undefined) TC -= Math.max(-5, Math.min(5, F3 / ((F3 - prevF3) / (Math.abs(TC - prevTC) < 1e-6 ? 1e-6 : TC - prevTC))));

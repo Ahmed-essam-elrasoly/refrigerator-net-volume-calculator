@@ -19,6 +19,6 @@ node_modules/
 *.tmp
 ~$*
 src/releases
-documents
+documents/old
 design_data
 backups

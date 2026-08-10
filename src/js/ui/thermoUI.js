@@ -34,7 +34,6 @@ import * as XLSX from 'xlsx';
 
 // Module-level state for advanced parameters
 let thermalAdvanced = {
-  subcool: SJ54H_COMPONENTS.subcool_K,
   dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
   fanInputPower: SJ54H_COMPONENTS.fan.inputPower_W,
   defHeater: SJ54H_COMPONENTS.electrical.defrostHeater_W,
@@ -844,7 +843,7 @@ function handleRun() {
   const freezerPosition = nComps === 1 ? 'top' : hasFreezer ? 'top' : 'bottom';
   
   const config = buildDefaultConfig({
-    geom, freezerPosition, refrigerant, subcool: thermalAdvanced.subcool,
+    geom, freezerPosition, refrigerant, 
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { 
@@ -855,7 +854,8 @@ function handleRun() {
       timerPeriod_h: thermalAdvanced.timerPeriod,
       Damp: thermalAdvanced.Damp
     },
-    evapGeom: evapParam // Pass the validated and calculated geometry explicitly
+    evapGeom: evapParam,
+    evaporator: evapParam,// Pass the validated and calculated geometry explicitly
   });
   if (settings.condenser) {
     config.condenserConfig = {
@@ -867,7 +867,8 @@ function handleRun() {
   
   // REMOVE the old, duplicated line: config.evapGeom = settings.evaporator || {};
   config.fanParam = fanParam;
-
+  config.evapGeom = evapParam;
+  config.evaporator = evapParam; // <--- ADD THIS LINE
   const defaultCompParams = config.compParams;
   loadCompressors();
   const compressor = getCurrentCompressor();
@@ -991,7 +992,7 @@ function handleInverterRun() {
   const freezerPos = (compartments?.length === 1) ? 'top' : (compartments && compartments[0].type === 'freezer' ? 'top' : 'bottom');
 
   const config = buildDefaultConfig({
-    geom, freezerPosition: freezerPos, refrigerant, subcool: thermalAdvanced.subcool,
+    geom, freezerPosition: freezerPos, refrigerant, 
     dischargeTemp: thermalAdvanced.dischargeTemp, fixedTemps: { T0, TF, TR, TE: SJ54H_COMPONENTS.initialTE },
     fan: { fanAirflow_m3h: fanFlow, totalAirflow: fanFlow, inputPower_W: thermalAdvanced.fanInputPower },
     electrical: { 
@@ -1007,7 +1008,8 @@ function handleInverterRun() {
       backPipePitch_mm: settings.condenser?.backPipePitch_mm ?? 200,
       backCondenserEfficiency: 0.7, backCondenser: 'Yes',
     },
-    evapGeom: evapParam // Pass the validated and calculated geometry explicitly
+    evapGeom: evapParam, // Pass the validated and calculated geometry explicitly
+    evaporator: evapParam // Add this directly into the builder payload
   });
 
   loadCompressors();
@@ -1035,6 +1037,9 @@ function handleInverterRun() {
     showError('Evaporator area is not set. Please configure in Advanced Settings.');
     return;
   }
+  config.fanParam = fanParam;
+  config.evapGeom = evapParam;
+  config.evaporator = evapParam; // <--- ADD THIS LINE
   const result = runThermoAnalysis(config);
   if (!result.success) { showError(result.errors.join('; '), 'inverterErrors'); return; }
   if (result.warnings.length) showWarnings(result.warnings, 'inverterErrors');
@@ -1279,7 +1284,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr class="section-header"><td colspan="2">Energy Consumption</td></tr>
         <tr><td>Daily energy</td><td>${eW} kWh</td></tr>
         <tr><td>Monthly energy</td><td>${eKWh} kWh</td></tr>
-        <tr><td>energy Rank</td><td>Rank_27 = ${Rank_27} <br> Rank_29 = ${Rank_29} <br> Rank_31 = ${Rank_31}</td></tr>
+        <tr><td>IEE / Rank</td><td>IEE_27 = ${fmt(IEE_27, 2) * 100} % => Rank_27 = ${Rank_27} <br> IEE_29 = ${fmt(IEE_29, 2) * 100}% => Rank_29 = ${Rank_29} <br> IEE_31 = ${fmt(IEE_31, 2) * 100}% => Rank_31 = ${Rank_31}</td></tr>
 
         <tr class="section-header"><td colspan="2">Heat Loads (W)</td></tr>
         <tr><td>QF — Freezer compartment</td><td>${fmt(res.heatLoads.QF)}</td></tr>

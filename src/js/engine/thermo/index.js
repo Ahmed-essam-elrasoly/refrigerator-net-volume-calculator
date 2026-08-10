@@ -32,8 +32,8 @@ export function runThermoAnalysis(config) {
 
   // 1. Core payload validation
   const required = [
-    'geom', 'compParams', 'condenserConfig', 'refrigerant',
-    'subcool', 'dischargeTemp', 'fixedTemps', 'fan', 'electrical', 'evapGeom'
+    'geom', 'compParams', 'condenserConfig', 'refrigerant'
+    , 'dischargeTemp', 'fixedTemps', 'fan', 'electrical', 'evapGeom'
   ];
   for (const key of required) {
     if (config[key] === undefined) errors.push(`Missing required config field: ${key}`);
@@ -71,7 +71,6 @@ export function runThermoAnalysis(config) {
       compParams: config.compParams,
       condenserConfig: config.condenserConfig,
       refrigerant: config.refrigerant,
-      subcool: config.subcool,
       dischargeTemp: config.dischargeTemp,
       fixedTemps: config.fixedTemps,
       fan: config.fan,
@@ -159,7 +158,6 @@ export function buildDefaultConfig(overrides = {}) {
       backCondenser: 'Yes',
     },
     refrigerant: 'R-600a',
-    subcool: SJ54H_COMPONENTS.subcool_K,
     dischargeTemp: SJ54H_COMPONENTS.dischargeTemp_C,
     fixedTemps: {
       T0: 30,
