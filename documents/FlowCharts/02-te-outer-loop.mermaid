@@ -1,0 +1,35 @@
+%% MODULE: solver.js — runThermalAnalysisDynamic(config)
+%% ROLE: OUTER TE LOOP (max 15 iterations) — re-estimates evaporator temperature TE
+%% via NTU-effectiveness until it agrees with the TC-loop's solved state.
+%% Legend: blue=process · amber=decision · green=success return · red=failure return · gray-dashed=call into another module
+
+flowchart TD
+
+DYN0["TE = config.initialTE"] --> DYN1["i = 0"]
+DYN1 --> DYN2["result = solveThermalSystem(config, TE)<br/>→ see 03-tc-secant-loop.mermaid"]
+DYN2 --> DYN3{"result.converged?"}
+DYN3 -- No --> DYNF["return result (failure propagates up)"]
+DYN3 -- Yes --> DYN4["error = calculateNewTE(result, fan, evapGeom, TF, TR) - TE<br/>(NTU-effectiveness re-estimate of TE)"]
+DYN4 --> DYN5{"abs(error) < 0.1?"}
+DYN5 -- Yes --> DYN6["result.TE = TE + error<br/>call evaluateSafetyCheckpoints(result, config, TE+error)<br/>→ see 09-safety-and-peripheral.mermaid"]
+DYN6 --> DYNOK["return result (converged)"]
+DYN5 -- No --> DYN7{"i > 0 and<br/>prevError defined?"}
+DYN7 -- Yes --> DYN7a["TE += clamp(-3..3,<br/>-error*(TE-prevTE)/(error-prevError))<br/>(secant-style update)"]
+DYN7 -- No --> DYN7b["TE += 0.5 * error"]
+DYN7a --> DYN8["prevTE = TE (pre-update)<br/>prevError = error<br/>i++"]
+DYN7b --> DYN8
+DYN8 --> DYN9{"i < 15?"}
+DYN9 -- Yes --> DYN2
+DYN9 -- No --> DYNF2["return converged:false,<br/>error:'Thermodynamic imbalance: TE loop failed.'"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef external fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+
+class DYN0,DYN1,DYN4,DYN6,DYN7a,DYN7b,DYN8 process
+class DYN3,DYN5,DYN7,DYN9 decision
+class DYNOK success
+class DYNF,DYNF2 fail
+class DYN2 external

@@ -1,0 +1,96 @@
+%% MODULE: solver.js — evaluateSafetyCheckpoints(result, config, TE_conv)
+%% ROLE: post-convergence sanity checks + a 43°C peak-load re-solve
+%% PLUS: the two pieces of code that are NOT part of the live solve pipeline —
+%% validateHeatLoad.js (dead code) and EnergyConsumption() (called by the UI after the fact).
+%% Legend: blue=process · amber=decision · green=success return · red=failure/error path ·
+%% gray-dashed=call into another module · dark-red-dashed=dead code
+
+flowchart TD
+
+subgraph SAFE["solver.js — evaluateSafetyCheckpoints(result, config, TE_conv)<br/>POST-CONVERGENCE SANITY CHECKS"]
+  SAFE0["warnings = result.warnings || []"] --> SAFE1{"TE_conv > result.T2?"}
+  SAFE1 -- Yes --> SAFE1a["warnings.push('Approach constraint<br/>flagged: TE > T2.')"]
+  SAFE1 -- No --> SAFE2{"(result.T2 - TE_conv) > 2?"}
+  SAFE2 -- Yes --> SAFE2a["warnings.push('Approach constraint<br/>flagged: T2 - TE > 2C.')"]
+  SAFE1a --> SAFE3
+  SAFE2 -- No --> SAFE3
+  SAFE2a --> SAFE3["peakConfig = clone config, T0=43C<br/>inverter? RPM=rpmMax, PR=1.0<br/>: constant-speed? PR=0.95"]
+  SAFE3 --> SAFE4["peakResult = solveThermalSystem(peakConfig, TE_conv)<br/>→ see 03-tc-secant-loop.mermaid"]
+  SAFE4 --> SAFE5{"peakResult.converged?"}
+  SAFE5 -- No --> SAFE5a["warnings.push('Peak heat load flagged:<br/>system cannot balance at 43C.')"]
+  SAFE5 -- Yes --> SAFE6["recompute UA at nominal conditions<br/>LMTD_val = lmtd(mixed T1, result.T2,<br/>result.T2 - 2)  *** uses T2-2 as a stand-in<br/>for TE, not the real solved TE ***<br/>→ lmtd() in 10-evaporator-helpers.mermaid"]
+  SAFE6 --> SAFE7{"UA * LMTD_val <<br/>1.15 * peakResult.heatLoads.totalLoad?"}
+  SAFE7 -- Yes --> SAFE7a["warnings.push('Evaporator lacks 15%<br/>physical safety margin at 43C ambient.')"]
+  SAFE7 -- No --> SAFEOK
+  SAFE7a --> SAFEOK["return result (with warnings)"]
+  SAFE5a --> SAFEOK
+end
+
+subgraph VAL["validateHeatLoad.js — validateHeatLoad(geom, temps, calculatedLoads)<br/>*** STANDALONE — imported in index.js but NEVER actually invoked<br/>inside runThermoAnalysis in the current source.<br/>DEAD CODE — safe to delete or wire in, but not both. ***"]
+  VAL0["errors=[]; warnings=[]"] --> VAL1{"T0/TF/TR<br/>all numbers?"}
+  VAL1 -- No --> VAL1a["errors.push('Missing or invalid<br/>temperature inputs.')"]
+  VAL1 -- Yes --> VAL2{"TF >= TR?"}
+  VAL1a --> VAL3
+  VAL2 -- Yes --> VAL2a["errors.push('Freezer temp warmer than<br/>or equal to Refrigerator temp.')"]
+  VAL2 -- No --> VAL2b{"TR >= T0?"}
+  VAL2a --> VAL2b
+  VAL2b -- Yes --> VAL2c["errors.push('Refrigerator temp warmer<br/>than or equal to Ambient temp.')"]
+  VAL2b -- No --> VAL3
+  VAL2c --> VAL3["for each of 5 critical insulation points<br/>(F-top/left/right, R-top/left):"]
+  VAL3 --> VAL4{"value undefined?"}
+  VAL4 -- Yes --> VAL4a["errors.push('Missing insulation<br/>thickness for X.')"]
+  VAL4 -- No --> VAL5{"value < 30mm?"}
+  VAL5 -- Yes --> VAL5a["warnings.push('X insulation extremely<br/>thin, expect massive heat leaks.')"]
+  VAL4a --> VAL6
+  VAL5 -- No --> VAL6
+  VAL5a --> VAL6{"calculatedLoads<br/>provided?"}
+  VAL6 -- No --> VAL6a["errors.push('No calculated loads<br/>provided for validation.')"]
+  VAL6 -- Yes --> VAL7{"QF < 0?"}
+  VAL7 -- Yes --> VAL7a["errors.push('Freezer heat load<br/>is negative.')"]
+  VAL7 -- No --> VAL8{"QR < 0?"}
+  VAL8 -- Yes --> VAL8a["errors.push('Refrigerator heat load<br/>is negative.')"]
+  VAL7a --> VAL9
+  VAL8 -- No --> VAL9
+  VAL8a --> VAL9["totalLoad = QF+QR+(QEV||0)"]
+  VAL9 --> VAL10{"totalLoad > 200?"}
+  VAL10 -- Yes --> VAL10a["warnings.push('Total heat load<br/>extremely high, most compressors<br/>will fail to satisfy demand.')"]
+  VAL6a --> VAL11
+  VAL10 -- No --> VAL11
+  VAL10a --> VAL11{"temps.TE defined<br/>and TE >= temps.TF?"}
+  VAL11 -- Yes --> VAL11a["errors.push('Evaporator temperature<br/>must be lower than Freezer temperature.')"]
+  VAL11 -- No --> VALOK
+  VAL11a --> VALOK["return {isValid: errors.length===0,<br/>errors, warnings}"]
+end
+
+subgraph ENERGY["solver.js — EnergyConsumption(result)<br/>*** Called by thermoUI.js (UI layer) AFTER<br/>runThermoAnalysis() returns — NOT invoked<br/>internally within the solver pipeline itself ***"]
+  ENERGY0{"result.converged<br/>=== false?"}
+  ENERGY0 -- Yes --> ENERGYNAN["return NaN"]
+  ENERGY0 -- No --> ENERGY1["activeCyclePower = (compPower+fanPower+pwbOn)*PR<br/>offCyclePower = pwbOff*(1-PR)<br/>dailyBaseEnergy_kWh = (active+off)*24/1000"]
+  ENERGY1 --> ENERGY2["actualDefrostInterval = timerPeriod_h/PR<br/>defrostEventsPerDay = 24/actualDefrostInterval<br/>dailyDefrostEnergy_kWh = (defOnMin/60)*defHeater*events/1000"]
+  ENERGY2 --> ENERGYOK["return {EnergyConsumption_kWhDay: base+defrost,<br/>EnergyConsumption_kWhMonth: daily*30}"]
+end
+
+IDXOK["(index.js: successful result)"] -.-> ENERGYNOTE["thermoUI.js calls EnergyConsumption(result)<br/>here, using the successful output"]
+ENERGYNOTE -.-> ENERGY0
+IDX1NOTE["(index.js: entry point)"] -.never calls.-> VAL0
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef external fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+classDef dead fill:#7a1f1f,color:#fff,stroke:#4a0f0f,stroke-dasharray: 5 5
+
+class SAFE0,SAFE1a,SAFE2a,SAFE3,SAFE6,SAFE5a,SAFE7a process
+class SAFE1,SAFE2,SAFE5,SAFE7 decision
+class SAFEOK success
+class SAFE4 external
+
+class VAL0,VAL1a,VAL2a,VAL2c,VAL3,VAL4a,VAL5a,VAL6a,VAL7a,VAL8a,VAL9,VAL10a,VAL11a dead
+class VAL1,VAL2,VAL2b,VAL4,VAL5,VAL6,VAL7,VAL8,VAL10,VAL11 dead
+class VALOK dead
+
+class ENERGY1,ENERGY2 external
+class ENERGY0 external
+class ENERGYOK,ENERGYNAN external
+class IDXOK,ENERGYNOTE,IDX1NOTE external

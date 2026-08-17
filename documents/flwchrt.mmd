@@ -1,0 +1,425 @@
+flowchart TD
+
+START(("runThermoAnalysis(config)<br/>ENTRY POINT")) --> IDX1
+
+subgraph IDX["index.js — runThermoAnalysis(config)"]
+  IDX1{"config provided?"} -- No --> IDXF1["errors.push('No configuration provided.')<br/>return success:false"]
+  IDX1 -- Yes --> IDX2["Check required keys:<br/>geom, compParams, condenserConfig, refrigerant,<br/>subcool, dischargeTemp, fixedTemps, fan, electrical, evapGeom"]
+  IDX2 --> IDX3{"any key missing?"}
+  IDX3 -- Yes --> IDX3a["errors.push('Missing required config field: key')<br/>(for each missing key)"]
+  IDX3 -- No --> IDX4
+  IDX3a --> IDX4{"fixedTemps.T0/TF/TR/TE<br/>all numeric?"}
+  IDX4 -- No --> IDX4a["errors.push('fixedTemps must contain<br/>numeric T0, TF, TR, TE')"]
+  IDX4 -- Yes --> IDX5
+  IDX4a --> IDX5{"config.fan present?"}
+  IDX5 -- Yes --> IDX5a{"fan.fanAirflow_m3h set?"}
+  IDX5a -- No --> IDX5b["errors.push('fan.fanAirflow_m3h is required.')"]
+  IDX5a -- Yes --> IDX5c["set fan.density, fan.cp defaults<br/>from PHYSICAL_CONSTANTS if absent"]
+  IDX5 -- No --> IDX6
+  IDX5b --> IDX6
+  IDX5c --> IDX6{"errors.length > 0?"}
+  IDX6 -- Yes --> IDXF2["return success:false, errors, results:null"]
+  IDX6 -- No --> IDX7["Build solverOptions:<br/>TC0=54.4, DH=0.001, tolOuter=0.0005,<br/>maxIterOuter=100 (default),<br/>innerOptions{dx:0.001, tol:1e-4, maxIter:100}<br/>merged with config.solverOptions"]
+  IDX7 --> IDX8{"config.inverterPR<br/>defined?"}
+  IDX8 -- Yes --> IDX8a["solverOptions.inverterPR = config.inverterPR"]
+  IDX8 -- No --> IDX9
+  IDX8a --> IDX9["TRY: call runThermalAnalysisDynamic(<br/>merged config + solverOptions)"]
+  IDX9 -.calls.-> DYN0
+  DYN0 -.returns result.-> IDX10
+  IDX10{"exception thrown?"}
+  IDX10 -- Yes --> IDXF3["CATCH: errors.push('Unexpected error: msg')<br/>return success:false"]
+  IDX10 -- No --> IDX11{"result.converged?"}
+  IDX11 -- No --> IDXF4["errors.push(result.error ||<br/>'Thermal solver did not converge.')<br/>return success:false"]
+  IDX11 -- Yes --> IDX12["Structure output payload:<br/>TC, Tsubcool, T2, PR, TE, heatLoads,<br/>compressor{massFlow,coolingCapacity,inputPower,<br/>etaV,Pe,Pc,COP}, fan, electrical,<br/>iterations{outer,innerTotal}, MR, MF, T3"]
+  IDX12 --> IDX13{"result.RPM<br/>defined?"}
+  IDX13 -- Yes --> IDX13a["output.RPM = result.RPM"]
+  IDX13 -- No --> IDX14
+  IDX13a --> IDX14["warnings.push(...result.warnings)<br/>if any"]
+  IDX14 --> IDX15{"result.PR >= 1?"}
+  IDX15 -- Yes --> IDX15a["warnings.push('Running ratio 100% —<br/>system may be undersized')"]
+  IDX15 -- No --> IDX16{"result.PR <= 0.1?"}
+  IDX16 -- Yes --> IDX16a["warnings.push('Running ratio very low —<br/>check heat load inputs')"]
+  IDX15a --> IDXOK
+  IDX16 -- No --> IDXOK
+  IDX16a --> IDXOK["return success:true, errors:[], warnings, results:output"]
+end
+
+subgraph DYN["solver.js — runThermalAnalysisDynamic(config)<br/>OUTER TE LOOP  (max 15 iterations)"]
+  DYN0["TE = config.initialTE"] --> DYN1["i = 0"]
+  DYN1 --> DYN2["result = solveThermalSystem(config, TE)"]
+  DYN2 -.calls.-> TCS0
+  TCS0 -.returns.-> DYN3
+  DYN3{"result.converged?"}
+  DYN3 -- No --> DYNF["return result (failure propagates up)"]
+  DYN3 -- Yes --> DYN4["error = calculateNewTE(result, fan, evapGeom, TF, TR) - TE<br/>(uses NTU-effectiveness re-estimate of TE)"]
+  DYN4 --> DYN5{"abs(error) < 0.1?"}
+  DYN5 -- Yes --> DYN6["result.TE = TE + error<br/>call evaluateSafetyCheckpoints(result, config, TE+error)"]
+  DYN6 -.calls.-> SAFE0
+  SAFE0 -.returns.-> DYNOK["return result (converged)"]
+  DYN5 -- No --> DYN7{"i > 0 and<br/>prevError defined?"}
+  DYN7 -- Yes --> DYN7a["TE += clamp(-3..3,<br/>-error*(TE-prevTE)/(error-prevError))<br/>(secant-style update)"]
+  DYN7 -- No --> DYN7b["TE += 0.5 * error"]
+  DYN7a --> DYN8["prevTE = TE (pre-update)<br/>prevError = error<br/>i++"]
+  DYN7b --> DYN8
+  DYN8 --> DYN9{"i < 15?"}
+  DYN9 -- Yes --> DYN2
+  DYN9 -- No --> DYNF2["return converged:false,<br/>error:'Thermodynamic imbalance: TE loop failed.'"]
+end
+
+subgraph TCS["solver.js — solveThermalSystem(config, TE_override)<br/>OUTER TC SECANT LOOP  (max maxIterOuter, default 100)"]
+  TCS0{"evapGeom missing?"} -- Yes --> TCSTHROW["throw Error('evapGeom missing from config')"]
+  TCS0 -- No --> TCS1["TE = TE_override ?? config.initialTE<br/>fixedPR = config.inverterPR<br/>TC = TC0 (default 45 or from solverOptions)"]
+  TCS1 --> TCS2["iter = 0"]
+  TCS2 --> TCS3{"TC < T0?"}
+  TCS3 -- Yes --> TCS3a["TC = T0 + 2"]
+  TCS3 -- No --> TCS4
+  TCS3a --> TCS4{"TC > 90?"}
+  TCS4 -- Yes --> TCS4a["TC = 90"]
+  TCS4 -- No --> TCS5
+  TCS4a --> TCS5["inner = solveInner(TC, geom, compParams, refrigerant,<br/>subcool, fixedTemps, fan, electrical, condenserConfig,<br/>TE, freezerPosition, innerOptions, fixedPR, evapGeom)"]
+  TCS5 -.calls.-> INR0
+  INR0 -.returns.-> TCS6
+  TCS6{"inner.converged?"}
+  TCS6 -- No --> TCS6a{"inner.error contains<br/>'undersized'?"}
+  TCS6a -- Yes --> TCSF1["return createFailure(TC, 'Compressor undersized.', inner)"]
+  TCS6a -- No --> TCS6b{"inner.error contains<br/>'oversized'?"}
+  TCS6b -- Yes --> TCSF2["return createFailure(TC, 'Compressor oversized.', inner)"]
+  TCS6b -- No --> TCS6c{"inner.error contains<br/>'SLHX'?"}
+  TCS6c -- Yes --> TCSF3["return createFailure(TC, inner.error, inner)"]
+  TCS6c -- No --> TCSF4["return createFailure(TC, 'Inner loop failed.', inner)"]
+  TCS6 -- Yes --> TCS7["totalInner += inner.iterations<br/>prevInner = {T2, PR, RPM}"]
+  TCS7 --> TCS8["QCout = calcQCout(geom, TC, T0, TF, TR, inner.PR,<br/>PIPEPITCH, freezerPosition, backCondenserEfficiency)"]
+  TCS8 -.calls.-> COND0
+  COND0 -.returns.-> TCS9
+  TCS9["compOuter = evaluateCompressorSafely(TE, TC,<br/>refIndex, compParams, inner.RPM)"]
+  TCS9 -.calls.-> CMP0
+  CMP0 -.returns.-> TCS10
+  TCS10["h_cond_exit = liquidEnthalpy(TC-subcool)<br/>h_discharge = gasEnthalpy(dischargeTemp, satPressure(TC))<br/>F3 = QCout.QCout - massFlow*(h_discharge-h_cond_exit)/3.6"]
+  TCS10 --> TCS11{"abs(F3) < tolOuter?"}
+  TCS11 -- Yes --> TCSOK["return TC, T2, PR, T3, RPM, TE, Pe, Pc, Tsubcool,<br/>converged:true, outerIterations, innerTotalIterations,<br/>heatLoads, compressor, MR, MF, fan, electrical"]
+  TCS11 -- No --> TCS12["TRY: innerPert = solveInner(TC+0.001, ...same args)"]
+  TCS12 -.calls.-> INR0
+  TCS12 --> TCS13{"innerPert.converged?<br/>(no exception)"}
+  TCS13 -- Yes --> TCS14["compOuter_pert = evaluateCompressorSafely(...)<br/>QCout_pert = calcQCout(TC+0.001, ...)<br/>F3_pert = QCout_pert - massFlow_pert*(h_disch_pert-h_cond_pert)/3.6"]
+  TCS14 --> TCS15["TC -= clamp(-5..5,<br/>F3 / ((F3_pert-F3)/0.001))"]
+  TCS13 -- No --> TCS16{"prevF3 and prevTC<br/>defined?"}
+  TCS16 -- Yes --> TCS16a["TC -= clamp(-5..5,<br/>F3 / ((F3-prevF3)/(TC-prevTC)))<br/>(secant using prior outer iteration)"]
+  TCS16 -- No --> TCS16b["TC += (F3 > 0 ? -0.5 : 0.5)"]
+  TCS15 --> TCS17["prevF3 = F3; prevTC = TC; iter++"]
+  TCS16a --> TCS17
+  TCS16b --> TCS17
+  TCS17 --> TCS18{"iter < maxIterOuter?"}
+  TCS18 -- Yes --> TCS3
+  TCS18 -- No --> TCSF5["return createFailure(TC,<br/>'Outer loop max iterations reached', prevInner)"]
+end
+
+subgraph INR["solver.js — solveInner(...)<br/>2-D NEWTON SOLVE for [T2, PR-or-RPM]"]
+  INR0["isInverterMode = compParams.isInverter<br/>&& fixedPR !== undefined"] --> INR1{"isInverterMode?"}
+  INR1 -- Yes --> INR1a["bounds = [[-80,20],[rpmMin,rpmMax]]<br/>initialGuess = [-21.25, initialRPM ?? 3000]"]
+  INR1 -- No --> INR1b["bounds = [[-80,20],[0.001,0.999]]<br/>(or forced to forcePR if set)<br/>initialGuess = [-21.25, forcePR ?? initialPR ?? 0.59]"]
+  INR1a --> INR2
+  INR1b --> INR2["define F(vars) = [f1, f2]:"]
+  INR2 --> INRF1["loads = calcHeatLoads(geom, {...fixedTemps,T2,TC,PR,TE:-25},<br/>electrical, PIPEPITCH, backCondenserEfficiency,<br/>fan.inputPower_W, freezerPos, backCondenser)"]
+  INRF1 -.calls.-> HL0
+  HL0 -.returns.-> INRF2
+  INRF2["v_ms = (fan.fanAirflow_m3h/3600) / faceArea_m2<br/>alpha = 12.93 * v_ms^0.415 * 1.16279<br/>UA = alpha * evapGeom.evapArea_m2<br/>LMTD_req = (QF+QR+QEV) / PR / UA"]
+  INRF2 --> INRF3["T3 = T2 + QEV/(Flow*CV*PR)<br/>MR = clamp(0, Flow, QR/(CV*max(0.01,TR-T3)*PR*Damp))<br/>MF = Flow - MR<br/>T1 = (MF*TF + MR*TR) / Flow"]
+  INRF3 --> INRF4{"isInverterMode and<br/>RPM out of [rpmMin,rpmMax]?<br/>OR !isInverterMode and<br/>PR out of [0.001,0.999]?"}
+  INRF4 -- Yes --> INRFerr["return {error: 'RPM/PR out of bounds'}"]
+  INRF4 -- No --> INRF5["calculated_TE = solveTE_Brent(T1, T2, LMTD_req)"]
+  INRF5 -.calls.-> BR0
+  BR0 -.returns.-> INRF6
+  INRF6{"isFinite(calculated_TE)?"}
+  INRF6 -- No --> INRFerr2["return {error: 'TE search failed: LMTD impossible'}"]
+  INRF6 -- Yes --> INRF7["comp = evaluateCompressorSafely(calculated_TE, TC,<br/>refIndex, compParams, RPM)"]
+  INRF7 -.calls.-> CMP0
+  CMP0 -.returns.-> INRF8
+  INRF8["SLHX energy balance:<br/>T_cond_exit=TC-subcool; h_liq_cond_exit=liquidEnthalpy(...)<br/>T_suction_actual=min(30,T_cond_exit)<br/>h_suc_out/h_suc_in via gasEnthalpy<br/>h_liq_exp_in = h_liq_cond_exit - max(0,h_suc_out-h_suc_in)<br/>clamp to liquidEnthalpy(TE) floor"]
+  INRF8 --> INRF9["comp.QCompressor = massFlow*(hGas_TE-h_liq_exp_in)/3.6<br/>Tsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in)<br/>(bisection, 50 iters)"]
+  INRF9 --> INRF10["f1 = QF - MF*CV*(TF-T3)*PR<br/>f2 = (QF+QR+QEV) - QCompressor*PR<br/>return [f1, f2]"]
+  INRF10 --> INR3["res = newton2(F, initialGuess, [dx,dx],<br/>tol, maxIter, bounds)"]
+  INR3 -.calls.-> N20
+  N20 -.returns.-> INR4
+  INR4{"res.converged?"}
+  INR4 -- Yes --> INR9
+  INR4 -- No --> INR5{"error is<br/>'undersized' or<br/>'oversized' limit?"}
+  INR5 -- Yes --> INR9
+  INR5 -- No --> INR6["build fallback guesses list<br/>(inverter: mid/min/max RPM combos;<br/>constant: PR 0.4/0.5/0.3 combos)"]
+  INR6 --> INR7["for each fallback guess:<br/>res = newton2(F, guess, ...)"]
+  INR7 -.calls.-> N20
+  INR7 --> INR8{"any guess<br/>converged?"}
+  INR8 -- Yes --> INR9
+  INR8 -- No --> INRFAIL["return {...res, T2:res.x[0],<br/>PR or RPM: res.x[1], converged:false}"]
+  INR9{"res.converged?"}
+  INR9 -- No --> INRFAIL
+  INR9 -- Yes --> INR10["Recompute final state at solution x:<br/>loads = calcHeatLoads(...)<br/>comp = evaluateCompressorSafely(...)<br/>re-apply SLHX capacity + Tsubcool<br/>T3, MR, MF, T1 recomputed"]
+  INR10 --> INROK["return {T2,PR,RPM,TE,converged:true,<br/>iterations, warning, heatLoads,<br/>compressor{etaV,coolingCapacity,inputPower,<br/>COP,massFlow,Pe,Pc}, MR, MF, T3, Tsubcool, T1}"]
+end
+
+subgraph N2["solver.js — newton2(F, x0, dx, tol, maxIter, bounds)<br/>GENERIC 2-D NEWTON-RAPHSON + ARMIJO BACKTRACKING LINE SEARCH"]
+  N20["x = x0; f = F(x0)"] --> N21{"f.error?"}
+  N21 -- Yes --> N2FAIL0["return converged:false,<br/>error:'Initial F(x) failed'"]
+  N21 -- No --> N22["normF = sqrt(f0^2+f1^2)<br/>i = 0"]
+  N22 --> N23{"normF <= tol?"}
+  N23 -- Yes --> N2OK["return converged:true, x, f, normF, iterations:i+1"]
+  N23 -- No --> N24["compute Jacobian J via finite differences<br/>(h = max(1e-7, abs(x_j)*1e-6);<br/>perturb backward if forward exceeds upper bound)"]
+  N24 --> N25{"F(x+h) threw<br/>an error?"}
+  N25 -- Yes --> N2FAIL1["return converged:false,<br/>error:'Jacobian failed: msg'"]
+  N25 -- No --> N26["det = J00*J11 - J01*J10"]
+  N26 --> N27{"abs(det) > 1e-12?"}
+  N27 -- Yes --> N27a["direction = -inv(J) * f<br/>(closed-form 2x2 solve)"]
+  N27 -- No --> N27b["direction = gradient-descent step<br/>= -(J^T * f)"]
+  N27b --> N27c{"norm(direction) < 1e-12?"}
+  N27c -- Yes --> N2FAIL2["return converged:false,<br/>error:'Saddle point.'"]
+  N27c -- No --> N28
+  N27a --> N28["clamp direction:<br/>maxStepT2=5.0<br/>maxStepVar2 = domainSpan>2 ? 500 : 0.15"]
+  N28 --> N29["alpha = 1.0; bt = 0"]
+  N29 --> N30["newX = clamp(x + alpha*direction, bounds)"]
+  N30 --> N31{"F(newX) threw?"}
+  N31 -- Yes --> N31a["alpha *= 0.5; bt++"]
+  N31 -- No --> N32["newNorm = sqrt(newF0^2+newF1^2)<br/>Armijo: newNorm < normF*(1 - 1e-4*alpha) ?"]
+  N32 --> N33{"enoughDecrease?"}
+  N33 -- Yes --> N34["accept step: x=newX, f=newF, normF=newNorm"]
+  N33 -- No --> N31a
+  N31a --> N35{"bt < 15?"}
+  N35 -- Yes --> N30
+  N35 -- No --> N36{"line search<br/>exhausted (bt=15)"}
+  N36 --> N37{"x[1] at lower bound<br/>and direction[1] < 0?"}
+  N37 -- Yes --> N2WARN1["return converged:true,<br/>warning:'Compressor oversized limit.'"]
+  N37 -- No --> N38{"x[1] at upper bound<br/>and direction[1] > 0?"}
+  N38 -- Yes --> N2WARN2["return converged:true,<br/>warning:'Compressor undersized limit.'"]
+  N38 -- No --> N2FAIL3["return converged:false,<br/>error:'Line search failed.'"]
+  N34 --> N39["i++"]
+  N39 --> N40{"i < maxIter?"}
+  N40 -- Yes --> N23
+  N40 -- No --> N2FAIL4["return converged:false,<br/>error:'Max iterations reached'"]
+end
+
+subgraph BR["solver.js — solveTE_Brent(T1, T2, LMTD_req)<br/>BRENT'S METHOD ROOT FINDER for TE"]
+  BR0["f(TE) = lmtd(T1,T2,TE) - LMTD_req<br/>(catch lmtd RangeError -> return Infinity)"] --> BR1["a = -40.0<br/>b = min(T1,T2) - 0.1"]
+  BR1 --> BR2{"f(a)*f(b) > 0<br/>and a > -65?"}
+  BR2 -- Yes --> BR2a["a -= 10"]
+  BR2a --> BR2
+  BR2 -- No --> BR3{"f(a)*f(b) > 0<br/>still (bracket failed)?"}
+  BR3 -- Yes --> BRNAN["return NaN"]
+  BR3 -- No --> BR4["fa=f(a), fb=f(b);<br/>if fa>0 swap(a,b)<br/>c=a, fc=fa, mflag=true, iter=0"]
+  BR4 --> BR5{"fa != fc<br/>and fb != fc?"}
+  BR5 -- Yes --> BR5a["s = inverse quadratic interpolation<br/>using a,b,c,fa,fb,fc"]
+  BR5 -- No --> BR5b["s = secant: b - fb*(b-a)/(fb-fa)"]
+  BR5a --> BR6
+  BR5b --> BR6{"s outside [(3a+b)/4, b] OR<br/>(mflag and |s-b|>=|b-c|/2) OR<br/>(!mflag and |s-b|>=|c-d|/2) OR<br/>(mflag and |b-c|<tol) OR<br/>(!mflag and |c-d|<tol)?"}
+  BR6 -- Yes --> BR6a["s = (a+b)/2 (bisection)<br/>mflag = true"]
+  BR6 -- No --> BR6b["mflag = false"]
+  BR6a --> BR7
+  BR6b --> BR7["fs = f(s); d=c; c=b; fc=fb"]
+  BR7 --> BR8{"fa*fs < 0?"}
+  BR8 -- Yes --> BR8a["b = s; fb = fs"]
+  BR8 -- No --> BR8b["a = s; fa = fs"]
+  BR8a --> BR9
+  BR8b --> BR9{"abs(fa) < abs(fb)?"}
+  BR9 -- Yes --> BR9a["swap(a,b), swap(fa,fb)"]
+  BR9 -- No --> BR10
+  BR9a --> BR10{"abs(b-a) < tol<br/>or fb == 0?"}
+  BR10 -- Yes --> BROK["return b"]
+  BR10 -- No --> BR11["iter++"]
+  BR11 --> BR12{"iter < 100?"}
+  BR12 -- Yes --> BR5
+  BR12 -- No --> BROK2["return b (best estimate)"]
+end
+
+subgraph HL["heatLoad.js — calcHeatLoads(geom, temps, electrical,<br/>PIPEPITCH, backCondenserEfficiency, fanInputPower_W,<br/>freezerPosition, backCondenser)"]
+  HL0["Compute K_side, K_back (pitch correction)<br/>T_compZone, TRise_side/back, T_wallSide/back<br/>flags: isTopFreezer, isBackCondenserAbsent,<br/>hasFreezer=Hf>0, hasFresh=Hr>0"] --> HL1{"hasFreezer?"}
+
+  HL1 -- Yes --> HL2["Compute AFtop, AFdoor, AFpackin,<br/>AFleft1/2, AFright1/2<br/>(split formula differs: top-freezer<br/>vs bottom-freezer w/ compressor step)"]
+  HL2 --> HL3{"isTopFreezer?"}
+  HL3 -- Yes --> HL3a["QF += kExterior(tFtop)*AFtop*(T0-TF)"]
+  HL3 -- No --> HL3b["QF += kInterior(tFtop)*AFtop*(TR-TF)"]
+  HL3a --> HL4
+  HL3b --> HL4["QF += sides conduction:<br/>kExterior(left/right,TF,wallSide)*area1<br/>+ kExterior(left/right,T2,wallSide)*area2"]
+  HL4 --> HL5{"hasFresh?"}
+  HL5 -- No --> HL6a["QF += stepped-floor 3-zone exterior<br/>conduction (AFb1,AFb2 vs T_compZone;<br/>AFb3 vs T0)"]
+  HL5 -- Yes --> HL6{"isTopFreezer?"}
+  HL6 -- Yes --> HL6b["QF += kInterior(tFbottom)*AFbottom*(TR-TF)<br/>(single interior partition)"]
+  HL6 -- No --> HL6c["QF += stepped-floor 3-zone exterior<br/>conduction (bottom-freezer case)"]
+  HL6a --> HL7
+  HL6b --> HL7
+  HL6c --> HL7["QF += door+packing leak<br/>QF += DP partition losses<br/>(Qdpfr-style + Qdpf-style terms)"]
+  HL7 --> HL8
+  HL1 -- No --> HL8{"hasFresh?"}
+
+  HL8 -- Yes --> HL9["Compute ARdoor, ARpackin,<br/>ARtop/left/back<br/>(formula differs by isTopFreezer)"]
+  HL9 --> HL10{"isTopFreezer?"}
+  HL10 -- Yes --> HL10a["QR += kInterior(tRtop)*ARtop*(TF-TR)"]
+  HL10 -- No --> HL10b["QR += kExterior(tRtop)*ARtop*(T0-TR)"]
+  HL10a --> HL11
+  HL10b --> HL11["QR += sides conduction<br/>kExterior(left/right,TR,wallSide)*ARleft"]
+  HL11 --> HL12{"isBackCondenserAbsent?"}
+  HL12 -- Yes --> HL12a["QR += kExterior(tRback)*ARback*(T0-TR)"]
+  HL12 -- No --> HL12b["QR += kExterior(tRback)*ARback*(wallBack-TR)"]
+  HL12a --> HL13
+  HL12b --> HL13{"!hasFreezer OR<br/>isTopFreezer?"}
+  HL13 -- Yes --> HL13a["QR += stepped-floor 3-zone exterior<br/>conduction (ARb1,ARb2 vs T_compZone;<br/>ARb3 vs T0)"]
+  HL13 -- No --> HL13b["QR += kInterior(tRfloor)*ARbottom*(TF-TR)<br/>(interior — bottom-freezer, fresh on top)"]
+  HL13a --> HL14
+  HL13b --> HL14["QR += door+packing<br/>QR += DP condenser term"]
+  HL14 --> HL15
+  HL8 -- No --> HL15["Evaporator & parasitic block<br/>(always executes)"]
+
+  HL15 --> HL16["Select H_evap, wall thicknesses:<br/>hasFreezer? use freezer dims : use fresh dims<br/>tBottom_evap chosen via freezerPosition/hasFreezer"]
+  HL16 --> HL17{"isTopFreezer<br/>or !hasFreezer?"}
+  HL17 -- Yes --> HL17a["A_evaBack = (W-sides)*(H_evap-top/bottom)<br/>(simple rectangle)"]
+  HL17 -- No --> HL17b["A_evaBack = (W-sides)*(H_evap-Hb-top/bottom)<br/>(subtract compressor step height)"]
+  HL17a --> HL18
+  HL17b --> HL18{"A_evaBack > 0?"}
+  HL18 -- Yes --> HL19{"isBackCondenserAbsent?"}
+  HL19 -- Yes --> HL19a["QEV_cond = kExterior(tEvaBack,T2,T0)*A_evaBack*(T0-T2)"]
+  HL19 -- No --> HL19b["QEV_cond = kExterior(tEvaBack,T2,wallBack)*A_evaBack*(wallBack-T2)"]
+  HL18 -- No --> HL20["QEV_cond = 0"]
+  HL19a --> HL21
+  HL19b --> HL21
+  HL20 --> HL21["fanLoad = fanInputPower_W * PR<br/>defrostEventsPerDay = 24/(timerPeriod_h/PR)<br/>defrostLoad = defrostHeater*(defOnMin/60)*(events/24)"]
+  HL21 --> HLOK["return {QF, QR,<br/>QEV: QEV_cond+fanLoad+defrostLoad,<br/>fanLoad, defrostLoad,<br/>totalLoad: QF+QR+QEV_cond+fanLoad+defrostLoad}"]
+end
+
+subgraph COND["condenser.js — calcQCout(geom, TC, T0, TF, TR, PR,<br/>PIPEPITCH, freezerPosition, backCondenserEfficiency)"]
+  COND0["sideArea = f(H,D,Hb,Db1,Db2)<br/>backArea = backAreaRaw * backCondenserEfficiency<br/>K_side, K_back = quadratic pitch correction"] --> COND1["Qdpfr = partition DP formula<br/>(0.1984*(TC-T0) + 0.1219*(TC-TF))*PR*(W-tFsides)"]
+  COND1 --> COND2{"freezerPosition<br/>== 'top'?"}
+  COND2 -- Yes --> COND2a["Qdpf uses (Hf*2+W)<br/>Qdpr uses (Hr*2)"]
+  COND2 -- No --> COND2b["Qdpf uses (Hf*2)<br/>Qdpr uses (Hr*2+W)"]
+  COND2a --> COND3
+  COND2b --> COND3["Qdp = Qdpfr + Qdpf + Qdpr<br/>Qside = K_side*sideArea*(TC-T0)*1.16279<br/>Qback = K_back*backArea*(TC-T0)*1.16279"]
+  COND3 --> CONDOK["return {Qdpfr,Qdpf,Qdpr,Qdp,Qside,Qback,<br/>QCout: Qdp+Qside+Qback}"]
+end
+
+subgraph CMP["CompressorPerformance.js — RUNTIME evaluation<br/>(evaluateCompressorSafely)"]
+  CMP0{"compParams.compressorModel<br/>is an object?"}
+  CMP0 -- Yes --> CMP1["inverterCompressorPerformance(TE,TC,RPM,refIndex,model)"]
+  CMP1 --> CMP1a{"model.type == 'global'?"}
+  CMP1a -- Yes --> CMP1b["features = makeFeatures(rpmForm, RPM/normRPM,<br/>TE-centerTE, TC-centerTC)<br/>y = coeffs[0] + sum(feature_i * coeffs[i+1])<br/>logTransform? y = exp(y) : y"]
+  CMP1a -- No --> CMP1c["Piecewise: predict(RPM,TE,TC)<br/>(low-range quad model, max-RPM quad model,<br/>linear interpolation between them)"]
+  CMP1b --> CMP2
+  CMP1c --> CMP2["QCompressor = predict(Q model)<br/>CompPower = predict(W model)<br/>massFlow = QCompressor*3.6/(hGas(30C,Pe)-hLiquid(30C))<br/>Pe = satPressure(TE); Pc = satPressure(TC)"]
+  CMP0 -- No --> CMP3{"compParams.isInverter<br/>but no model?"}
+  CMP3 -- Yes --> CMPTHROW["throw Error('Inverter compressor<br/>selected but no fitted model.')"]
+  CMP3 -- No --> CMP4["compressorPower(TE,TC,refIndex,wCoeffs,<br/>etaCoeffs,cylVol,speedRpm)  [constant-speed, OLS]<br/>CompPower = AW+BW*TE+CW*TC+DW*TC*TE+EW*TE^2<br/>VolEff = A + B*(Pc/Pe) + C*Pc<br/>G = VolEff*(cylVol*speedRpm*60/1e6)/vGas<br/>QCompressor = G*(hGas-hLiq)/3.6"]
+  CMP2 --> CMPOK["return {Pe,Pc,VolumetricEfficiency,<br/>QCompressor,CompPower,massFlow}"]
+  CMP4 --> CMPOK
+end
+
+subgraph CMPFIT["CompressorPerformance.js — OFFLINE FITTING<br/>(only triggered via UI 'Add/Edit Compressor' modal —<br/>not part of the live solve loop)"]
+  CMPFIT0["computeCompressorCoefficients<br/>(OLS, constant-speed)"] --> CMPFIT1{"dataPoints.length >= 5?"}
+  CMPFIT1 -- No --> CMPFITTHROW["throw Error('At least 5 points required.')"]
+  CMPFIT1 -- Yes --> CMPFIT2["build eta features [1,Pc/Pe,Pc]<br/>build W features [1,TE,TC,TC*TE,TE^2]<br/>buildNormalEquations -> gaussJordanSolve"]
+  CMPFIT2 --> CMPFITOK["return {etaCoeffs, wCoeffs}"]
+
+  CMPFIT3["fitInverterCoefficients<br/>(Ridge Regression + CV, inverter)"] --> CMPFIT4["selectInverterModel(Q column)<br/>selectInverterModel(W column)"]
+  CMPFIT4 --> CMPFIT5["buildGlobalModel: grid search over<br/>rpmForm x logTransform x alpha,<br/>leave-one-RPM-group-out CV (cvInverter)"]
+  CMPFIT5 --> CMPFIT6{"unique RPM<br/>values >= 3?"}
+  CMPFIT6 -- Yes --> CMPFIT7["also try fitPiecewiseInverter<br/>at every internal split RPM"]
+  CMPFIT7 --> CMPFIT8{"piecewise.rmse + 0.5<br/>< global.cvRMSE?"}
+  CMPFIT8 -- Yes --> CMPFIT9["use piecewise model"]
+  CMPFIT8 -- No --> CMPFIT10["use global model"]
+  CMPFIT6 -- No --> CMPFIT10
+  CMPFIT9 --> CMPFITOK2["return {Q:model, W:model,<br/>normalizeRPM, centerTE, centerTC}"]
+  CMPFIT10 --> CMPFITOK2
+end
+
+subgraph EVAP["evaporator.js — geometry &amp; thermal helper functions"]
+  EVAP1["computeEvaporatorArea(evap):<br/>tubeCrossArea, finAreaPerFin, totalFinArea,<br/>tubeArea, sidePlateArea -&gt; sum = A_total"]
+  EVAP2["airSpeed(fanParam, evap)"] --> EVAP2a{"fanParam missing<br/>or not an object?"}
+  EVAP2a -- Yes --> EVAP2THROW["throw Error('fanParam is missing or invalid')"]
+  EVAP2a -- No --> EVAP2b{"any of tipDiam,fanRPM,<br/>hubDiam,PitchAngle<br/>null/NaN?"}
+  EVAP2b -- Yes --> EVAP2THROW2["throw Error('fanParam missing required fields')"]
+  EVAP2b -- No --> EVAP2c{"hubDiam >= tipDiam?"}
+  EVAP2c -- Yes --> EVAP2THROW3["throw Error('Fan hub diameter must be<br/>smaller than tip diameter')"]
+  EVAP2c -- No --> EVAP2d["Q_m3s = 70*RPM/3000*(tipDiam/100)^2/3600<br/>fanAirflow_m3h = Q_m3s*3600<br/>frontArea_m2 = width*depth/1e6"]
+  EVAP2d --> EVAP2e{"frontArea_m2 <= 0?"}
+  EVAP2e -- Yes --> EVAP2THROW4["throw Error('Evaporator face area<br/>is zero or negative')"]
+  EVAP2e -- No --> EVAP2OK["return {v_ms, fanAirflow_m3h,<br/>fanAirflow_cfm, fanAirSpeed}"]
+
+  EVAP3["evaporatorAlpha(v_ms) =<br/>12.93 * v_ms^0.415 * 1.16279"]
+
+  EVAP4["lmtd(T1,T2,TE)"] --> EVAP4a["dT1=T1-TE; dT2=T2-TE"]
+  EVAP4a --> EVAP4b{"dT1 <= 1e-4<br/>or dT2 <= 1e-4?"}
+  EVAP4b -- Yes --> EVAP4THROW["throw RangeError('LMTD Undefined:<br/>TE >= Air Temps')"]
+  EVAP4b -- No --> EVAP4c{"abs(dT1/dT2 - 1) < 1e-6?<br/>(near-identical deltas)"}
+  EVAP4c -- Yes --> EVAP4OK1["return dT1  (L'Hopital limit)"]
+  EVAP4c -- No --> EVAP4OK2["return (dT1-dT2) / ln(dT1/dT2)"]
+
+  EVAP5["evaporatorCapacity(alpha, area, LMTD)<br/>= alpha * area * LMTD"]
+
+  EVAPNOTE["Used from THREE call sites:<br/>1) inline (simplified) inside solveInner's F()<br/>2) evaluateSafetyCheckpoints (43C peak margin check)<br/>3) thermoUI.js post-solve UI display (evapDetails)<br/>— NOT called as a discrete step inside the<br/>live TC/T2/PR Newton loop itself"]
+end
+
+subgraph SAFE["solver.js — evaluateSafetyCheckpoints(result, config, TE_conv)<br/>POST-CONVERGENCE SANITY CHECKS"]
+  SAFE0["warnings = result.warnings || []"] --> SAFE1{"TE_conv > result.T2?"}
+  SAFE1 -- Yes --> SAFE1a["warnings.push('Approach constraint<br/>flagged: TE > T2.')"]
+  SAFE1 -- No --> SAFE2{"(result.T2 - TE_conv) > 2?"}
+  SAFE2 -- Yes --> SAFE2a["warnings.push('Approach constraint<br/>flagged: T2 - TE > 2C.')"]
+  SAFE1a --> SAFE3
+  SAFE2 -- No --> SAFE3
+  SAFE2a --> SAFE3["peakConfig = clone config, T0=43C<br/>inverter? RPM=rpmMax, PR=1.0<br/>: constant-speed? PR=0.95"]
+  SAFE3 --> SAFE4["peakResult = solveThermalSystem(peakConfig, TE_conv)"]
+  SAFE4 -.calls.-> TCS0
+  TCS0 -.returns.-> SAFE5
+  SAFE5{"peakResult.converged?"}
+  SAFE5 -- No --> SAFE5a["warnings.push('Peak heat load flagged:<br/>system cannot balance at 43C.')"]
+  SAFE5 -- Yes --> SAFE6["Recompute UA at nominal conditions<br/>LMTD_val = lmtd(mixed T1, result.T2,<br/>result.T2 - 2)  *** uses T2-2 as a stand-in<br/>for TE, not the real solved TE ***"]
+  SAFE6 --> SAFE7{"UA * LMTD_val <<br/>1.15 * peakResult.heatLoads.totalLoad?"}
+  SAFE7 -- Yes --> SAFE7a["warnings.push('Evaporator lacks 15%<br/>physical safety margin at 43C ambient.')"]
+  SAFE7 -- No --> SAFEOK
+  SAFE7a --> SAFEOK["return result (with warnings)"]
+  SAFE5a --> SAFEOK
+end
+
+subgraph VAL["validateHeatLoad.js — validateHeatLoad(geom, temps, calculatedLoads)<br/>*** STANDALONE — imported in index.js but NEVER<br/>actually invoked inside runThermoAnalysis in the<br/>current source. Effectively dead code / unused validator. ***"]
+  VAL0["errors=[]; warnings=[]"] --> VAL1{"T0/TF/TR<br/>all numbers?"}
+  VAL1 -- No --> VAL1a["errors.push('Missing or invalid<br/>temperature inputs.')"]
+  VAL1 -- Yes --> VAL2{"TF >= TR?"}
+  VAL1a --> VAL3
+  VAL2 -- Yes --> VAL2a["errors.push('Freezer temp warmer than<br/>or equal to Refrigerator temp.')"]
+  VAL2 -- No --> VAL2b{"TR >= T0?"}
+  VAL2a --> VAL2b
+  VAL2b -- Yes --> VAL2c["errors.push('Refrigerator temp warmer<br/>than or equal to Ambient temp.')"]
+  VAL2b -- No --> VAL3
+  VAL2c --> VAL3["for each of 5 critical insulation points<br/>(F-top/left/right, R-top/left):"]
+  VAL3 --> VAL4{"value undefined?"}
+  VAL4 -- Yes --> VAL4a["errors.push('Missing insulation<br/>thickness for X.')"]
+  VAL4 -- No --> VAL5{"value < 30mm?"}
+  VAL5 -- Yes --> VAL5a["warnings.push('X insulation extremely<br/>thin, expect massive heat leaks.')"]
+  VAL4a --> VAL6
+  VAL5 -- No --> VAL6
+  VAL5a --> VAL6{"calculatedLoads<br/>provided?"}
+  VAL6 -- No --> VAL6a["errors.push('No calculated loads<br/>provided for validation.')"]
+  VAL6 -- Yes --> VAL7{"QF < 0?"}
+  VAL7 -- Yes --> VAL7a["errors.push('Freezer heat load<br/>is negative.')"]
+  VAL7 -- No --> VAL8{"QR < 0?"}
+  VAL8 -- Yes --> VAL8a["errors.push('Refrigerator heat load<br/>is negative.')"]
+  VAL7a --> VAL9
+  VAL8 -- No --> VAL9
+  VAL8a --> VAL9["totalLoad = QF+QR+(QEV||0)"]
+  VAL9 --> VAL10{"totalLoad > 200?"}
+  VAL10 -- Yes --> VAL10a["warnings.push('Total heat load<br/>extremely high, most compressors<br/>will fail to satisfy demand.')"]
+  VAL6a --> VAL11
+  VAL10 -- No --> VAL11
+  VAL10a --> VAL11{"temps.TE defined<br/>and TE >= temps.TF?"}
+  VAL11 -- Yes --> VAL11a["errors.push('Evaporator temperature<br/>must be lower than Freezer temperature.')"]
+  VAL11 -- No --> VALOK
+  VAL11a --> VALOK["return {isValid: errors.length===0,<br/>errors, warnings}"]
+end
+
+subgraph ENERGY["solver.js — EnergyConsumption(result)<br/>*** Called by thermoUI.js (UI layer) AFTER<br/>runThermoAnalysis() returns — NOT invoked<br/>internally within the solver pipeline itself ***"]
+  ENERGY0{"result.converged<br/>=== false?"}
+  ENERGY0 -- Yes --> ENERGYNAN["return NaN"]
+  ENERGY0 -- No --> ENERGY1["activeCyclePower = (compPower+fanPower+pwbOn)*PR<br/>offCyclePower = pwbOff*(1-PR)<br/>dailyBaseEnergy_kWh = (active+off)*24/1000"]
+  ENERGY1 --> ENERGY2["actualDefrostInterval = timerPeriod_h/PR<br/>defrostEventsPerDay = 24/actualDefrostInterval<br/>dailyDefrostEnergy_kWh = (defOnMin/60)*defHeater*events/1000"]
+  ENERGY2 --> ENERGYOK["return {EnergyConsumption_kWhDay: base+defrost,<br/>EnergyConsumption_kWhMonth: daily*30}"]
+end
+
+IDXOK -.-> ENERGYNOTE["thermoUI.js calls EnergyConsumption(result)<br/>here, using the successful output"]
+ENERGYNOTE -.-> ENERGY0
+
+TCS0 -.uses.-> EVAP2
+TCS0 -.uses.-> EVAP4
+SAFE3 -.uses.-> EVAP4
+VAL0 -.never called by.-> IDX1

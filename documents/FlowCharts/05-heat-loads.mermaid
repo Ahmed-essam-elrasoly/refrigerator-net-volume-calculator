@@ -1,0 +1,66 @@
+%% MODULE: heatLoad.js — calcHeatLoads(geom, temps, electrical, PIPEPITCH,
+%% backCondenserEfficiency, fanInputPower_W, freezerPosition, backCondenser)
+%% ROLE: cabinet conduction model → QF (freezer), QR (fresh food), QEV (evaporator/parasitic)
+%% Legend: blue=process · amber=decision · green=success return
+
+flowchart TD
+
+HL0["compute K_side, K_back (pitch correction)<br/>T_compZone, TRise_side/back, T_wallSide/back<br/>flags: isTopFreezer, isBackCondenserAbsent,<br/>hasFreezer=Hf>0, hasFresh=Hr>0"] --> HL1{"hasFreezer?"}
+
+HL1 -- Yes --> HL2["compute AFtop, AFdoor, AFpackin,<br/>AFleft1/2, AFright1/2<br/>(split formula differs: top-freezer<br/>vs bottom-freezer w/ compressor step)"]
+HL2 --> HL3{"isTopFreezer?"}
+HL3 -- Yes --> HL3a["QF += kExterior(tFtop)*AFtop*(T0-TF)"]
+HL3 -- No --> HL3b["QF += kInterior(tFtop)*AFtop*(TR-TF)"]
+HL3a --> HL4
+HL3b --> HL4["QF += sides conduction:<br/>kExterior(left/right,TF,wallSide)*area1<br/>+ kExterior(left/right,T2,wallSide)*area2"]
+HL4 --> HL5{"hasFresh?"}
+HL5 -- No --> HL6a["QF += stepped-floor 3-zone exterior<br/>conduction (AFb1,AFb2 vs T_compZone;<br/>AFb3 vs T0)"]
+HL5 -- Yes --> HL6{"isTopFreezer?"}
+HL6 -- Yes --> HL6b["QF += kInterior(tFbottom)*AFbottom*(TR-TF)<br/>(single interior partition)"]
+HL6 -- No --> HL6c["QF += stepped-floor 3-zone exterior<br/>conduction (bottom-freezer case)"]
+HL6a --> HL7
+HL6b --> HL7
+HL6c --> HL7["QF += door+packing leak<br/>QF += DP partition losses<br/>(Qdpfr-style + Qdpf-style terms)"]
+HL7 --> HL8
+HL1 -- No --> HL8{"hasFresh?"}
+
+HL8 -- Yes --> HL9["compute ARdoor, ARpackin,<br/>ARtop/left/back<br/>(formula differs by isTopFreezer)"]
+HL9 --> HL10{"isTopFreezer?"}
+HL10 -- Yes --> HL10a["QR += kInterior(tRtop)*ARtop*(TF-TR)"]
+HL10 -- No --> HL10b["QR += kExterior(tRtop)*ARtop*(T0-TR)"]
+HL10a --> HL11
+HL10b --> HL11["QR += sides conduction<br/>kExterior(left/right,TR,wallSide)*ARleft"]
+HL11 --> HL12{"isBackCondenserAbsent?"}
+HL12 -- Yes --> HL12a["QR += kExterior(tRback)*ARback*(T0-TR)"]
+HL12 -- No --> HL12b["QR += kExterior(tRback)*ARback*(wallBack-TR)"]
+HL12a --> HL13
+HL12b --> HL13{"!hasFreezer OR<br/>isTopFreezer?"}
+HL13 -- Yes --> HL13a["QR += stepped-floor 3-zone exterior<br/>conduction (ARb1,ARb2 vs T_compZone;<br/>ARb3 vs T0)"]
+HL13 -- No --> HL13b["QR += kInterior(tRfloor)*ARbottom*(TF-TR)<br/>(interior — bottom-freezer, fresh on top)"]
+HL13a --> HL14
+HL13b --> HL14["QR += door+packing<br/>QR += DP condenser term"]
+HL14 --> HL15
+HL8 -- No --> HL15["evaporator & parasitic block<br/>(always executes)"]
+
+HL15 --> HL16["select H_evap, wall thicknesses:<br/>hasFreezer? use freezer dims : use fresh dims<br/>tBottom_evap chosen via freezerPosition/hasFreezer"]
+HL16 --> HL17{"isTopFreezer<br/>or !hasFreezer?"}
+HL17 -- Yes --> HL17a["A_evaBack = (W-sides)*(H_evap-top/bottom)<br/>(simple rectangle)"]
+HL17 -- No --> HL17b["A_evaBack = (W-sides)*(H_evap-Hb-top/bottom)<br/>(subtract compressor step height)"]
+HL17a --> HL18
+HL17b --> HL18{"A_evaBack > 0?"}
+HL18 -- Yes --> HL19{"isBackCondenserAbsent?"}
+HL19 -- Yes --> HL19a["QEV_cond = kExterior(tEvaBack,T2,T0)*A_evaBack*(T0-T2)"]
+HL19 -- No --> HL19b["QEV_cond = kExterior(tEvaBack,T2,wallBack)*A_evaBack*(wallBack-T2)"]
+HL18 -- No --> HL20["QEV_cond = 0"]
+HL19a --> HL21
+HL19b --> HL21
+HL20 --> HL21["fanLoad = fanInputPower_W * PR<br/>defrostEventsPerDay = 24/(timerPeriod_h/PR)<br/>defrostLoad = defrostHeater*(defOnMin/60)*(events/24)"]
+HL21 --> HLOK["return {QF, QR,<br/>QEV: QEV_cond+fanLoad+defrostLoad,<br/>fanLoad, defrostLoad,<br/>totalLoad: QF+QR+QEV_cond+fanLoad+defrostLoad}"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+
+class HL0,HL2,HL3a,HL3b,HL4,HL6a,HL6b,HL6c,HL7,HL9,HL10a,HL10b,HL11,HL12a,HL12b,HL13a,HL13b,HL14,HL15,HL16,HL17a,HL17b,HL19a,HL19b,HL20,HL21 process
+class HL1,HL3,HL5,HL6,HL8,HL10,HL12,HL13,HL17,HL18,HL19 decision
+class HLOK success

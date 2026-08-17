@@ -1,0 +1,56 @@
+%% MODULE: solver.js — solveThermalSystem(config, TE_override)
+%% ROLE: OUTER TC SECANT LOOP (max maxIterOuter, default 100)
+%% Drives TC until the condenser heat-rejection balance F3 = QCout - massFlow*Δh closes.
+%% Legend: blue=process · amber=decision · green=success return · red=failure return · gray-dashed=call into another module
+
+flowchart TD
+
+TCS0{"evapGeom missing?<br/><i>(evapGeom feeds evaporator.js helpers<br/>used downstream — see 10-evaporator-helpers.mermaid)</i>"} -- Yes --> TCSTHROW["throw Error('evapGeom missing from config')"]
+TCS0 -- No --> TCS1["TE = TE_override ?? config.initialTE<br/>fixedPR = config.inverterPR<br/>TC = TC0 (default 45 or from solverOptions)"]
+TCS1 --> TCS2["iter = 0"]
+TCS2 --> TCS3{"TC < T0?"}
+TCS3 -- Yes --> TCS3a["TC = T0 + 2"]
+TCS3 -- No --> TCS4
+TCS3a --> TCS4{"TC > 90?"}
+TCS4 -- Yes --> TCS4a["TC = 90"]
+TCS4 -- No --> TCS5
+TCS4a --> TCS5["inner = solveInner(TC, geom, compParams, refrigerant,<br/>subcool, fixedTemps, fan, electrical, condenserConfig,<br/>TE, freezerPosition, innerOptions, fixedPR, evapGeom)<br/>→ see 04-inner-newton-setup.mermaid"]
+TCS5 --> TCS6{"inner.converged?"}
+TCS6 -- No --> TCS6a{"inner.error contains<br/>'undersized'?"}
+TCS6a -- Yes --> TCSF1["return createFailure(TC, 'Compressor undersized.', inner)"]
+TCS6a -- No --> TCS6b{"inner.error contains<br/>'oversized'?"}
+TCS6b -- Yes --> TCSF2["return createFailure(TC, 'Compressor oversized.', inner)"]
+TCS6b -- No --> TCS6c{"inner.error contains<br/>'SLHX'?"}
+TCS6c -- Yes --> TCSF3["return createFailure(TC, inner.error, inner)"]
+TCS6c -- No --> TCSF4["return createFailure(TC, 'Inner loop failed.', inner)"]
+TCS6 -- Yes --> TCS7["totalInner += inner.iterations<br/>prevInner = {T2, PR, RPM}"]
+TCS7 --> TCS8["QCout = calcQCout(geom, TC, T0, TF, TR, inner.PR,<br/>PIPEPITCH, freezerPosition, backCondenserEfficiency)<br/>→ see 06-physics-helpers.mermaid"]
+TCS8 --> TCS9["compOuter = evaluateCompressorSafely(TE, TC,<br/>refIndex, compParams, inner.RPM)<br/>→ see 06-physics-helpers.mermaid"]
+TCS9 --> TCS10["h_cond_exit = liquidEnthalpy(TC-subcool)<br/>h_discharge = gasEnthalpy(dischargeTemp, satPressure(TC))<br/>F3 = QCout.QCout - massFlow*(h_discharge-h_cond_exit)/3.6"]
+TCS10 --> TCS11{"abs(F3) < tolOuter?"}
+TCS11 -- Yes --> TCSOK["return TC, T2, PR, T3, RPM, TE, Pe, Pc, Tsubcool,<br/>converged:true, outerIterations, innerTotalIterations,<br/>heatLoads, compressor, MR, MF, fan, electrical"]
+TCS11 -- No --> TCS12["TRY: innerPert = solveInner(TC+0.001, ...same args)"]
+TCS12 --> TCS13{"innerPert.converged?<br/>(no exception)"}
+TCS13 -- Yes --> TCS14["compOuter_pert = evaluateCompressorSafely(...)<br/>QCout_pert = calcQCout(TC+0.001, ...)<br/>F3_pert = QCout_pert - massFlow_pert*(h_disch_pert-h_cond_pert)/3.6"]
+TCS14 --> TCS15["TC -= clamp(-5..5,<br/>F3 / ((F3_pert-F3)/0.001))"]
+TCS13 -- No --> TCS16{"prevF3 and prevTC<br/>defined?"}
+TCS16 -- Yes --> TCS16a["TC -= clamp(-5..5,<br/>F3 / ((F3-prevF3)/(TC-prevTC)))<br/>(secant using prior outer iteration)"]
+TCS16 -- No --> TCS16b["TC += (F3 > 0 ? -0.5 : 0.5)"]
+TCS15 --> TCS17["prevF3 = F3; prevTC = TC; iter++"]
+TCS16a --> TCS17
+TCS16b --> TCS17
+TCS17 --> TCS18{"iter < maxIterOuter?"}
+TCS18 -- Yes --> TCS3
+TCS18 -- No --> TCSF5["return createFailure(TC,<br/>'Outer loop max iterations reached', prevInner)"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef external fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+
+class TCS1,TCS2,TCS3a,TCS4a,TCS7,TCS10,TCS14,TCS15,TCS16a,TCS16b,TCS17 process
+class TCS0,TCS3,TCS4,TCS6,TCS6a,TCS6b,TCS6c,TCS11,TCS13,TCS16,TCS18 decision
+class TCSOK success
+class TCSTHROW,TCSF1,TCSF2,TCSF3,TCSF4,TCSF5 fail
+class TCS5,TCS8,TCS9,TCS12 external

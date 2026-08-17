@@ -1,0 +1,60 @@
+%% MODULE: evaporator.js — geometry & thermal helper functions
+%% ROLE: four independent utilities that happen to live in one file.
+%% They are NOT a pipeline — nothing here calls anything else here.
+%% Call sites: (1) inline inside solveInner's F() — see 04-inner-newton-setup.mermaid
+%%             (2) evaluateSafetyCheckpoints (43C peak margin check) — see 09-safety-and-peripheral.mermaid
+%%             (3) thermoUI.js post-solve UI display (evapDetails) — outside the solve pipeline
+%% None of these three call sites run all four functions together; group by what each caller needs.
+%% Legend: blue=process · amber=decision · green=success return · red=throw
+
+flowchart TD
+
+subgraph AREA["computeEvaporatorArea(evap)"]
+  A1["tubeCrossArea, finAreaPerFin, totalFinArea,<br/>tubeArea, sidePlateArea"] --> A2["sum → A_total"]
+end
+
+subgraph SPEED["airSpeed(fanParam, evap)"]
+  S0["airSpeed(fanParam, evap)"] --> S1{"fanParam missing<br/>or not an object?"}
+  S1 -- Yes --> S1F["throw Error('fanParam is missing or invalid')"]
+  S1 -- No --> S2{"any of tipDiam,fanRPM,<br/>hubDiam,PitchAngle<br/>null/NaN?"}
+  S2 -- Yes --> S2F["throw Error('fanParam missing required fields')"]
+  S2 -- No --> S3{"hubDiam >= tipDiam?"}
+  S3 -- Yes --> S3F["throw Error('Fan hub diameter must be<br/>smaller than tip diameter')"]
+  S3 -- No --> S4["Q_m3s = 70*RPM/3000*(tipDiam/100)^2/3600<br/>fanAirflow_m3h = Q_m3s*3600<br/>frontArea_m2 = width*depth/1e6"]
+  S4 --> S5{"frontArea_m2 <= 0?"}
+  S5 -- Yes --> S5F["throw Error('Evaporator face area<br/>is zero or negative')"]
+  S5 -- No --> SOK["return {v_ms, fanAirflow_m3h,<br/>fanAirflow_cfm, fanAirSpeed}"]
+end
+
+subgraph ALPHA["evaporatorAlpha(v_ms)"]
+  AL1["evaporatorAlpha(v_ms) =<br/>12.93 * v_ms^0.415 * 1.16279"]
+end
+
+subgraph LMTD["lmtd(T1, T2, TE)"]
+  L0["lmtd(T1,T2,TE)"] --> L1["dT1=T1-TE; dT2=T2-TE"]
+  L1 --> L2{"dT1 <= 1e-4<br/>or dT2 <= 1e-4?"}
+  L2 -- Yes --> L2F["throw RangeError('LMTD Undefined:<br/>TE >= Air Temps')"]
+  L2 -- No --> L3{"abs(dT1/dT2 - 1) < 1e-6?<br/>(near-identical deltas)"}
+  L3 -- Yes --> L3a["return dT1  (L'Hopital limit)"]
+  L3 -- No --> L3b["return (dT1-dT2) / ln(dT1/dT2)"]
+end
+
+subgraph CAP["evaporatorCapacity(alpha, area, LMTD)"]
+  C1["evaporatorCapacity(alpha, area, LMTD)<br/>= alpha * area * LMTD"]
+end
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+
+class A1,A2 process
+class S0,S4 process
+class S1,S2,S3,S5 decision
+class SOK success
+class S1F,S2F,S3F,S5F fail
+class AL1 process
+class L0,L1,L3a,L3b process
+class L2,L3 decision
+class L2F fail
+class C1 process

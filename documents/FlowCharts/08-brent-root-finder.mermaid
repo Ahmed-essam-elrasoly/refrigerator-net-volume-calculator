@@ -1,0 +1,45 @@
+%% MODULE: solver.js — solveTE_Brent(T1, T2, LMTD_req)
+%% ROLE: Brent's method root finder for TE, root of f(TE) = lmtd(T1,T2,TE) - LMTD_req
+%% Legend: blue=process · amber=decision · green=success return · red=bracket failure
+
+flowchart TD
+
+BR0["f(TE) = lmtd(T1,T2,TE) - LMTD_req<br/>(catch lmtd RangeError -> return Infinity)"] --> BR1["a = -40.0<br/>b = min(T1,T2) - 0.1"]
+BR1 --> BR2{"f(a)*f(b) > 0<br/>and a > -65?"}
+BR2 -- Yes --> BR2a["a -= 10"]
+BR2a --> BR2
+BR2 -- No --> BR3{"f(a)*f(b) > 0<br/>still (bracket failed)?"}
+BR3 -- Yes --> BRNAN["return NaN"]
+BR3 -- No --> BR4["fa=f(a), fb=f(b);<br/>if fa>0 swap(a,b)<br/>c=a, fc=fa, mflag=true, iter=0"]
+BR4 --> BR5{"fa != fc<br/>and fb != fc?"}
+BR5 -- Yes --> BR5a["s = inverse quadratic interpolation<br/>using a,b,c,fa,fb,fc"]
+BR5 -- No --> BR5b["s = secant: b - fb*(b-a)/(fb-fa)"]
+BR5a --> BR6
+BR5b --> BR6{"s outside [(3a+b)/4, b] OR<br/>(mflag and |s-b|>=|b-c|/2) OR<br/>(!mflag and |s-b|>=|c-d|/2) OR<br/>(mflag and |b-c|<tol) OR<br/>(!mflag and |c-d|<tol)?"}
+BR6 -- Yes --> BR6a["s = (a+b)/2 (bisection)<br/>mflag = true"]
+BR6 -- No --> BR6b["mflag = false"]
+BR6a --> BR7
+BR6b --> BR7["fs = f(s); d=c; c=b; fc=fb"]
+BR7 --> BR8{"fa*fs < 0?"}
+BR8 -- Yes --> BR8a["b = s; fb = fs"]
+BR8 -- No --> BR8b["a = s; fa = fs"]
+BR8a --> BR9
+BR8b --> BR9{"abs(fa) < abs(fb)?"}
+BR9 -- Yes --> BR9a["swap(a,b), swap(fa,fb)"]
+BR9 -- No --> BR10
+BR9a --> BR10{"abs(b-a) < tol<br/>or fb == 0?"}
+BR10 -- Yes --> BROK["return b"]
+BR10 -- No --> BR11["iter++"]
+BR11 --> BR12{"iter < 100?"}
+BR12 -- Yes --> BR5
+BR12 -- No --> BROK2["return b (best estimate)"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+
+class BR0,BR1,BR2a,BR4,BR5a,BR5b,BR6a,BR6b,BR7,BR8a,BR8b,BR9a,BR11 process
+class BR2,BR3,BR5,BR6,BR8,BR9,BR10,BR12 decision
+class BROK,BROK2 success
+class BRNAN fail

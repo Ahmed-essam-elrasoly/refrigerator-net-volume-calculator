@@ -1,0 +1,53 @@
+%% MODULE: solver.js — newton2(F, x0, dx, tol, maxIter, bounds)
+%% ROLE: generic 2-D Newton-Raphson + Armijo backtracking line search
+%% Used by solveInner for both inverter (T2, RPM) and constant-speed (T2, PR) cases.
+%% Legend: blue=process · amber=decision · green=success return · red=failure return
+
+flowchart TD
+
+N20["x = x0; f = F(x0)"] --> N21{"f.error?"}
+N21 -- Yes --> N2FAIL0["return converged:false,<br/>error:'Initial F(x) failed'"]
+N21 -- No --> N22["normF = sqrt(f0^2+f1^2)<br/>i = 0"]
+N22 --> N23{"normF <= tol?"}
+N23 -- Yes --> N2OK["return converged:true, x, f, normF, iterations:i+1"]
+N23 -- No --> N24["compute Jacobian J via finite differences<br/>(h = max(1e-7, abs(x_j)*1e-6);<br/>perturb backward if forward exceeds upper bound)"]
+N24 --> N25{"F(x+h) threw<br/>an error?"}
+N25 -- Yes --> N2FAIL1["return converged:false,<br/>error:'Jacobian failed: msg'"]
+N25 -- No --> N26["det = J00*J11 - J01*J10"]
+N26 --> N27{"abs(det) > 1e-12?"}
+N27 -- Yes --> N27a["direction = -inv(J) * f<br/>(closed-form 2x2 solve)"]
+N27 -- No --> N27b["direction = gradient-descent step<br/>= -(J^T * f)"]
+N27b --> N27c{"norm(direction) < 1e-12?"}
+N27c -- Yes --> N2FAIL2["return converged:false,<br/>error:'Saddle point.'"]
+N27c -- No --> N28
+N27a --> N28["clamp direction:<br/>maxStepT2=5.0<br/>maxStepVar2 = domainSpan>2 ? 500 : 0.15"]
+N28 --> N29["alpha = 1.0; bt = 0"]
+N29 --> N30["newX = clamp(x + alpha*direction, bounds)"]
+N30 --> N31{"F(newX) threw?"}
+N31 -- Yes --> N31a["alpha *= 0.5; bt++"]
+N31 -- No --> N32["newNorm = sqrt(newF0^2+newF1^2)<br/>Armijo: newNorm < normF*(1 - 1e-4*alpha) ?"]
+N32 --> N33{"enoughDecrease?"}
+N33 -- Yes --> N34["accept step: x=newX, f=newF, normF=newNorm"]
+N33 -- No --> N31a
+N31a --> N35{"bt < 15?"}
+N35 -- Yes --> N30
+N35 -- No --> N36{"line search<br/>exhausted (bt=15)"}
+N36 --> N37{"x[1] at lower bound<br/>and direction[1] < 0?"}
+N37 -- Yes --> N2WARN1["return converged:true,<br/>warning:'Compressor oversized limit.'"]
+N37 -- No --> N38{"x[1] at upper bound<br/>and direction[1] > 0?"}
+N38 -- Yes --> N2WARN2["return converged:true,<br/>warning:'Compressor undersized limit.'"]
+N38 -- No --> N2FAIL3["return converged:false,<br/>error:'Line search failed.'"]
+N34 --> N39["i++"]
+N39 --> N40{"i < maxIter?"}
+N40 -- Yes --> N23
+N40 -- No --> N2FAIL4["return converged:false,<br/>error:'Max iterations reached'"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+
+class N20,N22,N24,N26,N27a,N27b,N28,N29,N30,N31a,N32,N34,N39 process
+class N21,N23,N25,N27,N27c,N31,N33,N35,N36,N37,N38,N40 decision
+class N2OK,N2WARN1,N2WARN2 success
+class N2FAIL0,N2FAIL1,N2FAIL2,N2FAIL3,N2FAIL4 fail

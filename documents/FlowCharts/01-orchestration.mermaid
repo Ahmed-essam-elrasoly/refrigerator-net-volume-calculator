@@ -1,0 +1,57 @@
+%% MODULE: index.js — runThermoAnalysis(config)
+%% ROLE: validate input, delegate to the physical solve, shape the output payload
+%% Legend: blue=process/entry · amber=decision · green=success return · red=failure return · gray-dashed=call into another module (see linked file)
+
+flowchart TD
+
+START(["runThermoAnalysis(config)<br/>ENTRY POINT"]) --> IDX1
+
+IDX1{"config provided?"} -- No --> IDXF1["errors.push('No configuration provided.')<br/>return success:false"]
+IDX1 -- Yes --> IDX2["check required keys:<br/>geom, compParams, condenserConfig, refrigerant,<br/>subcool, dischargeTemp, fixedTemps, fan, electrical, evapGeom"]
+IDX2 --> IDX3{"any key missing?"}
+IDX3 -- Yes --> IDX3a["errors.push('Missing required config field: key')<br/>(for each missing key)"]
+IDX3 -- No --> IDX4
+IDX3a --> IDX4{"fixedTemps.T0/TF/TR/TE<br/>all numeric?"}
+IDX4 -- No --> IDX4a["errors.push('fixedTemps must contain<br/>numeric T0, TF, TR, TE')"]
+IDX4 -- Yes --> IDX5
+IDX4a --> IDX5{"config.fan present?"}
+IDX5 -- Yes --> IDX5a{"fan.fanAirflow_m3h set?"}
+IDX5a -- No --> IDX5b["errors.push('fan.fanAirflow_m3h is required.')"]
+IDX5a -- Yes --> IDX5c["set fan.density, fan.cp defaults<br/>from PHYSICAL_CONSTANTS if absent"]
+IDX5 -- No --> IDX6
+IDX5b --> IDX6
+IDX5c --> IDX6{"errors.length > 0?"}
+IDX6 -- Yes --> IDXF2["return success:false, errors, results:null"]
+IDX6 -- No --> IDX7["build solverOptions:<br/>TC0=54.4, DH=0.001, tolOuter=0.0005,<br/>maxIterOuter=100 (default),<br/>innerOptions{dx:0.001, tol:1e-4, maxIter:100}<br/>merged with config.solverOptions"]
+IDX7 --> IDX8{"config.inverterPR<br/>defined?"}
+IDX8 -- Yes --> IDX8a["solverOptions.inverterPR = config.inverterPR"]
+IDX8 -- No --> IDX9
+IDX8a --> IDX9["TRY: call runThermalAnalysisDynamic(...)<br/>→ see 02-te-outer-loop.mermaid"]
+IDX9 --> IDX10{"exception thrown?"}
+IDX10 -- Yes --> IDXF3["CATCH: errors.push('Unexpected error: msg')<br/>return success:false"]
+IDX10 -- No --> IDX11{"result.converged?"}
+IDX11 -- No --> IDXF4["errors.push(result.error ||<br/>'Thermal solver did not converge.')<br/>return success:false"]
+IDX11 -- Yes --> IDX12["structure output payload:<br/>TC, Tsubcool, T2, PR, TE, heatLoads,<br/>compressor{massFlow,coolingCapacity,inputPower,<br/>etaV,Pe,Pc,COP}, fan, electrical,<br/>iterations{outer,innerTotal}, MR, MF, T3"]
+IDX12 --> IDX13{"result.RPM<br/>defined?"}
+IDX13 -- Yes --> IDX13a["output.RPM = result.RPM"]
+IDX13 -- No --> IDX14
+IDX13a --> IDX14["warnings.push(...result.warnings)<br/>if any"]
+IDX14 --> IDX15{"result.PR >= 1?"}
+IDX15 -- Yes --> IDX15a["warnings.push('Running ratio 100% —<br/>system may be undersized')"]
+IDX15 -- No --> IDX16{"result.PR <= 0.1?"}
+IDX16 -- Yes --> IDX16a["warnings.push('Running ratio very low —<br/>check heat load inputs')"]
+IDX15a --> IDXOK
+IDX16 -- No --> IDXOK
+IDX16a --> IDXOK["return success:true, errors:[], warnings, results:output"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef external fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+
+class START,IDX2,IDX3a,IDX4a,IDX5b,IDX5c,IDX7,IDX8a,IDX12,IDX13a,IDX14,IDX15a,IDX16a process
+class IDX1,IDX3,IDX4,IDX5,IDX5a,IDX6,IDX8,IDX10,IDX11,IDX13,IDX15,IDX16 decision
+class IDXOK success
+class IDXF1,IDXF2,IDXF3,IDXF4 fail
+class IDX9 external

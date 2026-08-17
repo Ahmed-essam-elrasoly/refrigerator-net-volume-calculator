@@ -1,0 +1,50 @@
+%% MODULE: solver.js — solveInner(...)
+%% ROLE: 2-D NEWTON SOLVE setup for [T2, PR-or-RPM]
+%% Builds the residual function F(vars) from the physics modules, then hands it to newton2.
+%% Legend: blue=process · amber=decision · green=success return · red=failure return · gray-dashed=call into another module
+
+flowchart TD
+
+INR0["isInverterMode = compParams.isInverter<br/>&& fixedPR !== undefined"] --> INR1{"isInverterMode?"}
+INR1 -- Yes --> INR1a["bounds = [[-80,20],[rpmMin,rpmMax]]<br/>initialGuess = [-21.25, initialRPM ?? 3000]"]
+INR1 -- No --> INR1b["bounds = [[-80,20],[0.001,0.999]]<br/>(or forced to forcePR if set)<br/>initialGuess = [-21.25, forcePR ?? initialPR ?? 0.59]"]
+INR1a --> INR2
+INR1b --> INR2["define F(vars) = [f1, f2]:"]
+INR2 --> INRF1["loads = calcHeatLoads(geom, {...fixedTemps,T2,TC,PR,TE:-25},<br/>electrical, PIPEPITCH, backCondenserEfficiency,<br/>fan.inputPower_W, freezerPos, backCondenser)<br/>→ see 05-heat-loads.mermaid"]
+INRF1 --> INRF2["v_ms = (fan.fanAirflow_m3h/3600) / faceArea_m2<br/>alpha = 12.93 * v_ms^0.415 * 1.16279<br/>UA = alpha * evapGeom.evapArea_m2<br/>LMTD_req = (QF+QR+QEV) / PR / UA"]
+INRF2 --> INRF3["T3 = T2 + QEV/(Flow*CV*PR)<br/>MR = clamp(0, Flow, QR/(CV*max(0.01,TR-T3)*PR*Damp))<br/>MF = Flow - MR<br/>T1 = (MF*TF + MR*TR) / Flow"]
+INRF3 --> INRF4{"isInverterMode and<br/>RPM out of [rpmMin,rpmMax]?<br/>OR !isInverterMode and<br/>PR out of [0.001,0.999]?"}
+INRF4 -- Yes --> INRFerr["return {error: 'RPM/PR out of bounds'}"]
+INRF4 -- No --> INRF5["calculated_TE = solveTE_Brent(T1, T2, LMTD_req)<br/>→ see 07-brent-root-finder.mermaid"]
+INRF5 --> INRF6{"isFinite(calculated_TE)?"}
+INRF6 -- No --> INRFerr2["return {error: 'TE search failed: LMTD impossible'}"]
+INRF6 -- Yes --> INRF7["comp = evaluateCompressorSafely(calculated_TE, TC,<br/>refIndex, compParams, RPM)<br/>→ see 06-physics-helpers.mermaid"]
+INRF7 --> INRF8["SLHX energy balance:<br/>T_cond_exit=TC-subcool; h_liq_cond_exit=liquidEnthalpy(...)<br/>T_suction_actual=min(30,T_cond_exit)<br/>h_suc_out/h_suc_in via gasEnthalpy<br/>h_liq_exp_in = h_liq_cond_exit - max(0,h_suc_out-h_suc_in)<br/>clamp to liquidEnthalpy(TE) floor"]
+INRF8 --> INRF9["comp.QCompressor = massFlow*(hGas_TE-h_liq_exp_in)/3.6<br/>Tsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in)<br/>(bisection, 50 iters)"]
+INRF9 --> INRF10["f1 = QF - MF*CV*(TF-T3)*PR<br/>f2 = (QF+QR+QEV) - QCompressor*PR<br/>return [f1, f2]"]
+INRF10 --> INR3["res = newton2(F, initialGuess, [dx,dx],<br/>tol, maxIter, bounds)<br/>→ see 08-newton2-generic.mermaid"]
+INR3 --> INR4{"res.converged?"}
+INR4 -- Yes --> INR9
+INR4 -- No --> INR5{"error is<br/>'undersized' or<br/>'oversized' limit?"}
+INR5 -- Yes --> INR9
+INR5 -- No --> INR6["build fallback guesses list<br/>(inverter: mid/min/max RPM combos;<br/>constant: PR 0.4/0.5/0.3 combos)"]
+INR6 --> INR7["for each fallback guess:<br/>res = newton2(F, guess, ...)"]
+INR7 --> INR8{"any guess<br/>converged?"}
+INR8 -- Yes --> INR9
+INR8 -- No --> INRFAIL["return {...res, T2:res.x[0],<br/>PR or RPM: res.x[1], converged:false}"]
+INR9{"res.converged?"}
+INR9 -- No --> INRFAIL
+INR9 -- Yes --> INR10["recompute final state at solution x:<br/>loads = calcHeatLoads(...)<br/>comp = evaluateCompressorSafely(...)<br/>re-apply SLHX capacity + Tsubcool<br/>T3, MR, MF, T1 recomputed"]
+INR10 --> INROK["return {T2,PR,RPM,TE,converged:true,<br/>iterations, warning, heatLoads,<br/>compressor{etaV,coolingCapacity,inputPower,<br/>COP,massFlow,Pe,Pc}, MR, MF, T3, Tsubcool, T1}"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef external fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+
+class INR0,INR1a,INR1b,INR2,INRF2,INRF3,INRF8,INRF9,INRF10,INR6,INR7,INR10 process
+class INR1,INRF4,INRF6,INR4,INR5,INR8,INR9 decision
+class INROK success
+class INRFerr,INRFerr2,INRFAIL fail
+class INRF1,INRF5,INRF7,INR3 external

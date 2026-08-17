@@ -1,0 +1,73 @@
+%% MODULES: condenser.js · CompressorPerformance.js
+%% ROLE: shared physics helpers called from the TC secant loop and the inner Newton setup
+%% (evaporator.js split out to 10-evaporator-helpers.mermaid — see pointer node below)
+%% Legend: blue=process · amber=decision · green=success return · red=failure/throw · gray-dashed=UI-only offline path
+
+flowchart TD
+
+subgraph COND["condenser.js — calcQCout(geom, TC, T0, TF, TR, PR,<br/>PIPEPITCH, freezerPosition, backCondenserEfficiency)"]
+  COND0["sideArea = f(H,D,Hb,Db1,Db2)<br/>backArea = backAreaRaw * backCondenserEfficiency<br/>K_side, K_back = quadratic pitch correction"] --> COND1["Qdpfr = partition DP formula<br/>(0.1984*(TC-T0) + 0.1219*(TC-TF))*PR*(W-tFsides)"]
+  COND1 --> COND2{"freezerPosition<br/>== 'top'?"}
+  COND2 -- Yes --> COND2a["Qdpf uses (Hf*2+W)<br/>Qdpr uses (Hr*2)"]
+  COND2 -- No --> COND2b["Qdpf uses (Hf*2)<br/>Qdpr uses (Hr*2+W)"]
+  COND2a --> COND3
+  COND2b --> COND3["Qdp = Qdpfr + Qdpf + Qdpr<br/>Qside = K_side*sideArea*(TC-T0)*1.16279<br/>Qback = K_back*backArea*(TC-T0)*1.16279"]
+  COND3 --> CONDOK["return {Qdpfr,Qdpf,Qdpr,Qdp,Qside,Qback,<br/>QCout: Qdp+Qside+Qback}"]
+end
+
+subgraph CMP["CompressorPerformance.js — RUNTIME evaluation<br/>(evaluateCompressorSafely)"]
+  CMP0{"compParams.compressorModel<br/>is an object?"}
+  CMP0 -- Yes --> CMP1["inverterCompressorPerformance(TE,TC,RPM,refIndex,model)"]
+  CMP1 --> CMP1a{"model.type == 'global'?"}
+  CMP1a -- Yes --> CMP1b["features = makeFeatures(rpmForm, RPM/normRPM,<br/>TE-centerTE, TC-centerTC)<br/>y = coeffs[0] + sum(feature_i * coeffs[i+1])<br/>logTransform? y = exp(y) : y"]
+  CMP1a -- No --> CMP1c["piecewise: predict(RPM,TE,TC)<br/>(low-range quad model, max-RPM quad model,<br/>linear interpolation between them)"]
+  CMP1b --> CMP2
+  CMP1c --> CMP2["QCompressor = predict(Q model)<br/>CompPower = predict(W model)<br/>massFlow = QCompressor*3.6/(hGas(30C,Pe)-hLiquid(30C))<br/>Pe = satPressure(TE); Pc = satPressure(TC)"]
+  CMP0 -- No --> CMP3{"compParams.isInverter<br/>but no model?"}
+  CMP3 -- Yes --> CMPTHROW["throw Error('Inverter compressor<br/>selected but no fitted model.')"]
+  CMP3 -- No --> CMP4["compressorPower(TE,TC,refIndex,wCoeffs,<br/>etaCoeffs,cylVol,speedRpm)  [constant-speed, OLS]<br/>CompPower = AW+BW*TE+CW*TC+DW*TC*TE+EW*TE^2<br/>VolEff = A + B*(Pc/Pe) + C*Pc<br/>G = VolEff*(cylVol*speedRpm*60/1e6)/vGas<br/>QCompressor = G*(hGas-hLiq)/3.6"]
+  CMP2 --> CMPOK["return {Pe,Pc,VolumetricEfficiency,<br/>QCompressor,CompPower,massFlow}"]
+  CMP4 --> CMPOK
+end
+
+subgraph CMPFIT["CompressorPerformance.js — OFFLINE FITTING<br/>(only triggered via UI 'Add/Edit Compressor' modal —<br/>NOT part of the live solve loop)"]
+  CMPFIT0["computeCompressorCoefficients<br/>(OLS, constant-speed)"] --> CMPFIT1{"dataPoints.length >= 5?"}
+  CMPFIT1 -- No --> CMPFITTHROW["throw Error('At least 5 points required.')"]
+  CMPFIT1 -- Yes --> CMPFIT2["build eta features [1,Pc/Pe,Pc]<br/>build W features [1,TE,TC,TC*TE,TE^2]<br/>buildNormalEquations -> gaussJordanSolve"]
+  CMPFIT2 --> CMPFITOK["return {etaCoeffs, wCoeffs}"]
+
+  CMPFIT3["fitInverterCoefficients<br/>(Ridge Regression + CV, inverter)"] --> CMPFIT4["selectInverterModel(Q column)<br/>selectInverterModel(W column)"]
+  CMPFIT4 --> CMPFIT5["buildGlobalModel: grid search over<br/>rpmForm x logTransform x alpha,<br/>leave-one-RPM-group-out CV (cvInverter)"]
+  CMPFIT5 --> CMPFIT6{"unique RPM<br/>values >= 3?"}
+  CMPFIT6 -- Yes --> CMPFIT7["also try fitPiecewiseInverter<br/>at every internal split RPM"]
+  CMPFIT7 --> CMPFIT8{"piecewise.rmse + 0.5<br/>< global.cvRMSE?"}
+  CMPFIT8 -- Yes --> CMPFIT9["use piecewise model"]
+  CMPFIT8 -- No --> CMPFIT10["use global model"]
+  CMPFIT6 -- No --> CMPFIT10
+  CMPFIT9 --> CMPFITOK2["return {Q:model, W:model,<br/>normalizeRPM, centerTE, centerTC}"]
+  CMPFIT10 --> CMPFITOK2
+end
+
+EVAPPTR["evaporator.js helpers<br/>(computeEvaporatorArea, airSpeed, evaporatorAlpha, lmtd, evaporatorCapacity)<br/>→ see 10-evaporator-helpers.mermaid<br/>— four independent utilities, not a pipeline"]
+
+classDef process fill:#0f4a6e,color:#fff,stroke:#082f45
+classDef decision fill:#5a4a1e,color:#fff,stroke:#3a2f12
+classDef success fill:#1f6b3e,color:#fff,stroke:#123d23
+classDef fail fill:#7a1f1f,color:#fff,stroke:#4a0f0f
+classDef peripheral fill:#555555,color:#fff,stroke:#333333,stroke-dasharray: 3 3
+
+class COND0,COND1,COND2a,COND2b,COND3 process
+class COND2 decision
+class CONDOK success
+
+class CMP1,CMP1b,CMP1c,CMP2,CMP4 process
+class CMP0,CMP1a,CMP3 decision
+class CMPOK success
+class CMPTHROW fail
+
+class CMPFIT0,CMPFIT2,CMPFIT3,CMPFIT4,CMPFIT5,CMPFIT7,CMPFIT9,CMPFIT10 peripheral
+class CMPFIT1,CMPFIT6,CMPFIT8 peripheral
+class CMPFITOK,CMPFITOK2 peripheral
+class CMPFITTHROW peripheral
+
+class EVAPPTR external

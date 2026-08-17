@@ -1,0 +1,68 @@
+flowchart TB
+
+  ENTRY(["runThermoAnalysis(config)<br/>ENTRY POINT"])
+
+  subgraph L1["ORCHESTRATION"]
+    IDX["index.js<br/>validate config → build solverOptions<br/>→ interpret result → attach warnings"]
+  end
+
+  subgraph L2["PHYSICAL ITERATION  (solver.js)"]
+    direction TB
+    DYN["runThermalAnalysisDynamic<br/>OUTER TE LOOP · ≤15 iter<br/>evaporator-side energy balance"]
+    TCS["solveThermalSystem<br/>OUTER TC SECANT LOOP · ≤maxIterOuter (100)<br/>condenser-side energy balance"]
+    SAFE["evaluateSafetyCheckpoints<br/>post-convergence sanity checks<br/>+ re-solves at 43°C peak load"]
+  end
+
+  subgraph L3["CORE NUMERICS  (solver.js)"]
+    direction TB
+    INR["solveInner<br/>2-D NEWTON SETUP<br/>assembles F(T2, PR|RPM) from physics modules"]
+    N2["newton2<br/>generic 2-D Newton–Raphson<br/>+ Armijo backtracking line search"]
+    BR["solveTE_Brent<br/>Brent's method root finder for TE"]
+  end
+
+  subgraph L4["PHYSICS MODULES"]
+    direction LR
+    HL["heatLoad.js<br/>calcHeatLoads<br/>cabinet conduction → QF / QR / QEV"]
+    COND["condenser.js<br/>calcQCout"]
+    CMP["CompressorPerformance.js<br/>evaluateCompressorSafely<br/>runtime model (OLS / inverter)"]
+    EVAP["evaporator.js<br/>area · airspeed · LMTD helpers"]
+  end
+
+  subgraph L5["NOT IN THE LIVE SOLVE PATH"]
+    direction LR
+    CMPFIT["CompressorPerformance.js<br/>computeCompressorCoefficients /<br/>fitInverterCoefficients<br/>— offline fitting, UI modal only"]
+    VAL["validateHeatLoad.js<br/>validateHeatLoad()<br/>— imported, never invoked · DEAD CODE"]
+    ENERGY["solver.js EnergyConsumption()<br/>— called by thermoUI.js<br/>AFTER runThermoAnalysis returns"]
+  end
+
+  ENTRY --> IDX
+  IDX -->|"validated config<br/>+ solverOptions"| DYN
+  DYN -->|"TE guess"| TCS
+  TCS -->|"TC, T2, PR"| INR
+  INR --> N2
+  INR -.-> BR
+  INR -.uses.-> HL
+  INR -.uses.-> CMP
+  TCS -.uses.-> COND
+  TCS -.uses.-> CMP
+  TCS -.uses.-> EVAP
+  SAFE -.uses.-> EVAP
+  DYN -->|"converged"| SAFE
+  SAFE -.->|"peak-load re-check"| TCS
+  SAFE --> IDX
+  IDX -.->|"imported but unused"| VAL
+  IDX -.->|"result handed to UI"| ENERGY
+
+  classDef orchestration fill:#1e3a5f,color:#fff,stroke:#0d1b2a,stroke-width:1px
+  classDef loop fill:#4a2f6b,color:#fff,stroke:#2d1b45,stroke-width:1px
+  classDef numeric fill:#0f6e5e,color:#fff,stroke:#083f36,stroke-width:1px
+  classDef physics fill:#2f6b3e,color:#fff,stroke:#1a3d23,stroke-width:1px
+  classDef dead fill:#7a1f1f,color:#fff,stroke:#4a0f0f,stroke-width:1px,stroke-dasharray: 5 5
+  classDef peripheral fill:#555555,color:#fff,stroke:#333333,stroke-width:1px,stroke-dasharray: 3 3
+
+  class IDX orchestration
+  class DYN,TCS,SAFE loop
+  class INR,N2,BR numeric
+  class HL,COND,CMP,EVAP physics
+  class VAL dead
+  class CMPFIT,ENERGY peripheral
