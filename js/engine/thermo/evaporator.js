@@ -38,22 +38,17 @@ export function computeEvaporatorArea(evap) {
  * @returns {number} Air speed in m/s.
  */
 export function airSpeed(fanParam, evap) {
-  const {tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree} = fanParam
+  const {tipDiam_mm, fanRPM} = fanParam
   
   if (!fanParam || typeof fanParam !== 'object') {
     throw new Error('fanParam is missing or invalid');
   }
-  if ([tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree].some(v => v == null || isNaN(v))) {
-    throw new Error('fanParam missing required fields: tipDiam_mm, fanRPM, hubDiam_mm, PitchAngle_degree');
-  }
-  if (hubDiam_mm >= tipDiam_mm) {
-    throw new Error(`Fan hub diameter (${hubDiam_mm}mm) must be smaller than tip diameter (${tipDiam_mm}mm).`);
+  if ([tipDiam_mm, fanRPM].some(v => v == null || isNaN(v))) {
+    throw new Error('fanParam missing required fields: tipDiam_mm, fanRPM');
   }
 
   const tipDiam_m = tipDiam_mm / 1000;
-  const hubDiam_m = hubDiam_mm / 1000;
   const R = tipDiam_m / 2;
-  const r = hubDiam_m / 2;
 
   // Axial fan flow rate: Q [m³/s] = π * n [rev/s] * (R² - r²) * tan(θ)
   const Q_m3s = 70*fanRPM/3000*((tipDiam_mm/100)**2)/3600;
@@ -66,7 +61,7 @@ export function airSpeed(fanParam, evap) {
   const v_ms = fanAirflow_m3h / frontArea_m2 / 3600;   // m/s
   const fanAirflow_cfm = fanAirflow_m3h * 0.588578;    // m³ -> CFM
 
-  console.log(`[Fan param] tipDiam_mm=${tipDiam_mm} fanRPM=${fanRPM} hubDiam_mm=${hubDiam_mm} PitchAngle_degree=${PitchAngle_degree} | Q_m3s=${Q_m3s.toFixed(4)} m³/s, fanAirflow_m3h=${fanAirflow_m3h.toFixed(2)} m³/h, v_ms=${v_ms.toFixed(2)} m/s, fanAirflow_cfm=${fanAirflow_cfm.toFixed(2)} CFM`);
+  console.log(`[Fan param] tipDiam_mm=${tipDiam_mm} fanRPM=${fanRPM} | Q_m3s=${Q_m3s.toFixed(4)} m³/s, fanAirflow_m3h=${fanAirflow_m3h.toFixed(2)} m³/h, v_ms=${v_ms.toFixed(2)} m/s, fanAirflow_cfm=${fanAirflow_cfm.toFixed(2)} CFM`);
   
   return { v_ms, fanAirflow_m3h, fanAirflow_cfm, fanAirSpeed };
 }

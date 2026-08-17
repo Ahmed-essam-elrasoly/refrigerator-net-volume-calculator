@@ -15,22 +15,27 @@
     <!-- ======================================================================= -->
     <div class="left-panel">
       <div class="sticky-header">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-          <div>
-            <h1>Volume &amp; Thermal Calculator</h1>
-            <p>Gross &amp; Usable Volume Design Tool</p>
-          </div>
-          <!-- Global Graph Button -->
-          <button id="openGraphBtn" style="background: var(--success-green); color: var(--bg-base); border-color: var(--success-green); margin-top: 10px;">
+      <div>
+        <h1>Volume &amp; Thermal Calculator</h1>
+        <p>Gross &amp; Usable Volume Design Tool</p>
+        
+        <!-- Relocated Buttons -->
+        <div style="margin-bottom: 12px;">
+          <button id="openGraphBtn" style="background: var(--success-green); color: var(--bg-base); border-color: var(--success-green);">
             Parametric Graph
           </button>
-        </div>
-        <div class="tab-bar">
-          <button id="tabVolume" class="tab active">Volume</button>
-          <button id="tabThermal" class="tab">Thermal</button>
-          <button id="tabInverter" class="tab">Inverter</button>
+          <button id="storeSlotABtn" style="display:none;">Store Slot A</button>
+          <button id="storeSlotBBtn" style="display:none;">Store Slot B</button>
+          <button id="compareSlotsBtn" style="display:none;">Compare</button>
         </div>
       </div>
+
+      <div class="tab-bar">
+        <button id="tabVolume" class="tab active">Volume</button>
+        <button id="tabThermal" class="tab">Thermal</button>
+        <button id="tabInverter" class="tab">Inverter</button>
+      </div>
+    </div>
       
       <div id="panelVolume" class="tab-panel active">
         <!-- Action buttons inside panelVolume now respect the sticky CSS definition seamlessly -->
@@ -39,9 +44,6 @@
           <button id="saveBtn">Save JSON</button>
           <button id="loadBtn">Load JSON</button>
           <button id="exportBtn">Export CSV</button>
-          <button id="storeSlotABtn" style="display:none;">Store Slot A</button>
-          <button id="storeSlotBBtn" style="display:none;">Store Slot B</button>
-          <button id="compareSlotsBtn" style="display:none;">Compare</button>
           <button id="resetAllBtn">Reset All</button>
         </div>
 

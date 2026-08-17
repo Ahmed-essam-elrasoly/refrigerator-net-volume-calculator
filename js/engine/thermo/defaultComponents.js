@@ -60,7 +60,6 @@ export const SJ54H_COMPONENTS = Object.freeze({
     k_FFront2: 0.0344,
   },
 
-  subcool_K: 10,
   dischargeTemp_C: 60,
   evapGeom: {
     evapWidth_mm: 460,    
@@ -149,7 +148,6 @@ export const SJ_PV73K_COMPONENTS = Object.freeze({
     k_FFront1: 0.3395,
     k_FFront2: 0.0344,
   },
-  subcool_K: 10,
   dischargeTemp_C: 60,
   evapGeom: {
     evapWidth_mm: 440.5,
