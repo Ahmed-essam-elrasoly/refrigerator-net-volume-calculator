@@ -25,6 +25,7 @@ import {
 import { fitInverterCoefficients } from '../engine/thermo/CompressorPerformance.js';
 import { computeCompressorCoefficients } from '../engine/thermo/CompressorPerformance.js';
 import { EnergyConsumption } from '../engine/thermo/solver.js';
+import { getIEERank } from '../engine/thermo/ieeRank.js';
 import { settings, updateSettings } from '../settings.js';
 import { getRefrigerantProperties } from '../engine/thermo/CompressorPerformance.js';
 import { INVERTER_EXAMPLE_COMPONENTS } from '../engine/thermo/defaultComponents.js';
@@ -1165,7 +1166,6 @@ function displayResults(res, energy, isInverter = false) {
   const eW   = energy ? fmt(energy.EnergyConsumption_kWhDay, 3) : '—';
   const eKWh = energy ? fmt(energy.EnergyConsumption_kWhMonth, 3) : '—';
   const volumes = exportvolume(traverseAndComputePrecise(buildLayoutNodeForPrecise(), readGeometryFromPanel()).leaves, readGeometryFromPanel());  
-  const Ann_EC = eW * 365;
   const AV = (volumes.freezerTotal * (25-TF)/21)+volumes.freshTotal;
   const ES_27 = AV * .57 + (800 * 0.9);
   const ES_29 = AV * .57 + (800 * 0.8);
@@ -1173,40 +1173,9 @@ function displayResults(res, energy, isInverter = false) {
   const IEE_27 = eKWh * 12 / ES_27;
   const IEE_29 = eKWh * 12 / ES_29;
   const IEE_31 = eKWh * 12 / ES_31;
-  let Rank_27, Rank_29, Rank_31;
-  if( IEE_27 <= 0.45){
-     Rank_27 = "A"
-    }else if(IEE_27 <= 0.55){
-     Rank_27 = "B"
-    }else if(IEE_27 <= 0.65){
-     Rank_27 = "C"
-    }else if(IEE_27 <= 0.75){
-     Rank_27 = "D"
-    }else if(IEE_27 <= 0.85){
-     Rank_27 = "OUT OF RANKING"
-  }
-  if( IEE_29 <= 0.45){
-     Rank_29 = "A"
-    }else if(IEE_29 <= 0.55){
-     Rank_29 = "B"
-    }else if(IEE_29 <= 0.65){
-     Rank_29 = "C"
-    }else if(IEE_29 <= 0.75){
-     Rank_29 = "D"
-    }else if(IEE_29 <= 0.85){
-     Rank_29 = "OUT OF RANKING"
-  }
-  if( IEE_31 <= 0.45){
-     Rank_31 = "A"
-    }else if(IEE_31 <= 0.55){
-     Rank_31 = "B"
-    }else if(IEE_31 <= 0.65){
-     Rank_31 = "C"
-    }else if(IEE_31 <= 0.75){
-     Rank_31 = "D"
-    }else if(IEE_31 <= 0.85){
-     Rank_31 = "OUT OF RANKING"
-  }
+  const Rank_27 = getIEERank(IEE_27);
+  const Rank_29 = getIEERank(IEE_29);
+  const Rank_31 = getIEERank(IEE_31);
 
   
   let etaV = '—';
@@ -1262,7 +1231,7 @@ function displayResults(res, energy, isInverter = false) {
         <tr><td>Suction temp Tsuc [fixed]</td><td>30 °C</td></tr>
         <tr><td>Mixed inlet T1</td><td>${fmt(res.evapDetails.T1, 2)} °C</td></tr>
         <tr><td>Evap. outlet T2</td><td>${fmt(res.T2)} °C</td></tr>
-        <tr><td>T3</td><td>${fmt(res.T3, 2)} C</td></tr>` +
+        <tr><td>Fan out Temp T3</td><td>${fmt(res.T3, 2)} °C</td></tr>` +
         `${isInverter
           ? `<tr><td>Running Ratio PR (fixed)</td><td>${fmtP(res.PR)}</td></tr>` +
             `<tr><td>Required Compressor RPM</td><td>${res.RPM !== undefined ? fmt(res.RPM, 0) : '—'} rpm</td></tr>`
