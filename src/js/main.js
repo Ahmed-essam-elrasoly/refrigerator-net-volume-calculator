@@ -13,6 +13,7 @@ import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 import { traverseAndComputePrecise } from './engine/traversal.js'; // precise engine
 import { roundForDisplay, toCuft, polygonArea } from './engine/calc.js';
+import { getIEERank } from './engine/thermo/ieeRank.js';
 
 // Load settings from localStorage
 updateSettings(settings);
@@ -1475,20 +1476,16 @@ function buildComparisonTable(stateA, stateB) {
     const ES_27 = AV * 0.57 + (800 * 0.9);
     const ES_29 = AV * 0.57 + (800 * 0.8);
     const ES_31 = AV * 0.57 + (800 * 0.6);
-    
+
     const IEE_27 = (monthlyE * 12) / ES_27;
     const IEE_29 = (monthlyE * 12) / ES_29;
     const IEE_31 = (monthlyE * 12) / ES_31;
 
-    const rankStr = (iee) => {
-      if (!iee || isNaN(iee)) return 'OUT OF RANKING';
-      if (iee <= 0.45) return 'A';
-      if (iee <= 0.55) return 'B';
-      if (iee <= 0.65) return 'C';
-      if (iee <= 0.75) return 'D';
-      return 'OUT OF RANKING';
+    return {
+      r27: getIEERank(IEE_27),
+      r29: getIEERank(IEE_29),
+      r31: getIEERank(IEE_31),
     };
-    return { r27: rankStr(IEE_27), r29: rankStr(IEE_29), r31: rankStr(IEE_31) };
   };
 
   // Extract Data Architectures

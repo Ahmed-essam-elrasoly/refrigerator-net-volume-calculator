@@ -2,6 +2,8 @@
  * @file js/io/io.js
  * I/O layer - JSON config save/load and CSV export.
  */
+import { getIEERank } from '../engine/thermo/ieeRank.js';
+
 const SCHEMA_VERSION = '2.0';
 const ACCEPTED_VERSIONS = new Set(['1.0', '2.0']);
 
@@ -206,7 +208,16 @@ function computeExtendedVolumes(geometry, leaves) {
     const extVolMm3 = geometry.H * geometry.W * geometry.D;
     const cutoutVolMm3 = geometry.Hb * (geometry.Db1 + geometry.Db2) / 2 * geometry.W;
     const extVolL = (extVolMm3 - cutoutVolMm3) * mm3ToL;
-    const cabPUVolL = extVolL - grossVolume - totalDikesL;
+
+    let dividerPUVolL = 0;
+    if (geometry.dividerHasPU && comps.length > 1) {
+        const topComp = comps[0];
+        const innerW = geometry.W - topComp.left - topComp.right;
+        const innerD = geometry.D - topComp.rear;
+        dividerPUVolL = (geometry.dividerThickness * innerW * innerD * (geometry.dividerPUPct / 100)) * mm3ToL;
+    }
+
+    const cabPUVolL = extVolL - grossVolume - totalDikesL + dividerPUVolL;
 
     return {
         freezerGross, freshGross, grossVolume,
@@ -243,14 +254,7 @@ export function resultToCSV(cachedState, configName) {
   const IEE_29 = (monthlyE * 12) / ES_29;
   const IEE_31 = (monthlyE * 12) / ES_31;
 
-  const getRank = (iee) => {
-    if (!iee || isNaN(iee)) return 'OUT OF RANKING';
-    if (iee <= 0.45) return 'A';
-    if (iee <= 0.55) return 'B';
-    if (iee <= 0.65) return 'C';
-    if (iee <= 0.75) return 'D';
-    return 'OUT OF RANKING';
-  };
+  const getRank = (iee) => getIEERank(iee);
 
   const fmt = (val) => val != null && !isNaN(val) ? Number(val).toFixed(2) : '--';
 

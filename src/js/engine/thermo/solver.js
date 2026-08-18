@@ -25,14 +25,13 @@ function getRefrigerantIndex(name) {
   throw new Error(`Unsupported refrigerant: ${name}`);
 }
 
-// Bisection method to find Temperature from Liquid Enthalpy
-function getTemperatureFromLiquidEnthalpy(h_target, prop, pressure) {
+// Bisection method to find temperature from liquid enthalpy.
+function getTemperatureFromLiquidEnthalpy(h_target, prop) {
   let low = -100;
   let high = 150;
   for (let i = 0; i < 50; i++) {
     let mid = (low + high) / 2;
-    // Update to pass pressure to your external library
-    if (prop.liquidEnthalpy(mid, pressure) < h_target) {
+    if (prop.liquidEnthalpy(mid) < h_target) {
       low = mid;
     } else {
       high = mid;
@@ -193,7 +192,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
 /**
  * Executes the Newton-Raphson loop to find the equilibrium variables.
  */
-function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
+function solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
   const { tol = 1e-4, maxIter = 100, dx = 1e-3 } = innerOpts;
   const { Damp = .6 } = electrical;
   const PIPEPITCH = { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm };
@@ -306,7 +305,7 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
 
     // 3. Calculate Actual Physical Capacity
     comp.QCompressor = (comp.massFlow * (h_suc_out - h_liq_exp_in)) / 3.6;
-    convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop, comp.Pc);
+    convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop);
 
     const f1 = loads.QF - MF * CV * (fixedTemps.TF - T3) * PR;
     const f2 = totalHeat_W - comp.QCompressor * PR;
@@ -391,7 +390,7 @@ function solveInner(TC, geom, compParams, refrigerant, subcool, fixedTemps, fan,
   }
 
   comp.QCompressor = (comp.massFlow * (h_suc_out - h_liq_exp_in)) / 3.6;
-  convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop, comp.Pc);
+  convergedTsubcool = getTemperatureFromLiquidEnthalpy(h_liq_exp_in, prop);
   // -------------------------------------------------------
 
   const fT3 = fT2 + loads.QEV / (Flow_m3h * CV * fPR);
@@ -518,7 +517,7 @@ export function solveThermalSystem(config, TE_override = null) {
   const { 
     geom, compParams, condenserConfig, refrigerant,  dischargeTemp, 
     fixedTemps, fan, electrical, evapGeom, freezerPosition = 'top', 
-    TC0 = 45, tolOuter = 0.001, maxIterOuter = 50, innerOptions = {} 
+    tolOuter = 0.001, maxIterOuter = 50, innerOptions = {} 
   } = config;
 
   if (!evapGeom) {
@@ -535,7 +534,7 @@ export function solveThermalSystem(config, TE_override = null) {
     if (TC < fixedTemps.T0) TC = fixedTemps.T0 + 2;
     if (TC > 90) TC = 90;
 
-    let inner = solveInner(TC, geom, compParams, refrigerant, undefined, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom);
+    let inner = solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom);
 
     if (!inner.converged) {
       if (inner.error?.includes('undersized')) return createFailure(TC, 'Compressor undersized.', inner);
@@ -556,7 +555,7 @@ export function solveThermalSystem(config, TE_override = null) {
       console.log(`F3=${F3.toFixed(2)}`);
 
     let innerPert = null;
-    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, undefined, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
+    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
 
     if (innerPert?.converged) {
       const compOuter_pert = evaluateCompressorSafely(TE, TC + 0.001, getRefrigerantIndex(refrigerant), compParams, (fixedPR !== undefined) ? innerPert.RPM : undefined);
@@ -579,6 +578,28 @@ export function solveThermalSystem(config, TE_override = null) {
  * Handles the absolute outermost iteration ensuring Evaporator Temperature (TE) 
  * balances perfectly against capacity.
  */
+export function updateTEWithSecant(TE, error, prevTE, prevError) {
+  const currentTE = Number.isFinite(TE) ? TE : NaN;
+  const currentError = Number.isFinite(error) ? error : NaN;
+
+  if (!Number.isFinite(currentTE) || !Number.isFinite(currentError)) {
+    return { nextTE: TE, prevTE: TE, prevError: error };
+  }
+
+  if (prevTE === undefined || prevError === undefined) {
+    return { nextTE: TE + 0.5 * currentError, prevTE: currentTE, prevError: currentError };
+  }
+
+  const denominator = currentError - prevError;
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-12) {
+    return { nextTE: TE + 0.5 * currentError, prevTE: currentTE, prevError: currentError };
+  }
+
+  const secantStep = -currentError * (currentTE - prevTE) / denominator;
+  const boundedStep = Math.max(-3.0, Math.min(3.0, secantStep));
+  return { nextTE: currentTE + boundedStep, prevTE: currentTE, prevError: currentError };
+}
+
 export function runThermalAnalysisDynamic(config) {
   let TE = config.initialTE, result, prevTE, prevError;
   for (let i = 0; i < 15; i++) {
@@ -586,11 +607,11 @@ export function runThermalAnalysisDynamic(config) {
     const error = calculateNewTE(result, config.fan, config.evapGeom, config.fixedTemps.TF, config.fixedTemps.TR) - TE;
     console.log(`[TE-UPDATE] i=${i} TE=${TE} result.MR=${result.MR} result.MF=${result.MF} result.T2=${result.T2} newTE_raw=${error+TE} error=${error}`);
     if (Math.abs(error) < 0.1) { result.TE = TE + error; return evaluateSafetyCheckpoints(result, config, TE + error); }
-    
-    if (i > 0 && prevError !== undefined) TE += Math.max(-3.0, Math.min(3.0, -error * (TE - prevTE) / (error - prevError)));
-    else TE += 0.5 * error;
-    
-    prevTE = TE - (i > 0 ? TE - prevTE : 0.5*error); prevError = error;
+
+    const update = updateTEWithSecant(TE, error, prevTE, prevError);
+    TE = update.nextTE;
+    prevTE = update.prevTE;
+    prevError = update.prevError;
   }
   return { converged: false, error: 'Thermodynamic imbalance: TE loop failed.' };
 }
