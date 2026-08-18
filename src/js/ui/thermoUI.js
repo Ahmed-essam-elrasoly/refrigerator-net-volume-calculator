@@ -806,7 +806,7 @@ function openEditCompressorModal() {
  * Triggers the Constant-Speed thermal simulation.
  * Constructs the configuration payload and delegates to the engine solver.
  */
-function handleRun() {
+export function handleRun() {
   clearMessages();
   if (!getGeometryFn) { showError('Geometry source not available.'); return; }
   const cabinetGeom = getGeometryFn();
@@ -958,7 +958,7 @@ function handleRun() {
  * Triggers the Inverter thermal simulation.
  * Calculates variable RPM requirements given a user-fixed running ratio (PR).
  */
-function handleInverterRun() {
+export function handleInverterRun() {
   clearMessages('inverterErrors');
   if (!getGeometryFn) { showError('Geometry source not available.', 'inverterErrors'); return; }
   const cabinetGeom = getGeometryFn();

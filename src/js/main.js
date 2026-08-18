@@ -9,7 +9,7 @@ import { settings, updateSettings } from './settings.js';
 import { downloadConfigJSON, loadConfigFromFile, downloadResultsCSV } from './io/io.js';
 import { drawFrontView, drawSideView, enableCoordinateTooltip } from './ui/schematic.js';
 import { initGraphModal } from './ui/graphUI.js'; // <-- ADD THIS
-import { initThermoUI, getThermalState, setThermalState } from './ui/thermoUI.js';
+import { initThermoUI, getThermalState, setThermalState, handleInverterRun, handleRun } from './ui/thermoUI.js';
 import { DEFAULT_CABINET, toVolumeFormat, toThermalFormat, upgradeConfig } from './engine/geometry.js';
 import { traverseAndComputePrecise } from './engine/traversal.js'; // precise engine
 import { roundForDisplay, toCuft, polygonArea } from './engine/calc.js';
@@ -1201,7 +1201,10 @@ loadBtn.addEventListener('click', () => {
       const config = await loadConfigFromFile(file);
       currentConfig = config;
       populateUIFromConfig(config); // Sync UI inputs silently
-      alert('Configuration loaded successfully. Press Calculate to evaluate.');
+      calculateBtn.click();
+      handleInverterRun();  // Trigger calculation to ensure currentConfig is set before loading
+      handleRun(); // Ensure any pending calculations are completed
+
     } catch (err) {
       alert(`Initialization Error: ${err.message}`);
     }
