@@ -1,6 +1,10 @@
 """
 ================================================================================
 REFRIGERATOR THERMAL SOLVER + UI LAYER — COMPREHENSIVE PSEUDOCODE
+(Revision: re-synced against solver.js / defaultComponents.js / index.js —
+ removes the `subcool` fixed-input model throughout and documents the live
+ dynamic condenser-subcooling replacement; see the VERIFICATION STATUS block
+ at the end of Part I for the full list of substantive changes this pass made.)
 ================================================================================
 PART I  (Sections 0-6):   live solve path + offline compressor fitting —
     constants.js, defaultComponents.js, geometry.js, evaporator.js, heatLoad.js,
@@ -75,7 +79,12 @@ SJ54H_COMPONENTS = {
                   "k_RFront1": 0.3405, "k_RFront2": 0.03322,
                   "k_FRPartition1": 0.1984, "k_FRPartition2": 0.1219,
                   "k_FFront1": 0.3395, "k_FFront2": 0.0344},
-    "subcool_K": 10, "dischargeTemp_C": 60,
+    "dischargeTemp_C": 60,   # NOTE: subcool_K existed in an earlier revision of this
+                              # object and has been REMOVED — the live source has no
+                              # subcool_K field on either preset anymore. Subcooling is
+                              # no longer a fixed input; solver.js now derives it dynamically
+                              # inside solveInner() from the condenser's own energy balance
+                              # (see Section 5b).
     "evapGeom": {"evapWidth_mm": 460, "evapDepth_mm": 60, "evapArea_m2": 1.754},
     "initialTE": -25.7,
 }
@@ -101,7 +110,7 @@ SJ_PV73K_COMPONENTS = {
                   "k_RFront1": 0.3405, "k_RFront2": 0.03322,
                   "k_FRPartition1": 0.1984, "k_FRPartition2": 0.1219,
                   "k_FFront1": 0.3395, "k_FFront2": 0.0344},
-    "subcool_K": 10, "dischargeTemp_C": 60,
+    "dischargeTemp_C": 60,   # NOTE: subcool_K removed — see matching note on SJ54H_COMPONENTS above.
     "evapGeom": {"evapWidth_mm": 440.5, "evapDepth_mm": 58, "evapArea_m2": 1.2985},
     "freezerPosition": "bottom", "initialTE": -22.7,
 }
@@ -1167,12 +1176,23 @@ def get_refrigerant_index(name: str) -> int:
     raise ValueError(f"Unsupported refrigerant: {name}")
 
 
-def get_temperature_from_liquid_enthalpy(h_target: float, prop: dict) -> float:
-    """Bisection search for the Celsius temperature whose liquidEnthalpy() equals h_target."""
+def get_temperature_from_liquid_enthalpy(h_target: float, prop: dict, pressure: float = None) -> float:
+    """
+    Bisection search for the Celsius temperature whose liquidEnthalpy() equals h_target.
+
+    SOURCE-CODE NOTE (new): the live function now accepts a third `pressure`
+    parameter and every call site (solveInner, both the in-loop and final
+    re-application) passes `comp.Pc` into it. But `prop.liquidEnthalpy` — every
+    concrete implementation in CompressorPerformance.js (r134a and r600a alike)
+    — is single-argument (temperature only); the extra `pressure` argument is
+    silently dropped by JS's normal call semantics. The parameter is real (it's
+    in the signature and threaded through call sites) but has NO effect on the
+    computed value — a dead parameter, not a modeling input.
+    """
     low, high = -100, 150
     for _ in range(50):
         mid = (low + high) / 2
-        if prop["liquidEnthalpy"](mid) < h_target:
+        if prop["liquidEnthalpy"](mid, pressure) < h_target:   # `pressure` accepted, ignored by liquidEnthalpy()
             low = mid
         else:
             high = mid
@@ -1320,11 +1340,23 @@ def newton2(F, x0, dx, tol, max_iter, bounds, debug=False) -> dict:
 
 def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, electrical,
                  condenser_config, TE, freezer_pos, inner_opts=None, fixed_PR=None, evap_geom=None) -> dict:
+    """
+    SOURCE-CODE CHANGE (confirmed against the live solver.js): `subcool` is STILL
+    in the parameter list — every call site still passes a `subcool` argument
+    positionally (solveThermalSystem calls solveInner with `undefined` in that
+    slot; see Section 5e) — but the function BODY no longer references `subcool`
+    anywhere. It is now a dead parameter. Subcooling used to be a fixed input
+    (TC - subcool); it is now DERIVED per-iteration from the condenser's own
+    energy balance inside F() below — see the "dynamic condenser subcooling"
+    block, which is the substantive replacement for the old fixed-subcool SLHX
+    logic. This is confirmed as the intended, final design, not a mid-refactor
+    artifact.
+    """
     inner_opts = inner_opts or {}
     tol = inner_opts.get("tol", 1e-4)
     max_iter = inner_opts.get("maxIter", 100)
     dx = inner_opts.get("dx", 1e-3)
-    damp = electrical.get("Damp", 1.0)
+    damp = electrical.get("Damp", 0.6)   # NOTE: local default is now 0.6, not 1.0 — see Section 11 finding on Damp defaults
 
     PIPEPITCH = {"side": condenser_config["sidePipePitch_mm"], "back": condenser_config["backPipePitch_mm"]}
     ref_index = get_refrigerant_index(refrigerant)
@@ -1350,8 +1382,13 @@ def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, e
     # Because normF<=tol is checked BEFORE any further F() call each iteration, this ends
     # up consistent with the accepted/converged x — but it's a side-channel value smuggled
     # out of the residual function, not something newton2 itself is aware of.
+    #
+    # SOURCE-CODE CHANGE: `converged_Tsubcool` now seeds at a fixed placeholder `10`
+    # (degrees) rather than `TC - subcool` — consistent with `subcool` no longer
+    # being a meaningful input. The real value is always overwritten by F()'s
+    # first successful evaluation before anything reads it in practice.
     converged_TE = TE
-    converged_Tsubcool = TC - subcool
+    converged_Tsubcool = 10
 
     def F(vars):
         nonlocal converged_TE, converged_Tsubcool
@@ -1396,25 +1433,72 @@ def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, e
         prop = get_refrigerant_properties(ref_index)   # RAW Kelvin-basis functions, not the Celsius wrapper
         h_gas_TE = prop["gasEnthalpy"](calculated_TE + KELVIN_OFFSET, comp["Pe"])
 
-        # --- SLHX (suction-line heat exchanger) energy balance: corrects the
-        # compressor curve's fixed-30C-basis QCompressor (see Section 4c note) for
-        # the SYSTEM's actual subcooling.
-        T_cond_exit = TC - subcool
+        # ================================================================
+        # DYNAMIC CONDENSER SUBCOOLING (replaces the old fixed-`subcool`
+        # SLHX block entirely — this is the substantive live-code change).
+        # Rather than taking subcooling as a caller-supplied constant, the
+        # condenser's own heat-rejection capacity (via calc_QCout, Section 3)
+        # is queried INSIDE the Newton residual, and a portion of its UA is
+        # assumed to be doing subcooling duty.
+        # ================================================================
+        current_QCout = calc_QCout(
+            geom, TC, fixed_temps["T0"], fixed_temps["TF"], fixed_temps["TR"], PR,
+            {"side": condenser_config["sidePipePitch_mm"], "back": condenser_config["backPipePitch_mm"]},
+            freezer_pos, condenser_config["backCondenserEfficiency"],
+        )
+
+        # Total condenser thermal conductance, back-derived from Q = UA * deltaT.
+        delta_T_cond = max(1, TC - fixed_temps["T0"])   # floor of 1C guards against division blow-up near TC==T0
+        UA_cond_total = current_QCout["QCout"] / delta_T_cond
+
+        # MODELING ASSUMPTION (not derived from geometry): a fixed 4% of the
+        # condenser's total UA is assigned to the liquid (subcooling) zone —
+        # i.e. the condenser is assumed to run ~96% two-phase / ~4% subcooled
+        # liquid by area/conductance. This constant is not configurable.
+        liquid_fraction = 0.04
+        UA_subcool = liquid_fraction * UA_cond_total
+
+        # Heat-capacity rate of the liquid refrigerant leaving the condenser (W/K),
+        # from a 1-degree finite-difference slope of liquidEnthalpy at TC.
+        cp_liq_kJ = prop["liquidEnthalpy"](TC) - prop["liquidEnthalpy"](TC - 1)
+        m_dot_cp_W_K = (comp["massFlow"] / 3600) * (cp_liq_kJ * 1000)
+
+        # Energy balance for the subcooled zone: Q_sub = m_dot*cp*dT_sub =
+        # UA_sub*(deltaT_cond - dT_sub/2) (mean-temperature-difference form,
+        # solved directly for dT_sub).
+        condenser_subcool = 0
+        if m_dot_cp_W_K > 0:
+            condenser_subcool = (UA_subcool * delta_T_cond) / (m_dot_cp_W_K + 0.5 * UA_subcool)
+
+        # Clamp to physically sane bounds: non-negative, and never within 0.5C
+        # of full condenser deltaT (liquid can't subcool past the ambient-side
+        # driving temperature difference).
+        condenser_subcool = max(0, min(condenser_subcool, delta_T_cond - 0.5))
+
+        T_cond_exit = TC - condenser_subcool
         h_liq_cond_exit = prop["liquidEnthalpy"](T_cond_exit)
 
-        T_suction_actual = min(30, T_cond_exit)   # suction gas can't be hotter than the liquid source
-        h_suc_out = prop["gasEnthalpy"](T_suction_actual + KELVIN_OFFSET, comp["Pe"])
+        # --- SLHX (suction-line heat exchanger), now built around T_cond_exit
+        # rather than a fixed 30C suction cap, and with a fixed EFFECTIVENESS
+        # (not "full exchange up to source temperature" as in the prior model):
         h_suc_in = h_gas_TE
+        T_suction_max = T_cond_exit          # upper bound: SLHX can't heat suction gas past the liquid's own temperature
+        h_suc_max = prop["gasEnthalpy"](T_suction_max + KELVIN_OFFSET, comp["Pe"])
 
-        slhx_heat_exchange = max(0, h_suc_out - h_suc_in)
+        slhx_effectiveness = 0.80            # MODELING ASSUMPTION: fixed 80% SLHX effectiveness, not configurable
+        slhx_heat_exchange = slhx_effectiveness * max(0, h_suc_max - h_suc_in)
+        h_suc_out = h_suc_in + slhx_heat_exchange
+
         h_liq_exp_in = h_liq_cond_exit - slhx_heat_exchange
+        if h_liq_exp_in < prop["liquidEnthalpy"](calculated_TE):   # liquid can't be cooled below TE
+            h_liq_exp_in = prop["liquidEnthalpy"](calculated_TE)
 
-        h_liq_min = prop["liquidEnthalpy"](calculated_TE)   # liquid can't be cooled below TE
-        if h_liq_exp_in < h_liq_min:
-            h_liq_exp_in = h_liq_min
-
-        comp["QCompressor"] = (comp["massFlow"] * (h_gas_TE - h_liq_exp_in)) / 3.6   # OVERWRITES the compressor-curve value
-        converged_Tsubcool = get_temperature_from_liquid_enthalpy(h_liq_exp_in, prop)
+        # Capacity now uses the POST-SLHX suction enthalpy (h_suc_out), not the
+        # raw compressor-inlet gas enthalpy (h_gas_TE) as the prior model did —
+        # i.e. the SLHX's own heat pickup is now credited into the compressor's
+        # effective suction state before computing QCompressor.
+        comp["QCompressor"] = (comp["massFlow"] * (h_suc_out - h_liq_exp_in)) / 3.6   # OVERWRITES the compressor-curve value
+        converged_Tsubcool = get_temperature_from_liquid_enthalpy(h_liq_exp_in, prop, comp["Pc"])
 
         f1 = loads["QF"] - MF * CV * (fixed_temps["TF"] - T3) * PR
         f2 = total_heat_w - comp["QCompressor"] * PR
@@ -1467,26 +1551,57 @@ def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, e
                              fan["inputPower_W"], freezer_pos, condenser_config["backCondenser"])
     comp = evaluate_compressor_safely(converged_TE, TC, ref_index, comp_params, fRPM)
 
-    # Re-apply the SLHX correction one more time at the final (fixed) converged_TE —
-    # this duplicates the exact block inside F() above, verbatim, rather than reusing it.
+    # Re-apply the dynamic-condenser-subcooling + SLHX correction one more time
+    # at the final (fixed) converged_TE and fPR — this duplicates the exact
+    # block inside F() above, verbatim, rather than reusing it as a shared helper.
     prop = get_refrigerant_properties(ref_index)
     h_gas_TE = prop["gasEnthalpy"](converged_TE + KELVIN_OFFSET, comp["Pe"])
-    T_cond_exit = TC - subcool
+
+    current_QCout = calc_QCout(
+        geom, TC, fixed_temps["T0"], fixed_temps["TF"], fixed_temps["TR"], fPR,
+        {"side": condenser_config["sidePipePitch_mm"], "back": condenser_config["backPipePitch_mm"]},
+        freezer_pos, condenser_config["backCondenserEfficiency"],
+    )
+    delta_T_cond = max(1, TC - fixed_temps["T0"])
+    UA_cond_total = current_QCout["QCout"] / delta_T_cond
+    UA_subcool = 0.04 * UA_cond_total
+    cp_liq_kJ = prop["liquidEnthalpy"](TC) - prop["liquidEnthalpy"](TC - 1)
+    m_dot_cp_W_K = (comp["massFlow"] / 3600) * (cp_liq_kJ * 1000)
+
+    condenser_subcool = 0
+    if m_dot_cp_W_K > 0:
+        condenser_subcool = (UA_subcool * delta_T_cond) / (m_dot_cp_W_K + 0.5 * UA_subcool)
+    condenser_subcool = max(0, min(condenser_subcool, delta_T_cond - 0.5))
+
+    T_cond_exit = TC - condenser_subcool
     h_liq_cond_exit = prop["liquidEnthalpy"](T_cond_exit)
-    T_suction_actual = min(30, T_cond_exit)
-    h_suc_out = prop["gasEnthalpy"](T_suction_actual + KELVIN_OFFSET, comp["Pe"])
+
     h_suc_in = h_gas_TE
-    h_liq_exp_in = h_liq_cond_exit - max(0, h_suc_out - h_suc_in)
+    T_suction_max = T_cond_exit
+    h_suc_max = prop["gasEnthalpy"](T_suction_max + KELVIN_OFFSET, comp["Pe"])
+
+    slhx_effectiveness = 0.80
+    slhx_heat_exchange = slhx_effectiveness * max(0, h_suc_max - h_suc_in)
+    h_suc_out = h_suc_in + slhx_heat_exchange
+
+    h_liq_exp_in = h_liq_cond_exit - slhx_heat_exchange
     if h_liq_exp_in < prop["liquidEnthalpy"](converged_TE):
         h_liq_exp_in = prop["liquidEnthalpy"](converged_TE)
-    comp["QCompressor"] = (comp["massFlow"] * (h_gas_TE - h_liq_exp_in)) / 3.6
-    converged_Tsubcool = get_temperature_from_liquid_enthalpy(h_liq_exp_in, prop)
+
+    comp["QCompressor"] = (comp["massFlow"] * (h_suc_out - h_liq_exp_in)) / 3.6
+    converged_Tsubcool = get_temperature_from_liquid_enthalpy(h_liq_exp_in, prop, comp["Pc"])
 
     fT3 = fT2 + loads["QEV"] / (flow_m3h * CV * fPR)
     f_denom_R = CV * max(0.01, fixed_temps["TR"] - fT3) * fPR * damp
     fMR = min(flow_m3h, max(0, loads["QR"] / f_denom_R)) if f_denom_R > 0 else 0
     fMF = flow_m3h - fMR
     fT1 = (fMF * fixed_temps["TF"] + fMR * fixed_temps["TR"]) / flow_m3h
+
+    # PASSIVE DIAGNOSTIC (new): when innerOpts.debug and comp.massFlow > 0, the
+    # live source logs an extended "SLHX FINAL DIAGNOSTIC" console block
+    # (temperatures, suction/liquid enthalpies, the physical vs. air-side-
+    # required h_liq_out bounds, and the applied value) — purely informational,
+    # does not feed back into the returned result.
 
     # THIS is where the "compressor" sub-object gets its final field names
     # (coolingCapacity / inputPower / COP / etaV) — confirming the gap flagged in the
@@ -1606,9 +1721,27 @@ def create_failure(TC, error_msg, inner=None) -> dict:
 # --------------------------------------------- 5e. OUTER TC SECANT LOOP
 
 def solve_thermal_system(config, TE_override=None) -> dict:
+    """
+    SOURCE-CODE CHANGES (confirmed against live solver.js):
+    - `config["subcool"]` is no longer destructured at all — subcool is not a
+      config field anymore (removed end-to-end; see Section 0b/6 notes). Every
+      call this function makes to solve_inner() passes `None`/`undefined` for
+      the (now-dead) subcool positional argument.
+    - `h_cond_exit` is no longer derived from `TC - subcool`; it now reads
+      `inner["Tsubcool"]` — the DYNAMICALLY-SOLVED subcooling value that
+      solve_inner() computed internally (see Section 5b's condenser-energy-
+      balance block) — and evaluates liquid enthalpy at that temperature directly.
+    - The outer residual F3 now carries an extra `* inner["PR"]` (respectively
+      `* inner_pert["PR"]` for the perturbation probe) multiplier that was not
+      present before. This is a real formula change, not a transcription gap:
+      F3 is no longer a bare "condenser rejection minus discharge-to-liquid
+      enthalpy drop x mass flow" balance — it's now duty-cycle-weighted by PR,
+      matching the same PR-averaging convention used everywhere else in the
+      engine (T_wallSide, T_compZone, etc. in heatLoad.js).
+    """
     geom, comp_params = config["geom"], config["compParams"]
     condenser_config, refrigerant = config["condenserConfig"], config["refrigerant"]
-    subcool, discharge_temp = config["subcool"], config["dischargeTemp"]
+    discharge_temp = config["dischargeTemp"]
     fixed_temps, fan, electrical, evap_geom = config["fixedTemps"], config["fan"], config["electrical"], config.get("evapGeom")
     freezer_position = config.get("freezerPosition", "top")
     # NOTE: solver.js's OWN internal defaults here (TC0=45, tolOuter=0.001,
@@ -1617,7 +1750,15 @@ def solve_thermal_system(config, TE_override=None) -> dict:
     # config fields before calling down into this function, so these internal
     # defaults are dead code on the live UI path — they'd only ever be exercised
     # by a caller that invokes solve_thermal_system() directly, bypassing index.js.
-    TC0 = config.get("TC0", 45)
+    #
+    # CONFIRMED (re-checked against source): `TC0` is destructured from config
+    # here but is NEVER actually used to seed `TC` below — the loop initializes
+    # `TC = fixed_temps["T0"]` unconditionally, not `TC0`. Whatever value
+    # index.js/the UI sets for TC0 (54.4 by default) has NO effect on the live
+    # solve's starting condensing temperature; it's a fully dead config field
+    # on the current code path, not merely a "different internal default" as
+    # previously documented — this goes beyond the old finding.
+    TC0 = config.get("TC0", 45)   # dead: never assigned into TC below
     tol_outer = config.get("tolOuter", 0.001)
     max_iter_outer = config.get("maxIterOuter", 50)
     inner_options = config.get("innerOptions", {})
@@ -1629,7 +1770,7 @@ def solve_thermal_system(config, TE_override=None) -> dict:
     fixed_PR = config.get("inverterPR")
     prop = get_refrigerant_properties(get_refrigerant_index(refrigerant))
 
-    TC = TC0
+    TC = fixed_temps["T0"]   # NOT TC0 — see dead-field note above
     total_inner = 0
     prev_F3, prev_TC, prev_inner = None, None, None
 
@@ -1647,7 +1788,7 @@ def solve_thermal_system(config, TE_override=None) -> dict:
             if prev_inner is not None else inner_options
         )
 
-        inner = solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, electrical,
+        inner = solve_inner(TC, geom, comp_params, refrigerant, None, fixed_temps, fan, electrical,
                              condenser_config, TE, freezer_position, this_inner_opts, fixed_PR, evap_geom)
 
         if not inner["converged"]:
@@ -1668,12 +1809,15 @@ def solve_thermal_system(config, TE_override=None) -> dict:
                             freezer_position, condenser_config["backCondenserEfficiency"])
         comp_outer = evaluate_compressor_safely(TE, TC, get_refrigerant_index(refrigerant), comp_params, inner["RPM"])
 
-        h_cond_exit = prop["liquidEnthalpy"](TC - subcool)
+        h_cond_exit = prop["liquidEnthalpy"](inner["Tsubcool"])   # dynamically-solved subcooling, not TC - subcool
         h_discharge = prop["gasEnthalpy"](discharge_temp + KELVIN_OFFSET, prop["satPressure"](TC + KELVIN_OFFSET))
-        # F3: energy balance between condenser heat rejection and discharge-to-liquid
-        # enthalpy drop x mass flow — NOT the same residual as f1/f2 inside solveInner;
-        # this is the OUTER loop's own convergence criterion on TC.
-        F3 = QCout["QCout"] - (comp_outer["massFlow"] * (h_discharge - h_cond_exit) / 3.6)
+        # F3: energy balance between condenser heat rejection and PR-weighted
+        # discharge-to-liquid enthalpy drop x mass flow — NOT the same residual
+        # as f1/f2 inside solveInner; this is the OUTER loop's own convergence
+        # criterion on TC. The `* inner["PR"]` factor is a live-code change —
+        # see the function-level note above.
+        F3 = QCout["QCout"] - (comp_outer["massFlow"] * (h_discharge - h_cond_exit) / 3.6) * inner["PR"]
+        # (live source also logs `F3=...` to the console here — cosmetic, omitted from control flow)
 
         if abs(F3) < tol_outer:
             # NOTE: "compressor" here is inner["compressor"] (already field-renamed,
@@ -1693,7 +1837,7 @@ def solve_thermal_system(config, TE_override=None) -> dict:
         inner_pert = None
         try:
             pert_opts = {**inner_options, "initialT2": inner["T2"], "initialPR": inner["PR"], "initialRPM": inner["RPM"]}
-            inner_pert = solve_inner(TC + 0.001, geom, comp_params, refrigerant, subcool, fixed_temps, fan,
+            inner_pert = solve_inner(TC + 0.001, geom, comp_params, refrigerant, None, fixed_temps, fan,
                                       electrical, condenser_config, TE, freezer_position, pert_opts, fixed_PR, evap_geom)
         except Exception:
             inner_pert = None
@@ -1705,9 +1849,10 @@ def solve_thermal_system(config, TE_override=None) -> dict:
                                      inner_pert["PR"],
                                      {"side": condenser_config["sidePipePitch_mm"], "back": condenser_config["backPipePitch_mm"]},
                                      freezer_position, condenser_config["backCondenserEfficiency"])
-            h_cond_exit_pert = prop["liquidEnthalpy"](TC + 0.001 - subcool)
+            h_cond_exit_pert = prop["liquidEnthalpy"](inner_pert["Tsubcool"])   # dynamically-solved, not TC+0.001 - subcool
             h_discharge_pert = prop["gasEnthalpy"](discharge_temp + KELVIN_OFFSET, prop["satPressure"](TC + 0.001 + KELVIN_OFFSET))
-            F3_pert = QCout_pert["QCout"] - (comp_outer_pert["massFlow"] * (h_discharge_pert - h_cond_exit_pert) / 3.6)
+            F3_pert = QCout_pert["QCout"] - (comp_outer_pert["massFlow"] * (h_discharge_pert - h_cond_exit_pert) / 3.6) * inner_pert["PR"]
+            # (live source also logs `F3_pert=...` to the console here — cosmetic, omitted from control flow)
             TC -= clamp(-5, 5, F3 / ((F3_pert - F3) / 0.001))
         else:
             if prev_F3 is not None and prev_TC is not None:
@@ -1871,7 +2016,11 @@ def run_thermo_analysis(config) -> dict:
         return {"success": False, "errors": errors, "warnings": warnings, "results": None}
 
     # 1. Core payload validation
-    required_keys = ["geom", "compParams", "condenserConfig", "refrigerant", "subcool",
+    # SOURCE-CODE CHANGE: `subcool` has been removed from required_keys entirely
+    # (matches the live index.js `required` array exactly) — it is no longer a
+    # top-level config field anywhere in the pipeline. See Section 5b/5e for
+    # where subcooling is now derived dynamically instead.
+    required_keys = ["geom", "compParams", "condenserConfig", "refrigerant",
                       "dischargeTemp", "fixedTemps", "fan", "electrical", "evapGeom"]
     for key in required_keys:
         if config.get(key) is None:
@@ -1909,7 +2058,7 @@ def run_thermo_analysis(config) -> dict:
             **config,
             "geom": config["geom"], "compParams": config["compParams"],
             "condenserConfig": config["condenserConfig"], "refrigerant": config["refrigerant"],
-            "subcool": config["subcool"], "dischargeTemp": config["dischargeTemp"],
+            "dischargeTemp": config["dischargeTemp"],
             "fixedTemps": config["fixedTemps"], "fan": config["fan"], "electrical": config["electrical"],
             "freezerPosition": config.get("freezerPosition", "top"),
             "initialTE": config["fixedTemps"]["TE"],
@@ -1999,8 +2148,9 @@ def build_default_config(overrides=None) -> dict:
             "backCondenser": "Yes",
         },
         "refrigerant": "R-600a",
-        "subcool": SJ54H_COMPONENTS["subcool_K"],
         "dischargeTemp": SJ54H_COMPONENTS["dischargeTemp_C"],
+        # NOTE: no "subcool" field — removed entirely from the live base config
+        # object; matches SJ54H_COMPONENTS no longer carrying subcool_K (Section 0b).
         "fixedTemps": {"T0": 30, "TF": -18, "TR": 3, "TE": -23.3},
         "fan": {
             "fanAirflow_m3h": fan["totalAirflow_m3h"],
@@ -2065,11 +2215,42 @@ Offline / setup-time only (not part of the chain above):
   to_thermal_format(...) / to_volume_format(...) / upgrade_config(...)  [geometry.js — VERIFIED]
 
 ------------------------------------------------------------------------------
-VERIFICATION STATUS (as of this revision): ALL modules in scope now VERIFIED
-against actual source, verbatim math — index.js, heatLoad.js, condenser.js,
-CompressorPerformance.js, constants.js, defaultComponents.js, evaporator.js,
-solver.js, geometry.js. (validateHeatLoad.js remains intentionally OUT OF SCOPE
-per your earlier instruction — it's dead code, never called in the live path.)
+VERIFICATION STATUS (as of this revision): ALL modules in scope RE-VERIFIED
+against the current actual source, verbatim math — index.js, heatLoad.js,
+condenser.js, CompressorPerformance.js, constants.js, defaultComponents.js,
+evaporator.js, solver.js, geometry.js. (validateHeatLoad.js remains
+intentionally OUT OF SCOPE per earlier instruction — it's dead code, never
+called in the live path.)
+
+THIS REVISION specifically re-synced solver.js, defaultComponents.js, and
+index.js against source after drift was found between a prior revision of
+this pseudocode and the live code. Substantive changes since the prior
+revision, confirmed against source (not inferred):
+  - `subcool_K` removed from both SJ54H_COMPONENTS and SJ_PV73K_COMPONENTS
+    (Section 0b); `subcool` removed as a config field end-to-end (index.js's
+    required_keys, build_default_config()'s base object, solve_thermal_system()'s
+    destructure, thermoUI.js's thermal_advanced dict).
+  - solve_inner()'s SLHX/subcooling block was rebuilt: subcooling is now
+    SOLVED dynamically per-iteration from the condenser's own energy balance
+    (calc_QCout + a fixed 4% liquid-fraction-of-UA assumption), not taken as a
+    fixed input; the SLHX step itself now uses a fixed 0.80 effectiveness
+    against T_cond_exit rather than a hard 30C suction cap, and QCompressor's
+    final energy balance uses the POST-SLHX suction enthalpy (Section 5b).
+  - solve_thermal_system()'s outer F3 residual gained a `* inner["PR"]`
+    (respectively `* inner_pert["PR"]`) multiplier, and h_cond_exit is now
+    read from the solved `inner["Tsubcool"]` rather than `TC - subcool`
+    (Section 5e).
+  - `TC0` is confirmed fully dead in solve_thermal_system() — not merely
+    superseded by index.js's own defaults as previously documented, but never
+    assigned into `TC` at all on any code path.
+  - get_temperature_from_liquid_enthalpy() gained a `pressure` parameter that
+    is threaded through every call site but has no effect, since
+    `liquidEnthalpy()` implementations are single-argument (Section 5b).
+  - solver.js's own internal `Damp` default is now 0.6 (previously 1.0),
+    matching thermoUI.js's module-level default — see the updated Section 11
+    cross-cutting finding.
+All of the above were confirmed as intentional/final design (not a
+mid-refactor artifact) before being written up here as such.
 
 ------------------------------------------------------------------------------
 CONFIRMED BUGS / DEAD CODE FOUND WHILE TRANSCRIBING (source-code facts, not
@@ -3189,15 +3370,25 @@ def build_comparison_table(state_a, state_b):
 # ==============================================================================
 
 thermal_advanced = {
-    "subcool": SJ54H_COMPONENTS["subcool_K"], "dischargeTemp": SJ54H_COMPONENTS["dischargeTemp_C"],
+    # NOTE: "subcool" has been REMOVED from this dict — thermoUI.js's live
+    # `thermalAdvanced` module state has no subcool field, and the Advanced
+    # Settings modal correspondingly has no Subcool input anymore. Consistent
+    # with subcool being dropped everywhere else in the pipeline (Sections
+    # 0b/5b/5e/6) in favor of the dynamically-solved condenser subcooling.
+    "dischargeTemp": SJ54H_COMPONENTS["dischargeTemp_C"],
     "fanInputPower": SJ54H_COMPONENTS["fan"]["inputPower_W"],
     "defHeater": SJ54H_COMPONENTS["electrical"]["defrostHeater_W"],
     "defOnMin": SJ54H_COMPONENTS["electrical"]["defrostOn_min"],
     "pwbOn": SJ54H_COMPONENTS["electrical"]["pwbOn_W"], "pwbOff": SJ54H_COMPONENTS["electrical"]["pwbOff_W"],
     "timerPeriod": SJ54H_COMPONENTS["electrical"]["timerPeriod_h"],
-    "Damp": 0.6,   # NOTE: 0.6 here vs solver.js's own internal default of 1.0 (Section 5b) —
-                    # this UI default is what actually reaches the solver in practice, since
-                    # it's always explicitly included in electrical.Damp.
+    "Damp": 0.6,   # NOTE (re-verified): solver.js's OWN internal default for
+                    # `electrical.Damp` inside solve_inner() is ALSO now 0.6, not
+                    # 1.0 as previously documented — the two "damping defaults"
+                    # (this UI module-state default and solver.js's own fallback)
+                    # now agree at 0.6. saveThermalSettings()'s own fallback if the
+                    # modal field is unparseable is still 1.0, so a THIRD distinct
+                    # value (1.0) still exists, just only reachable via that one
+                    # specific save-path edge case — see Section 11 finding.
 }
 get_geometry_fn = lambda: None   # replaced at init with main.js's read_geometry_from_panel
 
@@ -3255,12 +3446,15 @@ def save_thermal_settings():
     the parsed value is falsy (NaN/0/empty) — meaning a deliberately-entered
     ZERO for e.g. defrostOn_min would be silently replaced by the default,
     since JS `||` treats 0 as falsy. `thermal_advanced.Damp` specifically falls
-    back to 1.0, not 0.6, if unset — a THIRD distinct "default damping" value
-    in the codebase, after Section 5's electrical.get('Damp',1.0) and this
-    module's own initial `Damp: 0.6`. Persists thermal_advanced to
-    localStorage['thermoAdvanced'], applies the compressor-select choice via
-    set_selected_compressor(), refreshes the inverter-name display, and hides
-    the modal.
+    back to 1.0, not 0.6, if unset — a distinct "default damping" value from
+    both solver.js's own internal fallback (now 0.6, matching this module's
+    initial `Damp: 0.6` — the two no longer disagree, re-verified against
+    source) and this module's own `Damp: 0.6`. So there are still two
+    effective values in play (0.6 everywhere else, 1.0 only on this specific
+    unparseable-modal-field edge case), not three as previously documented.
+    Persists thermal_advanced to localStorage['thermoAdvanced'], applies the
+    compressor-select choice via set_selected_compressor(), refreshes the
+    inverter-name display, and hides the modal.
     """
     ...
 
@@ -3334,8 +3528,9 @@ def handle_run():
          only 1 compartment OR the first compartment is type 'freezer',
          otherwise 'bottom'.
       6. build_default_config() (Section 6) with the scraped geom, freezer
-         position, refrigerant, subcool/discharge/fixed-temps/fan/electrical
-         overrides, and the pre-computed evapGeom.
+         position, refrigerant, discharge/fixed-temps/fan/electrical overrides
+         (no subcool override — the field no longer exists), and the
+         pre-computed evapGeom.
       7. If settings.condenser is set, override config.condenserConfig's pipe
          pitches from it.
       8. Load the current compressor catalog entry; validate its wCoeffs (5
@@ -4482,14 +4677,16 @@ CROSS-CUTTING FINDINGS (Part II, in addition to Part I's list):
     monthly*12, not Ann_EC — suggesting Ann_EC is dead/vestigial code from an
     earlier version.
 
-11. THREE different Damping-ratio ("Damp") defaults exist in the codebase:
-    solver.js's `electrical.get('Damp', 1.0)` (Section 5b), thermoUI.js's
-    module-level `thermal_advanced = {..., Damp: 0.6}` (Section 10), and
-    saveThermalSettings()'s own fallback `Damp: 1.0` if the modal field is
-    unparseable (Section 10). In practice the UI's 0.6 is what reaches the
-    solver on a fresh install, since it's always explicitly included in the
-    electrical config passed down — the solver's own 1.0 default is dead code
-    on the live UI path, same pattern as several Part I findings.
+11. TWO different Damping-ratio ("Damp") defaults exist in the codebase (UPDATED
+    from a prior revision that documented three — re-verified against the
+    current solver.js): solver.js's own internal `electrical.get('Damp', 0.6)`
+    (Section 5b) now MATCHES thermoUI.js's module-level `thermal_advanced =
+    {..., Damp: 0.6}` (Section 10) — both are 0.6. The one remaining divergent
+    value is `saveThermalSettings()`'s own fallback `Damp: 1.0`, which only
+    fires if the modal's Damper-Ratio field is present but fails to parse as a
+    truthy number (Section 10). In practice 0.6 is what reaches the solver on
+    a fresh install and in the overwhelming majority of save paths; the 1.0
+    fallback is a narrow edge case, not a competing "default" in general use.
 
 12. Inverter volumetric efficiency (etaV) is computed THREE separate ways
     across the codebase depending on code path: (a) never, for inverter mode
