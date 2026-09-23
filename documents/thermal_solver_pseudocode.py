@@ -28,10 +28,10 @@ called in the live path).
 # ==============================================================================
 # SECTION 0 — PHYSICAL CONSTANTS  (constants.js)  — verbatim
 # ------------------------------------------------------------------------------
-# Model-independent empirical constants: air properties, insulation conductivities
-# (used as a FALLBACK reference value — heatLoad.js actually computes urethane's
-# lambda dynamically per-wall via lambda_urethane(), see Section 2; the "urethane"
-# entry here is not what k_exterior/k_interior use), and surface film coefficients.
+# Model-independent empirical constants: air properties, insulation conductivities,
+# and surface film coefficients. The three cabinet thermal values below are
+# fallback references; the live UI can override them through settings.PU_Prop,
+# which becomes config.thermalProperties and is consumed by heatLoad.js.
 # ==============================================================================
 
 PC = {
@@ -40,8 +40,7 @@ PC = {
         "cp": 1.0048,       # kJ/(kg*K)
     },
     "insulation": {
-        "urethane": 0.0192,     # W/(m*C) — static reference value (heatLoad.js uses
-                                 # the temperature-dependent lambda_urethane() instead)
+        "urethane": 0.0192,     # W/(m*C) — fallback reference value
         "polystyrene": 0.0407,  # W/(m*C), EPS
         "packing": 0.035,       # W/(m*C), door gasket/packing material
     },
@@ -396,7 +395,7 @@ def evaporator_capacity(alpha: float, area: float, LMTD: float) -> float:
 # fixed set-point temperatures, and current PR (running ratio) / duty cycle.
 # ==============================================================================
 
-def lambda_urethane(T_in: float, T_out: float) -> float:
+def lambda_urethane(T_in: float, T_out: float, urethane: float) -> float:
     """
     Thermal conductivity (lambda) of PU foam, W/(m*C).
     IMPORTANT: this is TEMPERATURE-DEPENDENT — lambda worsens (increases) as the
@@ -405,32 +404,40 @@ def lambda_urethane(T_in: float, T_out: float) -> float:
     specific wall, not a single fixed insulation constant.
     """
     T_avg = (T_in + T_out) / 2
-    return (0.0165 + 0.00011 * (T_avg - 25)) * 1.16279   # kcal/h basis -> W/(m*C)
+    return (urethane + 0.00011 * (T_avg - 25)) * 1.16279   # kcal/h basis -> W/(m*C)
 
 
-def k_exterior(thk_mm: float, T_in: float, T_out: float) -> float:
+def k_exterior(thk_mm: float, T_in: float, T_out: float, thermal: dict) -> float:
     """U-value (W/m^2K) for an exterior wall: inside film + wall + outside film resistances in series."""
-    lam = lambda_urethane(T_in, T_out)
+    lam = lambda_urethane(T_in, T_out, thermal["urethane"])
     return 1 / (
-        1 / PC["surfaceCoefficients"]["outside"]
-        + 1 / PC["surfaceCoefficients"]["inside"]
+        1 / thermal["outside"]
+        + 1 / thermal["inside"]
         + (thk_mm / 1000) / lam
     )
 
 
-def k_interior(thk_mm: float, T1: float, T2: float, insulation_type: str = "PU") -> float:
+def k_interior(thk_mm: float, T1: float, T2: float, thermal: dict) -> float:
     """U-value (W/m^2K) for an internal partition: both faces see 'inside' film coefficient."""
-    lam = 0.035 if insulation_type == "EPS" else lambda_urethane(T1, T2)
+    lam = lambda_urethane(T1, T2, thermal["urethane"])
     return 1 / (
-        1 / PC["surfaceCoefficients"]["inside"]
-        + 1 / PC["surfaceCoefficients"]["inside"]
+        1 / thermal["inside"]
+        + 1 / thermal["inside"]
         + (thk_mm / 1000) / lam
     )
 
 
 def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
                      back_condenser_efficiency=0, fan_input_power_w=None,
-                     freezer_position="top", back_condenser="No") -> dict:
+                     freezer_position="top", back_condenser="No",
+                     thermal_properties=None) -> dict:
+
+    thermal_properties = thermal_properties or {}
+    thermal = {
+        "urethane": thermal_properties.get("urethane", PC["insulation"]["urethane"]),
+        "outside": thermal_properties.get("outside", PC["surfaceCoefficients"]["outside"]),
+        "inside": thermal_properties.get("inside", PC["surfaceCoefficients"]["inside"]),
+    }
 
     # geom fields used below (flat schema):
     # H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
@@ -487,16 +494,16 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
 
         # Freezer top conduction
         if is_top_freezer:
-            QF += k_exterior(geom["tFtop"], TF, T0) * AFtop * (T0 - TF)
+            QF += k_exterior(geom["tFtop"], TF, T0, thermal) * AFtop * (T0 - TF)
         else:
-            QF += k_interior(geom["tFtop"], TF, TR, divider_insulation_type) * AFtop * (TR - TF)
+            QF += k_interior(geom["tFtop"], TF, TR, thermal) * AFtop * (TR - TF)
 
         # Freezer sides conduction (upper zone sees condenser-heated skin; lower zone sees T2/evap-back)
         QF += (
-            k_exterior(geom["tFleft"], TF, T_wallSide) * AFleft1 * (T_wallSide - TF)
-            + k_exterior(geom["tFright"], TF, T_wallSide) * AFright1 * (T_wallSide - TF)
-            + k_exterior(geom["tFleft"], T2, T_wallSide) * AFleft2 * (T_wallSide - T2)
-            + k_exterior(geom["tFright"], T2, T_wallSide) * AFright2 * (T_wallSide - T2)
+            k_exterior(geom["tFleft"], TF, T_wallSide, thermal) * AFleft1 * (T_wallSide - TF)
+            + k_exterior(geom["tFright"], TF, T_wallSide, thermal) * AFright1 * (T_wallSide - TF)
+            + k_exterior(geom["tFleft"], T2, T_wallSide, thermal) * AFleft2 * (T_wallSide - T2)
+            + k_exterior(geom["tFright"], T2, T_wallSide, thermal) * AFright2 * (T_wallSide - T2)
         )
 
         # Freezer bottom (3 configurations)
@@ -505,26 +512,26 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
             AFb2 = (W - (geom["tFleft"] + geom["tFright"]) / 2) * sqrt(Hb ** 2 + (Db2 - Db1) ** 2) / 1e6
             AFb3 = (W - (geom["tFleft"] + geom["tFright"]) / 2) * (D - Db2) / 1e6
             QF += (
-                k_exterior(geom["tFfloor1"], TF, T_compZone) * AFb1 * (T_compZone - TF)
-                + k_exterior(geom["tFfloor2"], TF, T_compZone) * AFb2 * (T_compZone - TF)
-                + k_exterior(geom["tFfloor3"], TF, T0) * AFb3 * (T0 - TF)
+                k_exterior(geom["tFfloor1"], TF, T_compZone, thermal) * AFb1 * (T_compZone - TF)
+                + k_exterior(geom["tFfloor2"], TF, T_compZone, thermal) * AFb2 * (T_compZone - TF)
+                + k_exterior(geom["tFfloor3"], TF, T0, thermal) * AFb3 * (T0 - TF)
             )
         elif is_top_freezer:
             AFbottom = (D - geom["tFback"] / 2) * (W - (geom["tFleft"] + geom["tFright"]) / 2) / 1e6
-            QF += k_interior(geom["tFbottom"], TF, TR, divider_insulation_type) * AFbottom * (TR - TF)
+            QF += k_interior(geom["tFbottom"], TF, TR, thermal) * AFbottom * (TR - TF)
         else:
             AFbottom1 = (W - (geom["tFleft"] + geom["tFright"]) / 2) * Db1 / 1e6
             AFbottom2 = (W - (geom["tFleft"] + geom["tFright"]) / 2) * sqrt(Hb ** 2 + (Db2 - Db1) ** 2) / 1e6
             AFbottom3 = (W - (geom["tFleft"] + geom["tFright"]) / 2) * (D - Db2) / 1e6
             QF += (
-                k_exterior(geom["tFfloor1"], TF, T_compZone) * AFbottom1 * (T_compZone - TF)
-                + k_exterior(geom["tFfloor2"], TF, T_compZone) * AFbottom2 * (T_compZone - TF)
-                + k_exterior(geom["tFfloor3"], TF, T0) * AFbottom3 * (T0 - TF)
+                k_exterior(geom["tFfloor1"], TF, T_compZone, thermal) * AFbottom1 * (T_compZone - TF)
+                + k_exterior(geom["tFfloor2"], TF, T_compZone, thermal) * AFbottom2 * (T_compZone - TF)
+                + k_exterior(geom["tFfloor3"], TF, T0, thermal) * AFbottom3 * (T0 - TF)
             )
 
         # Door + packing leak
         QF += (
-            k_exterior(geom["tFdoor"], TF, T0) * AFdoor * (T0 - TF)
+            k_exterior(geom["tFdoor"], TF, T0, thermal) * AFdoor * (T0 - TF)
             + PC["insulation"]["packing"] * AFpackin * (T0 - TF)
         )
 
@@ -557,9 +564,9 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
 
         # Top
         if is_top_freezer:
-            QR += k_interior(geom["tRtop"], TF, TR, divider_insulation_type) * ARtop * (TF - TR)
+            QR += k_interior(geom["tRtop"], TF, TR, thermal) * ARtop * (TF - TR)
         else:
-            QR += k_exterior(geom["tRtop"], TR, T0) * ARtop * (T0 - TR)
+            QR += k_exterior(geom["tRtop"], TR, T0, thermal) * ARtop * (T0 - TR)
 
         # Sides
         # SOURCE-CODE NOTE: both terms below use `ARleft` (the source never computes an
@@ -567,15 +574,15 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
         # the right-side conduction is evaluated with the left-side area. Reproduced as-is,
         # not "corrected", since that's what the running code actually computes.
         QR += (
-            k_exterior(geom["tRleft"], TR, T_wallSide) * ARleft * (T_wallSide - TR)
-            + k_exterior(geom["tRright"], TR, T_wallSide) * ARleft * (T_wallSide - TR)
+            k_exterior(geom["tRleft"], TR, T_wallSide, thermal) * ARleft * (T_wallSide - TR)
+            + k_exterior(geom["tRright"], TR, T_wallSide, thermal) * ARleft * (T_wallSide - TR)
         )
 
         # Back
         if is_back_condenser_absent:
-            QR += k_exterior(geom["tRback"], TR, T0) * ARback * (T0 - TR)
+            QR += k_exterior(geom["tRback"], TR, T0, thermal) * ARback * (T0 - TR)
         else:
-            QR += k_exterior(geom["tRback"], TR, T_wallBack) * ARback * (T_wallBack - TR)
+            QR += k_exterior(geom["tRback"], TR, T_wallBack, thermal) * ARback * (T_wallBack - TR)
 
         # Bottom (2 configurations)
         if (not has_freezer) or is_top_freezer:
@@ -583,18 +590,18 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
             ARb2 = (W - (geom["tRleft"] + geom["tRright"]) / 2) * sqrt(Hb ** 2 + (Db2 - Db1) ** 2) / 1e6
             ARb3 = (W - (geom["tRleft"] + geom["tRright"]) / 2) * (D - Db2) / 1e6
             QR += (
-                k_exterior(geom["tRbottom1"], TR, T_compZone) * ARb1 * (T_compZone - TR)
-                + k_exterior(geom["tRbottom2"], TR, T_compZone) * ARb2 * (T_compZone - TR)
-                + k_exterior(geom["tRbottom3"], TR, T0) * ARb3 * (T0 - TR)
+                k_exterior(geom["tRbottom1"], TR, T_compZone, thermal) * ARb1 * (T_compZone - TR)
+                + k_exterior(geom["tRbottom2"], TR, T_compZone, thermal) * ARb2 * (T_compZone - TR)
+                + k_exterior(geom["tRbottom3"], TR, T0, thermal) * ARb3 * (T0 - TR)
             )
         else:
             # bottom-freezer: fridge sits on top, interior floor partition down to freezer
             ARbottom = (W - (geom["tRleft"] + geom["tRright"]) / 2) * (D - geom["tRback"] / 2) / 1e6
-            QR += k_interior(geom["tRfloor"], TF, TR, divider_insulation_type) * ARbottom * (TF - TR)
+            QR += k_interior(geom["tRfloor"], TF, TR, thermal) * ARbottom * (TF - TR)
 
         # Door + packing
         QR += (
-            k_exterior(geom["tRdoor"], TR, T0) * ARdoor * (T0 - TR)
+            k_exterior(geom["tRdoor"], TR, T0, thermal) * ARdoor * (T0 - TR)
             + PC["insulation"]["packing"] * ARpackin * (T0 - TR)
         )
 
@@ -626,9 +633,9 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
     QEV_cond = 0.0
     if A_evaBack > 0:
         if is_back_condenser_absent:
-            QEV_cond = k_exterior(geom["tEvaBack"], T2, T0) * A_evaBack * (T0 - T2)
+            QEV_cond = k_exterior(geom["tEvaBack"], T2, T0, thermal) * A_evaBack * (T0 - T2)
         else:
-            QEV_cond = k_exterior(geom["tEvaBack"], T2, T_wallBack) * A_evaBack * (T_wallBack - T2)
+            QEV_cond = k_exterior(geom["tEvaBack"], T2, T_wallBack, thermal) * A_evaBack * (T_wallBack - T2)
 
     # Fan runs synchronously with compressor. Defaults to 2.1 W if not supplied.
     fan_load = (fan_input_power_w if fan_input_power_w is not None else 2.1) * PR
