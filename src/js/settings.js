@@ -33,6 +33,11 @@ const DEFAULTS = {
     hubDiam_mm: 45.6,
     PitchAngle_degree: 30,
   },
+  PU_Prop: {
+    urethane: 0.0165,
+    OutsideSurfaceCoefficient: 6,
+    InsideSurfaceCoefficient: 10,
+  },
 };
 
 const STORAGE_KEY = 'refrigerator-calc-settings';

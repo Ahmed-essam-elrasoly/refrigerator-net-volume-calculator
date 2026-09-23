@@ -11,26 +11,26 @@ import { PHYSICAL_CONSTANTS as PC } from './constants.js';
  * Calculates the thermal conductivity (λ) of Polyurethane Foam based on temperature.
  * λ worsens (increases) at higher average temperatures.
  */
-function lambdaUrethane(T_in, T_out) {
+function lambdaUrethane(T_in, T_out, urethane) {
   const T_avg = (T_in + T_out) / 2;
-  return (0.0165 + 0.00011 * (T_avg-25)) * 1.16279; // Convert to W/(m·°C)
+  return (urethane + 0.00011 * (T_avg - 25)) * 1.16279;
 }
 
 /**
  * Overall Heat Transfer Coefficient (U-value) for an exterior wall.
  * Incorporates internal and external air film resistance.
  */
-function kExterior(thk, T_in, T_out) {
-  const lam = lambdaUrethane(T_in, T_out);
-  return 1 / (1/PC.surfaceCoefficients.outside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
+function kExterior(thk, T_in, T_out, thermalProperties) {
+  const lam = lambdaUrethane(T_in, T_out, thermalProperties.urethane);
+  return 1 / (1/thermalProperties.outside + 1/thermalProperties.inside + (thk/1000)/lam);
 }
 
 /**
  * Overall Heat Transfer Coefficient (U-value) for an internal dividing partition.
  */
-function kInterior(thk, T1, T2) {
-  const lam = lambdaUrethane(T1, T2);
-  return 1 / (1/PC.surfaceCoefficients.inside + 1/PC.surfaceCoefficients.inside + (thk/1000)/lam);
+function kInterior(thk, T1, T2, thermalProperties) {
+  const lam = lambdaUrethane(T1, T2, thermalProperties.urethane);
+  return 1 / (1/thermalProperties.inside + 1/thermalProperties.inside + (thk/1000)/lam);
 }
 
 /**
@@ -50,8 +50,13 @@ function kInterior(thk, T1, T2) {
 export function calcHeatLoads(
   geom, temps, electrical, PIPEPITCH, BackcondenserEfficiency=0,
   fanInputPower_W,
-  freezerPosition = 'top', backCondenser = 'No'
+  freezerPosition = 'top', backCondenser = 'No', thermalProperties = {}
 ) {
+  const thermal = {
+    urethane: thermalProperties.urethane ?? PC.insulation.urethane,
+    outside: thermalProperties.outside ?? PC.surfaceCoefficients.outside,
+    inside: thermalProperties.inside ?? PC.surfaceCoefficients.inside,
+  };
   const {
     H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
     tFtop, tFleft, tFright, tFbottom, tFdoor, tFback, tEvaBack,
@@ -100,37 +105,37 @@ export function calcHeatLoads(
 
     // Freezer Top Conduction
     QF += (isTopFreezer
-      ? kExterior(tFtop, TF, T0) * AFtop * (T0 - TF)
-      : kInterior(tFtop, TF, TR) * AFtop * (TR - TF));
+      ? kExterior(tFtop, TF, T0, thermal) * AFtop * (T0 - TF)
+      : kInterior(tFtop, TF, TR, thermal) * AFtop * (TR - TF));
 
     // Freezer Sides Conduction (accounts for hot skin condenser)
-    QF += kExterior(tFleft, TF, T_wallSide) * AFleft1 * (T_wallSide - TF)
-        + kExterior(tFright, TF, T_wallSide) * AFright1 * (T_wallSide - TF)
-        + kExterior(tFleft, T2, T_wallSide) * AFleft2 * (T_wallSide - T2)
-        + kExterior(tFright, T2, T_wallSide) * AFright2 * (T_wallSide - T2);
+    QF += kExterior(tFleft, TF, T_wallSide, thermal) * AFleft1 * (T_wallSide - TF)
+      + kExterior(tFright, TF, T_wallSide, thermal) * AFright1 * (T_wallSide - TF)
+      + kExterior(tFleft, T2, T_wallSide, thermal) * AFleft2 * (T_wallSide - T2)
+      + kExterior(tFright, T2, T_wallSide, thermal) * AFright2 * (T_wallSide - T2);
 
     // Freezer Bottom
     if (!hasFresh) {
       const AFb1 = (W - (tFleft+tFright)/2) * Db1 / 1e6;
       const AFb2 = (W - (tFleft+tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
       const AFb3 = (W - (tFleft+tFright)/2) * (D-Db2) / 1e6;
-      QF += kExterior(tFfloor1, TF, T_compZone) * AFb1 * (T_compZone - TF)
-          + kExterior(tFfloor2, TF, T_compZone) * AFb2 * (T_compZone - TF)
-          + kExterior(tFfloor3, TF, T0)          * AFb3 * (T0 - TF);
+        QF += kExterior(tFfloor1, TF, T_compZone, thermal) * AFb1 * (T_compZone - TF)
+          + kExterior(tFfloor2, TF, T_compZone, thermal) * AFb2 * (T_compZone - TF)
+          + kExterior(tFfloor3, TF, T0, thermal)          * AFb3 * (T0 - TF);
     } else if (isTopFreezer) {
       const AFbottom = (D - tFback/2) * (W - (tFleft + tFright)/2) / 1e6;
-      QF += kInterior(tFbottom, TF, TR) * AFbottom * (TR - TF);
+      QF += kInterior(tFbottom, TF, TR, thermal) * AFbottom * (TR - TF);
     } else {
       const AFbottom1 = (W - (tFleft + tFright)/2) * Db1 / 1e6;
       const AFbottom2 = (W - (tFleft + tFright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
       const AFbottom3 = (W - (tFleft + tFright)/2) * (D-Db2) / 1e6;
-      QF += kExterior(tFfloor1, TF, T_compZone) * AFbottom1 * (T_compZone - TF)
-          + kExterior(tFfloor2, TF, T_compZone) * AFbottom2 * (T_compZone - TF)
-          + kExterior(tFfloor3, TF, T0)        * AFbottom3 * (T0 - TF);
+        QF += kExterior(tFfloor1, TF, T_compZone, thermal) * AFbottom1 * (T_compZone - TF)
+          + kExterior(tFfloor2, TF, T_compZone, thermal) * AFbottom2 * (T_compZone - TF)
+          + kExterior(tFfloor3, TF, T0, thermal)        * AFbottom3 * (T0 - TF);
     }
 
     // Door + Packing leak
-    QF += kExterior(tFdoor, TF, T0) * AFdoor * (T0 - TF)
+    QF += kExterior(tFdoor, TF, T0, thermal) * AFdoor * (T0 - TF)
         + PC.insulation.packing * AFpackin * (T0 - TF);
 
     // Dew Point (DP) Pipe Partition losses
@@ -160,18 +165,18 @@ export function calcHeatLoads(
 
     // Top
     QR += (isTopFreezer
-      ? kInterior(tRtop, TF, TR) * ARtop * (TF - TR)
-      : kExterior(tRtop, TR, T0) * ARtop * (T0 - TR));
+      ? kInterior(tRtop, TF, TR, thermal) * ARtop * (TF - TR)
+      : kExterior(tRtop, TR, T0, thermal) * ARtop * (T0 - TR));
 
     // Sides
-    QR += kExterior(tRleft, TR, T_wallSide) * ARleft * (T_wallSide - TR)
-        + kExterior(tRright, TR, T_wallSide) * ARleft * (T_wallSide - TR);
+    QR += kExterior(tRleft, TR, T_wallSide, thermal) * ARleft * (T_wallSide - TR)
+      + kExterior(tRright, TR, T_wallSide, thermal) * ARleft * (T_wallSide - TR);
 
     // Back
     if (isBackCondenserAbsent) {
-      QR += kExterior(tRback, TR, T0) * ARback * (T0 - TR);
+      QR += kExterior(tRback, TR, T0, thermal) * ARback * (T0 - TR);
     } else {
-      QR += kExterior(tRback, TR, T_wallBack) * ARback * (T_wallBack - TR);
+      QR += kExterior(tRback, TR, T_wallBack, thermal) * ARback * (T_wallBack - TR);
     }
 
     // Bottom
@@ -179,16 +184,16 @@ export function calcHeatLoads(
       const ARb1 = (W - (tRleft+tRright)/2) * Db1 / 1e6;
       const ARb2 = (W - (tRleft+tRright)/2) * Math.sqrt(Hb*Hb + (Db2-Db1)**2) / 1e6;
       const ARb3 = (W - (tRleft+tRright)/2) * (D-Db2) / 1e6;
-      QR += kExterior(tRbottom1, TR, T_compZone) * ARb1 * (T_compZone - TR)
-          + kExterior(tRbottom2, TR, T_compZone) * ARb2 * (T_compZone - TR)
-          + kExterior(tRbottom3, TR, T0)        * ARb3 * (T0 - TR);
+        QR += kExterior(tRbottom1, TR, T_compZone, thermal) * ARb1 * (T_compZone - TR)
+          + kExterior(tRbottom2, TR, T_compZone, thermal) * ARb2 * (T_compZone - TR)
+          + kExterior(tRbottom3, TR, T0, thermal)        * ARb3 * (T0 - TR);
     } else {
       const ARbottom = (W - (tRleft+tRright)/2) * (D - tRback/2) / 1e6;
-      QR += kInterior(tRfloor, TF, TR) * ARbottom * (TF - TR);
+      QR += kInterior(tRfloor, TF, TR, thermal) * ARbottom * (TF - TR);
     }
 
     // Door + Packing
-    QR += kExterior(tRdoor, TR, T0) * ARdoor * (T0 - TR)
+    QR += kExterior(tRdoor, TR, T0, thermal) * ARdoor * (T0 - TR)
         + PC.insulation.packing * ARpackin * (T0 - TR);
 
     // DP condenser
@@ -221,9 +226,9 @@ export function calcHeatLoads(
   let QEV_cond = 0;
   if (A_evaBack > 0) {
     if (isBackCondenserAbsent) {
-      QEV_cond = kExterior(tEvaBack, T2, T0) * A_evaBack * (T0 - T2);
+      QEV_cond = kExterior(tEvaBack, T2, T0, thermal) * A_evaBack * (T0 - T2);
     } else {
-      QEV_cond = kExterior(tEvaBack, T2, T_wallBack) * A_evaBack * (T_wallBack - T2);
+      QEV_cond = kExterior(tEvaBack, T2, T_wallBack, thermal) * A_evaBack * (T_wallBack - T2);
     }
   }
 

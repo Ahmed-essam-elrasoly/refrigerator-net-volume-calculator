@@ -18,7 +18,7 @@ export const PHYSICAL_CONSTANTS = Object.freeze({
   // Insulation materials – thermal conductivity (W / (m·°C))
   // -------------------------------------------------------------------
   insulation: {
-    urethane: 0.0192,    // Rigid polyurethane foam
+    urethane: 0.0165,    // Rigid polyurethane foam
     polystyrene: 0.0407, // Expanded polystyrene (EPS)
     packing: 0.035,      // Door gasket/packing material
   },

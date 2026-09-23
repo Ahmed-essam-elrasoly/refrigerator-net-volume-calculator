@@ -192,7 +192,7 @@ function newton2(F, x0, dx, tol, maxIter, bounds, debug = false) {
 /**
  * Executes the Newton-Raphson loop to find the equilibrium variables.
  */
-function solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom) {
+function solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPos, innerOpts = {}, fixedPR, evapGeom, thermalProperties) {
   const { tol = 1e-4, maxIter = 100, dx = 1e-3 } = innerOpts;
   const { Damp = .6 } = electrical;
   const PIPEPITCH = { side: condenserConfig.sidePipePitch_mm, back: condenserConfig.backPipePitch_mm };
@@ -214,7 +214,7 @@ function solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electric
     const T2 = vars[0], secondVar = vars[1];
     const PR = isInverterMode ? fixedPR : secondVar, RPM = isInverterMode ? secondVar : undefined;
     
-    const loads = calcHeatLoads(geom, { ...fixedTemps, T2, TC, PR, TE: -25 }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency, fan.inputPower_W, freezerPos, condenserConfig.backCondenser);
+    const loads = calcHeatLoads(geom, { ...fixedTemps, T2, TC, PR, TE: -25 }, electrical, PIPEPITCH, condenserConfig.backCondenserEfficiency, fan.inputPower_W, freezerPos, condenserConfig.backCondenser, thermalProperties);
     
     const Flow_m3h = fan.fanAirflow_m3h;
     const faceArea_m2 = (evapGeom.width_mm / 1000) * (evapGeom.depth_mm / 1000);
@@ -516,7 +516,7 @@ function createFailure(TC, errorMsg, inner = {}) {
 export function solveThermalSystem(config, TE_override = null) {
   const { 
     geom, compParams, condenserConfig, refrigerant,  dischargeTemp, 
-    fixedTemps, fan, electrical, evapGeom, freezerPosition = 'top', 
+    fixedTemps, fan, electrical, evapGeom, thermalProperties, freezerPosition = 'top', 
     tolOuter = 0.001, maxIterOuter = 50, innerOptions = {} 
   } = config;
 
@@ -534,7 +534,7 @@ export function solveThermalSystem(config, TE_override = null) {
     if (TC < fixedTemps.T0) TC = fixedTemps.T0 + 2;
     if (TC > 90) TC = 90;
 
-    let inner = solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom);
+    let inner = solveInner(TC, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, prevInner ? { ...innerOptions, initialT2: prevInner.T2, initialPR: prevInner.PR, initialRPM: prevInner.RPM } : innerOptions, fixedPR, evapGeom, thermalProperties);
 
     if (!inner.converged) {
       if (inner.error?.includes('undersized')) return createFailure(TC, 'Compressor undersized.', inner);
@@ -555,7 +555,7 @@ export function solveThermalSystem(config, TE_override = null) {
       console.log(`F3=${F3.toFixed(2)}`);
 
     let innerPert = null;
-    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom); } catch (e) {}
+    try { innerPert = solveInner(TC + 0.001, geom, compParams, refrigerant, fixedTemps, fan, electrical, condenserConfig, TE, freezerPosition, { ...innerOptions, initialT2: inner.T2, initialPR: inner.PR, initialRPM: inner.RPM }, fixedPR, evapGeom, thermalProperties); } catch (e) {}
 
     if (innerPert?.converged) {
       const compOuter_pert = evaluateCompressorSafely(TE, TC + 0.001, getRefrigerantIndex(refrigerant), compParams, (fixedPR !== undefined) ? innerPert.RPM : undefined);
