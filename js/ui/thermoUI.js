@@ -200,6 +200,13 @@ function buildThermalModalOnce() {
       </fieldset>
 
       <fieldset>
+        <legend>Cabinet Thermal Properties</legend>
+        <label>Polyurethane conductivity (W/(m·°C)): <input type="number" id="thermoUrethane" step="any" min="0"></label>
+        <label>Outside surface coefficient (W/(m²·°C)): <input type="number" id="thermoOutsideSurfaceCoefficient" step="any" min="0"></label>
+        <label>Inside surface coefficient (W/(m²·°C)): <input type="number" id="thermoInsideSurfaceCoefficient" step="any" min="0"></label>
+      </fieldset>
+
+      <fieldset>
         <legend>Electrical &amp; Defrost</legend>
         <label>PWB On Power (W): <input type="number" id="thermoPwbOn" step="any"></label>
         <label>PWB Standby Power (W): <input type="number" id="thermoPwbOff" step="any"></label>
@@ -241,6 +248,9 @@ function buildThermalModalOnce() {
     fanInputPower: document.getElementById('thermoFanInputPower'),
     compressorSelect: document.getElementById('thermoCompressorSelect'),
     dischargeTemp: document.getElementById('thermoDiscTemp'),
+    urethane: document.getElementById('thermoUrethane'),
+    outsideSurfaceCoefficient: document.getElementById('thermoOutsideSurfaceCoefficient'),
+    insideSurfaceCoefficient: document.getElementById('thermoInsideSurfaceCoefficient'),
     defHeater: document.getElementById('thermoDefHeater'),
     defOn: document.getElementById('thermoDefOn'),
     pwbOn: document.getElementById('thermoPwbOn'),
@@ -305,6 +315,11 @@ function openThermalSettings() {
   thermalModalInputs.pwbOff.value        = thermalAdvanced.pwbOff;
   thermalModalInputs.timerPeriod.value   = thermalAdvanced.timerPeriod;
   thermalModalInputs.damp.value          = thermalAdvanced.Damp;
+
+  const PU_Prop = settings.PU_Prop || {};
+  thermalModalInputs.urethane.value = PU_Prop.urethane ?? 0.0165;
+  thermalModalInputs.outsideSurfaceCoefficient.value = PU_Prop.OutsideSurfaceCoefficient ?? 6;
+  thermalModalInputs.insideSurfaceCoefficient.value = PU_Prop.InsideSurfaceCoefficient ?? 10;
   refreshCompressorSelect();
   updateInverterCompressorDisplay();
   thermalModal.classList.remove('hidden');
@@ -352,6 +367,12 @@ function saveThermalSettings() {
   settings.fanParam = {
     tipDiam_mm:  parseFloat(thermalModalInputs.tipDiam_mm.value),
     fanRPM:   parseFloat(thermalModalInputs.fanRPM.value),
+  };
+
+  settings.PU_Prop = {
+    urethane: parseFloat(thermalModalInputs.urethane.value),
+    OutsideSurfaceCoefficient: parseFloat(thermalModalInputs.outsideSurfaceCoefficient.value),
+    InsideSurfaceCoefficient: parseFloat(thermalModalInputs.insideSurfaceCoefficient.value),
   };
 
   updateSettings(settings);
@@ -857,6 +878,11 @@ export function handleRun() {
     },
     evapGeom: evapParam,
     evaporator: evapParam,// Pass the validated and calculated geometry explicitly
+    thermalProperties: {
+      urethane: settings.PU_Prop?.urethane,
+      outside: settings.PU_Prop?.OutsideSurfaceCoefficient,
+      inside: settings.PU_Prop?.InsideSurfaceCoefficient,
+    },
   });
   if (settings.condenser) {
     config.condenserConfig = {
@@ -1010,7 +1036,12 @@ export function handleInverterRun() {
       backCondenserEfficiency: 0.7, backCondenser: 'Yes',
     },
     evapGeom: evapParam, // Pass the validated and calculated geometry explicitly
-    evaporator: evapParam // Add this directly into the builder payload
+    evaporator: evapParam, // Add this directly into the builder payload
+    thermalProperties: {
+      urethane: settings.PU_Prop?.urethane,
+      outside: settings.PU_Prop?.OutsideSurfaceCoefficient,
+      inside: settings.PU_Prop?.InsideSurfaceCoefficient,
+    },
   });
 
   loadCompressors();
