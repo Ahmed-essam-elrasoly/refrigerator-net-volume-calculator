@@ -443,13 +443,10 @@ def calc_heat_loads(geom, temps, electrical, PIPEPITCH,
     # H, W, D, Hf, Hr, Hb, Db1, Db2, doorGap, packingPos,
     # tFtop, tFleft, tFright, tFbottom, tFdoor, tFback, tEvaBack,
     # tRtop, tRleft, tRright, tRback, tRdoor,
-    # tRbottom1, tRbottom2, tRbottom3, tFfloor1, tFfloor2, tFfloor3, tRfloor,
-    # dividerInsulationType (default 'PU')
+    # tRbottom1, tRbottom2, tRbottom3, tFfloor1, tFfloor2, tFfloor3, tRfloor
 
     W, D, Hf, Hr, Hb, Db1, Db2 = geom["W"], geom["D"], geom["Hf"], geom["Hr"], geom["Hb"], geom["Db1"], geom["Db2"]
     doorGap, packingPos = geom["doorGap"], geom["packingPos"]
-    divider_insulation_type = geom.get("dividerInsulationType", "PU")
-
     T0, TF, TR, T2, TC, PR, TE = (
         temps["T0"], temps["TF"], temps["TR"], temps["T2"], temps["TC"], temps["PR"], temps["TE"]
     )
@@ -1346,7 +1343,8 @@ def newton2(F, x0, dx, tol, max_iter, bounds, debug=False) -> dict:
 # --------------------------------------------- 5b. INNER 2-D SOLVE (T2, PR/RPM)
 
 def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, electrical,
-                 condenser_config, TE, freezer_pos, inner_opts=None, fixed_PR=None, evap_geom=None) -> dict:
+                 condenser_config, TE, freezer_pos, inner_opts=None, fixed_PR=None,
+                 evap_geom=None, thermal_properties=None) -> dict:
     """
     SOURCE-CODE CHANGE (confirmed against the live solver.js): `subcool` is STILL
     in the parameter list — every call site still passes a `subcool` argument
@@ -1408,7 +1406,8 @@ def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, e
         # to satisfy the destructuring in that function's signature.
         loads = calc_heat_loads(geom, {**fixed_temps, "T2": T2, "TC": TC, "PR": PR, "TE": -25},
                                  electrical, PIPEPITCH, condenser_config["backCondenserEfficiency"],
-                                 fan["inputPower_W"], freezer_pos, condenser_config["backCondenser"])
+                                 fan["inputPower_W"], freezer_pos, condenser_config["backCondenser"],
+                                 thermal_properties)
 
         flow_m3h = fan["fanAirflow_m3h"]
         face_area_m2 = (evap_geom["width_mm"] / 1000) * (evap_geom["depth_mm"] / 1000)
@@ -1555,7 +1554,8 @@ def solve_inner(TC, geom, comp_params, refrigerant, subcool, fixed_temps, fan, e
 
     loads = calc_heat_loads(geom, {**fixed_temps, "T2": fT2, "TC": TC, "PR": fPR, "TE": converged_TE},
                              electrical, PIPEPITCH, condenser_config["backCondenserEfficiency"],
-                             fan["inputPower_W"], freezer_pos, condenser_config["backCondenser"])
+                             fan["inputPower_W"], freezer_pos, condenser_config["backCondenser"],
+                             thermal_properties)
     comp = evaluate_compressor_safely(converged_TE, TC, ref_index, comp_params, fRPM)
 
     # Re-apply the dynamic-condenser-subcooling + SLHX correction one more time
@@ -1750,6 +1750,7 @@ def solve_thermal_system(config, TE_override=None) -> dict:
     condenser_config, refrigerant = config["condenserConfig"], config["refrigerant"]
     discharge_temp = config["dischargeTemp"]
     fixed_temps, fan, electrical, evap_geom = config["fixedTemps"], config["fan"], config["electrical"], config.get("evapGeom")
+    thermal_properties = config.get("thermalProperties")
     freezer_position = config.get("freezerPosition", "top")
     # NOTE: solver.js's OWN internal defaults here (TC0=45, tolOuter=0.001,
     # maxIterOuter=50) DIFFER from index.js's defaults (54.4, 0.0005, 100).
@@ -1796,7 +1797,8 @@ def solve_thermal_system(config, TE_override=None) -> dict:
         )
 
         inner = solve_inner(TC, geom, comp_params, refrigerant, None, fixed_temps, fan, electrical,
-                             condenser_config, TE, freezer_position, this_inner_opts, fixed_PR, evap_geom)
+                     condenser_config, TE, freezer_position, this_inner_opts, fixed_PR, evap_geom,
+                     thermal_properties)
 
         if not inner["converged"]:
             err = inner.get("error") or ""
@@ -1845,7 +1847,8 @@ def solve_thermal_system(config, TE_override=None) -> dict:
         try:
             pert_opts = {**inner_options, "initialT2": inner["T2"], "initialPR": inner["PR"], "initialRPM": inner["RPM"]}
             inner_pert = solve_inner(TC + 0.001, geom, comp_params, refrigerant, None, fixed_temps, fan,
-                                      electrical, condenser_config, TE, freezer_position, pert_opts, fixed_PR, evap_geom)
+                                      electrical, condenser_config, TE, freezer_position, pert_opts, fixed_PR, evap_geom,
+                                      thermal_properties)
         except Exception:
             inner_pert = None
 
@@ -2201,7 +2204,7 @@ run_thermo_analysis(config)                                 [index.js — VERIFI
             -> solve_inner(TC, ..., TE)                      [solver.js — VERIFIED]   2-D Newton for (T2, PR-or-RPM)
                  -> newton2(F, x0, ...)                       [solver.js — VERIFIED]   generic Newton + line search
                       -> F(vars) calls, per Newton iteration:
-                           -> calc_heat_loads(...)             [heatLoad.js — VERIFIED]
+                           -> calc_heat_loads(..., thermalProperties) [heatLoad.js — VERIFIED]
                            -> solve_TE_brent(T1, T2, LMTD_req)  [solver.js — VERIFIED]  Brent root find
                                 -> lmtd(T1, T2, TE)             [evaporator.js — VERIFIED]
                            -> evaluate_compressor_safely(...)   [CompressorPerformance.js — VERIFIED]
@@ -2504,6 +2507,12 @@ SETTINGS_DEFAULTS = {
         "numFins": 32, "sidePlateNo": 0,
     },
     "fanParam": {"tipDiam_mm": 110, "fanRPM": 2200},
+    # User-editable cabinet thermal properties, mapped to config.thermalProperties.
+    "PU_Prop": {
+        "urethane": 0.0165,
+        "OutsideSurfaceCoefficient": 6,
+        "InsideSurfaceCoefficient": 10,
+    },
 }
 
 SETTINGS_STORAGE_KEY = "refrigerator-calc-settings"
@@ -3419,9 +3428,11 @@ def build_thermal_modal_once():
     DOM node if called again): condenser pipe pitches, full evaporator geometry
     (width/height/depth/rows/layers/tube OD/fin height/fin length/fin
     count/side plates), fan parameters (tip diameter/RPM/input power),
-    compressor select + Add/Edit/Delete buttons, discharge temp, electrical +
-    defrost fields, and a single Damper-Ratio field. Caches every input element
-    reference into `thermal_modal_inputs` for fast repeated access, and
+    compressor select + Add/Edit/Delete buttons, discharge temp, three cabinet
+    thermal-property inputs (urethane conductivity, outside surface coefficient,
+    and inside surface coefficient), electrical + defrost fields, and a single
+    Damper-Ratio field. Caches every input element reference into
+    `thermal_modal_inputs` for fast repeated access, and
     attaches its permanent event handlers (close, add/edit/delete compressor,
     compressor-select change -> set_selected_compressor, save-and-close ->
     save_thermal_settings, click-outside-to-close).
@@ -3431,10 +3442,11 @@ def build_thermal_modal_once():
 
 def open_thermal_settings():
     """Reloads the compressor catalog, then hydrates every modal input from
-    `settings` (condenser/evaporator/fanParam) and `thermal_advanced`
-    (discharge/defrost/pwb/damper), each with its own inline fallback default
-    matching Section 8's SETTINGS_DEFAULTS. Refreshes the compressor dropdown
-    and inverter-name display, then un-hides the modal."""
+    `settings` (condenser/evaporator/fanParam/PU_Prop) and `thermal_advanced`
+    (discharge/defrost/pwb/damper), each with its own inline fallback default.
+    The current UI fallbacks for PU_Prop are urethane 0.0165, outside 6, and
+    inside 10. Refreshes the compressor dropdown and inverter-name display, then
+    un-hides the modal."""
     ...
 
 
@@ -3447,8 +3459,10 @@ def refresh_compressor_select():
 def save_thermal_settings():
     """
     Scrapes every modal input back into `settings.condenser` / `.evaporator` /
-    `.fanParam` and calls update_settings(settings) (Section 8) to persist +
-    broadcast. Then scrapes discharge/fan-power/defrost/pwb/timer fields into
+    `.fanParam` / `.PU_Prop` and calls update_settings(settings) (Section 8) to
+    persist + broadcast. `PU_Prop` stores `urethane`,
+    `OutsideSurfaceCoefficient`, and `InsideSurfaceCoefficient`. Then scrapes
+    discharge/fan-power/defrost/pwb/timer fields into
     `thermal_advanced`, each falling back to its SJ54H_COMPONENTS default if
     the parsed value is falsy (NaN/0/empty) — meaning a deliberately-entered
     ZERO for e.g. defrostOn_min would be silently replaced by the default,
@@ -3534,13 +3548,14 @@ def handle_run():
       5. Infer freezerPosition from cabinet_geom._compartments: 'top' if there's
          only 1 compartment OR the first compartment is type 'freezer',
          otherwise 'bottom'.
-      6. build_default_config() (Section 6) with the scraped geom, freezer
-         position, refrigerant, discharge/fixed-temps/fan/electrical overrides
-         (no subcool override — the field no longer exists), and the
-         pre-computed evapGeom.
-      7. If settings.condenser is set, override config.condenserConfig's pipe
-         pitches from it.
-      8. Load the current compressor catalog entry; validate its wCoeffs (5
+        6. build_default_config() (Section 6) with the scraped geom, freezer
+            position, refrigerant, discharge/fixed-temps/fan/electrical overrides
+            (no subcool override — the field no longer exists), the pre-computed
+            evapGeom, and `thermalProperties` mapped from `settings.PU_Prop`:
+            `{urethane, outside, inside}`.
+        7. If settings.condenser is set, override config.condenserConfig's pipe
+            pitches from it.
+        8. Load the current compressor catalog entry; validate its wCoeffs (5
          elements) / etaCoeffs (3 elements) — coercing legacy keyed-object
          coefficient formats back to arrays first. If invalid, silently falls
          back to the default EGX80CLC compParams already in `config` and queues
@@ -3594,6 +3609,9 @@ def handle_inverter_run():
         freshly-fit model back into the catalog via save_compressors().
       - Sets config.compParams.isInverter=true with the just-fit model and
         config.inverterPR = PR (the user's fixed running ratio).
+            - Includes config.thermalProperties from settings.PU_Prop using the
+                solver keys `urethane`, `outside`, and `inside`, so inverter and
+                constant-speed runs share the same editable cabinet thermal inputs.
       - Requires settings.evaporator.evapArea_m2 > 0 to already be set (does
         NOT compute it inline here the way handle_run() does at step 3 — relies
         on a PRIOR compute_evaporator_area() call having already stamped
